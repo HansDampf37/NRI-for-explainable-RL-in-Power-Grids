@@ -1,0 +1,11 @@
+numpy~=2.3.3
+torch~=2.8.0
+grid2op~=1.12.1
+tqdm~=4.67.1
+gymnasium~=1.1.1
+lightsim2grid~=0.10.3
+setuptools~=80.9.0
+packaging~=25.0
+ray~=2.49.2
+pandas~=2.3.2
+stable-baselines3~=2.7.0
