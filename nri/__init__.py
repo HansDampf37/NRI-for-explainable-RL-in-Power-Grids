@@ -1,5 +1,5 @@
 __all__ = [
-    "create_dataset"
+    "generate_dataset"
 ]
 
-import create_dataset
+from .create_dataset import generate_dataset

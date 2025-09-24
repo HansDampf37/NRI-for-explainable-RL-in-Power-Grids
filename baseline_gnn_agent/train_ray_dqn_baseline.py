@@ -2,7 +2,7 @@ from pprint import pprint
 
 from ray.rllib.algorithms import DQNConfig
 
-from common.grid2op_env_wrapper import Grid2OpEnvWrapper
+from common import Grid2OpEnvWrapper
 
 
 def main():
@@ -10,12 +10,15 @@ def main():
         DQNConfig()
         .environment(Grid2OpEnvWrapper)
         .framework("torch")
-        .training(replay_buffer_config={
-            "type": "PrioritizedEpisodeReplayBuffer",
-            "capacity": 60000,
-            "alpha": 0.5,
-            "beta": 0.5,
-        })
+        .training(
+            dueling=True,
+            replay_buffer_config={
+                "type": "PrioritizedEpisodeReplayBuffer",
+                "capacity": 60000,
+                "alpha": 0.5,
+                "beta": 0.5,
+            }
+        )
         .env_runners(num_env_runners=1)
         .evaluation(evaluation_interval=10)
     )
