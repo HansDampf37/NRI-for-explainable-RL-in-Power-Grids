@@ -8,6 +8,7 @@ from common.grid2op_env_wrapper import Grid2OpEnvWrapper
 class TestGrid2opEnvWrapper(unittest.TestCase):
     def setUp(self):
         self.env = Grid2OpEnvWrapper()
+        self.env.reset()
 
     def test_config_1(self):
         self.assertIsInstance(self.env.action_space, Discrete)
@@ -15,7 +16,7 @@ class TestGrid2opEnvWrapper(unittest.TestCase):
         self.assertEqual(self.env._g2op_env.n_gen, 6)  # small env by default
 
     def test_config_2(self):
-        self.env = Grid2OpEnvWrapper(env_name="l2rpn_idf_2023", action_space_type=Box, obs_attr_to_keep=["rho"])
+        self.env = Grid2OpEnvWrapper(dict(env_name="l2rpn_idf_2023", act_type="box", obs_attr_to_keep=["rho"]))
         self.assertEqual(self.env._g2op_env.n_gen, 62)
         self.assertIsInstance(self.env.action_space, Box)
         self.assertIsInstance(self.env.observation_space, Box)
