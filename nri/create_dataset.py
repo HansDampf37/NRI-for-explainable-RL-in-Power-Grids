@@ -18,12 +18,10 @@ import grid2op
 from tqdm import tqdm
 
 from baseline_gnn_agent.baseline_agent import BaselineGNNAgent, TopologyPolicy
+from common.graph_structured_observation_space import GraphStructuredBoxObservationSpace
 
 logger = logging.getLogger(__name__)
 
-FEATURES_PER_GENERATOR = 9
-FEATURES_PER_LOAD = 5
-FEATURES_PER_LINE = 13
 
 
 class AgentFailsEarly(Exception):
@@ -71,70 +69,6 @@ def sample_trajectory(length: int, agent: BaseAgent, env: Environment, max_retri
     return trajectory
 
 
-def generator_features_from_observation(obs: BaseObservation) -> np.ndarray:
-    """
-    Returns a numpy representation of the features for generators in the observation. The returned numpy array
-    is of shape (n, x) where n is the number of generators and x is the number of features per generator.
-
-    :param obs: The observation
-    :return: the numpy representation of the generators in the observation
-    """
-    return np.array([
-        obs.gen_pmax,  # the maximum power (in MW)
-        obs.gen_p,  # the current power (in MW)
-        obs.gen_q,  # the current reactive power (in MVar)
-        obs.gen_v,  # the voltage at the bus (in kV)
-        obs.gen_theta,  # the voltage angle at the bus (in deg)
-        obs.target_dispatch,  # the dispatch asked for by the agent
-        obs.actual_dispatch,
-        # the dispatch implemented by the environment (might differ to the above due to physical constraints)
-        obs.curtailment_limit_mw,  # the production limit of the renewable generator (in MW)
-        obs.gen_bus  # the bus that this generator is connected to (1, 2 or -1)
-    ]).transpose()
-
-
-def load_features_from_observation(obs: BaseObservation) -> np.ndarray:
-    """
-    Returns a numpy representation of the features for loads in the observation. The returned numpy array
-    is of shape (n, x) where n is the number of loads and x is the number of features per load.
-
-    :param obs: The observation
-    :return: the numpy representation of the loads in the observation
-    """
-    return np.array([
-        obs.load_p,  # the power (in MW)
-        obs.load_q,  # the reactive power (in MVar)
-        obs.load_v,  # the voltage at the bus (in kV)
-        obs.load_theta,  # the voltage angle at the bus (in deg)
-        obs.load_bus  # the bus that this load is connected to (1, 2 or -1)
-    ]).transpose()
-
-
-def line_features_from_observation(obs: BaseObservation) -> np.ndarray:
-    """
-    Returns a numpy representation of the features for lines in the observation. The returned numpy array
-    is of shape (n, x) where n is the number of lines and x is the number of features per line.
-
-    :param obs: The observation
-    :return: the numpy representation of the lines in the observation
-    """
-    return np.array([
-        obs.line_status,  # whether the line is connected
-        obs.rho,  # the load on the line from 0 to 1
-        obs.thermal_limit,  # the thermal limit of each line (in A)
-        obs.p_or,  # the power at the origin (in MW)
-        obs.q_or,  # the reactive power at the origin (in MVar)
-        obs.a_or,  # the flow at the origin (in A)
-        obs.theta_or,  # the voltage angle at the origin (in deg)
-        obs.line_or_bus,  # the bus that the origin of the line is connected to (1, 2 or -1)
-        obs.p_ex,  # the power at the extremity (in MW)
-        obs.q_ex,  # the reactive power at the extremity (in MVar)
-        obs.a_ex,  # the flow at the extremity (in A)
-        obs.theta_ex,  # the voltage angle at the extremity (in deg)
-        obs.line_ex_bus,  # the bus that the extremity of the line is connected to (1, 2 or -1)
-    ]).transpose()
-
-
 def generate_dataset(num_sims: int, length: int, agent: BaseAgent, env: Environment) -> Tuple[
     np.ndarray, np.ndarray, np.ndarray]:
     """
@@ -145,15 +79,17 @@ def generate_dataset(num_sims: int, length: int, agent: BaseAgent, env: Environm
     :param env: the grid2op environment to operate
     :return: trajectory data for generators, loads, and powerlines
     """
+    observation_converter = GraphStructuredBoxObservationSpace()
     generator_trajectories_all = []
     load_trajectories_all = []
     line_trajectories_all = []
 
     for _ in tqdm(range(num_sims), f"Creating {num_sims} trajectories"):
         trajectory: List[BaseObservation] = sample_trajectory(length=length, agent=agent, env=env)
-        generator_trajectory: np.ndarray = np.array([generator_features_from_observation(obs) for obs in trajectory])
-        load_trajectory: np.ndarray = np.array([load_features_from_observation(obs) for obs in trajectory])
-        line_trajectory: np.ndarray = np.array([line_features_from_observation(obs) for obs in trajectory])
+        converted_trajectory: List[Tuple] = [observation_converter.to_gym(obs) for obs in trajectory]
+        generator_trajectory: np.ndarray = np.array([obs["generator_features"] for obs in converted_trajectory])
+        load_trajectory: np.ndarray = np.array([obs["load_features"] for obs in converted_trajectory])
+        line_trajectory: np.ndarray = np.array([obs["line_features"] for obs in converted_trajectory])
 
         generator_trajectories_all.append(generator_trajectory)
         load_trajectories_all.append(load_trajectory)
@@ -190,7 +126,7 @@ def main():
         logger.warning("You have configured the topology greedy agent that will simulate every topology action. "
                        "This is only feasible for small environments.")
     elif args.agent == 'baseline':
-        agent = BaselineGNNAgent(env.action_space, TopologyPolicy(action_space=env.action_space))
+        agent = BaselineGNNAgent(env.action_space, TopologyPolicy(action_space=env.action_space, observation_space=env.observation_space)) # TODO
     else:
         raise NotImplementedError(f"Unknown agent '{args.agent}'")
 
