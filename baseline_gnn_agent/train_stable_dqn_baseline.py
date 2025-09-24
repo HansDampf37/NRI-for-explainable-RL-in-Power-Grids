@@ -20,11 +20,11 @@ def main():
         batch_size=128,
         learning_rate=4e-3,
         policy_kwargs=dict(net_arch=[256, 256]),
-        tensorboard_log="data/logs/stable-baselines/dqn-mlp",
+        tensorboard_log="../data/logs/stable-baselines/dqn-mlp",
         seed=2,
     )
     dqn.learn(100, log_interval=10)
-    dqn.save("data/models/stable-baselines/dqn-mlp") # TODO models and logs do not appear
+    dqn.save("../data/models/stable-baselines/dqn-mlp")
 
 if __name__ == '__main__':
     main()
