@@ -14,6 +14,9 @@ pip install -r requirements.txt
 ```commandline
 conda env create -f environment.yaml
 ```
+> [!WARNING]  
+> This step might fail because l2rpn-baselines which we will install from source is included in the environment.yml file.
+> If this is problematic just remove the corresponding line and try again.
 ## Step 2: Install l2rpn-baselines including submodules from source:
 Uninstall previously installed versions of `l2rpn-baselines`
 ```bash
