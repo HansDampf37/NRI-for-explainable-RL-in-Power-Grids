@@ -15,6 +15,7 @@ from grid2op.Agent import BaseAgent, RandomAgent, DoNothingAgent, RecoPowerlineA
 from grid2op.Environment import Environment
 from grid2op.Observation import BaseObservation
 import grid2op
+from grid2op.gym_compat import GymEnv, DiscreteActSpace
 from tqdm import tqdm
 
 from baseline_gnn_agent.baseline_agent import BaselineGNNAgent, TopologyPolicy
@@ -126,7 +127,18 @@ def main():
         logger.warning("You have configured the topology greedy agent that will simulate every topology action. "
                        "This is only feasible for small environments.")
     elif args.agent == 'baseline':
-        agent = BaselineGNNAgent(env.action_space, TopologyPolicy(action_space=env.action_space, observation_space=env.observation_space)) # TODO
+        gym_env = GymEnv(env)
+        gym_env.observation_space.close()
+        gym_env.observation_space = GraphStructuredBoxObservationSpace()
+        gym_env.action_space.close()
+        gym_env.action_space = DiscreteActSpace()
+        agent = BaselineGNNAgent(
+            env.action_space,
+            TopologyPolicy(
+                action_space=gym_env.action_space,
+                observation_space=gym_env.observation_space
+            )
+        )
     else:
         raise NotImplementedError(f"Unknown agent '{args.agent}'")
 
