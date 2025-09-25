@@ -101,7 +101,7 @@ def train():
         tensorboard_log=f"../data/logs/stable-baselines/{_model_name}",
         seed=2,
     )
-    dqn.learn(28, log_interval=10)
+    dqn.learn(90_000, log_interval=10)
     dqn.save(_model_path)
 
 
