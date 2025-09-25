@@ -8,6 +8,7 @@ import torch
 from grid2op.Action import TopologySetAction
 from grid2op.Observation import BaseObservation
 from grid2op.gym_compat import DiscreteActSpace, BoxGymObsSpace, GymnasiumActionSpace, GymnasiumObservationSpace
+from lightsim2grid import LightSimBackend
 from stable_baselines3 import DQN
 
 from baselines.baseline_agent import BaselineAgent, TopologyPolicy, evaluate
@@ -17,7 +18,7 @@ _default_env_name = "l2rpn_case14_sandbox"
 _default_obs_attr_to_keep = ["rho", "p_or", "gen_p", "load_p"]
 _default_act_attr_to_keep = ["set_line_status_simple", "set_bus"]
 _model_name = "dqn-mlp"
-_model_path = Path(f"../data/models/stable-baselines/{_model_name}")
+_model_path = Path(f"data/models/stable-baselines/{_model_name}")
 _safe_max_rho = 0.95
 
 logging.basicConfig(
@@ -26,7 +27,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-class TopoPolicyStableDQN(TopologyPolicy[GymnasiumActionSpace, GymnasiumObservationSpace]):
+class TopoPolicyStableDQN(TopologyPolicy):
     """
     Implements the interface of a topology policy. Uses a DQN trained by the stable baselines 3 library.
     """
@@ -77,10 +78,13 @@ def train():
     Trains a model
     """
     env = Grid2OpEnvWrapper(dict(
+        backend_cls=LightSimBackend,
+        backend_options=dict(),
         env_name=_default_env_name,
+        env_is_test=False,
         obs_attr_to_keep=_default_obs_attr_to_keep,
         act_attr_to_keep=_default_act_attr_to_keep,
-        action_type="discrete",
+        act_type="discrete",
         safe_max_rho=_safe_max_rho
     ))
     dqn = DQN(
@@ -98,21 +102,25 @@ def train():
         batch_size=128,
         learning_rate=4e-3,
         policy_kwargs=dict(net_arch=[100, 100]),
-        tensorboard_log=f"../data/logs/stable-baselines/{_model_name}",
+        tensorboard_log=f"data/logs/stable-baselines/{_model_name}",
         seed=2,
     )
-    dqn.learn(28, log_interval=10)
+    dqn.learn(300_000, log_interval=10)
     dqn.save(_model_path)
 
 
-if __name__ == '__main__':
+def main():
     train()
     evaluate(
         agent=build_agent(_model_path, _default_env_name),
         env=grid2op.make(_default_env_name),
-        path_results=f"../data/evaluations/stable-baselines/{_model_name}",
-        nb_episode=3,
-        max_iter=500,
-        nb_process=2,
+        path_results=Path(f"data/evaluations/stable-baselines/{_model_name}"),
+        nb_episode=6,
+        max_iter=2000,
+        nb_process=3,
         pbar=True,
     )
+
+
+if __name__ == '__main__':
+    main()

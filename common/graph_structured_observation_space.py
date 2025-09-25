@@ -23,7 +23,7 @@ class GraphStructuredBoxObservationSpace(Dict):
         super().__init__() # TODO add box spaces with lower, higher, and shape
         self.graph_topo = None
 
-    def to_gym(self, g2op_obs: BaseObservation) -> Dict:
+    def to_gym(self, g2op_obs: BaseObservation) -> dict:
         if self.graph_topo is None:
             self._generate_graph_topology(g2op_obs)
 

@@ -5,6 +5,11 @@ We try to detect latent edges that are useful for timeseries predictions of a de
 I used `conda 24.9.1` and `python 3.12.10`
 
 # Dependencies
+## Step 0: (Optional) If you are on bwUniCluster:
+```commandline
+module load devel/miniforge
+conda activate RL
+```
 ## Step 1: Install dependencies via pip
 **If you use a virtual env**
 ```commandline

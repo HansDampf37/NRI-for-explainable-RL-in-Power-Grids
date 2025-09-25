@@ -3,6 +3,8 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+batch_scripts/
+
 .idea
 
 # C extensions

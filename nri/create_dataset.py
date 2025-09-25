@@ -8,17 +8,19 @@ This dataset can further be used for NRI. The contained dataset contains traject
 
 import argparse
 import logging
-from typing import List, Tuple
+from pathlib import Path
+from typing import List, Tuple, Dict
 
+import grid2op
 import numpy as np
 from grid2op.Agent import BaseAgent, RandomAgent, DoNothingAgent, RecoPowerlineAgent, TopologyGreedy
 from grid2op.Environment import Environment
 from grid2op.Observation import BaseObservation
-import grid2op
 from grid2op.gym_compat import GymEnv, DiscreteActSpace
 from tqdm import tqdm
 
-from baselines.baseline_agent import BaselineAgent, TopologyPolicy
+from baselines.baseline_agent import BaselineAgent
+from baselines.train_ray_dqn_baseline import TopoPolicyDQN
 from common.graph_structured_observation_space import GraphStructuredBoxObservationSpace
 
 logger = logging.getLogger(__name__)
@@ -87,7 +89,7 @@ def generate_dataset(num_sims: int, length: int, agent: BaseAgent, env: Environm
 
     for _ in tqdm(range(num_sims), f"Creating {num_sims} trajectories"):
         trajectory: List[BaseObservation] = sample_trajectory(length=length, agent=agent, env=env)
-        converted_trajectory: List[Tuple] = [observation_converter.to_gym(obs) for obs in trajectory]
+        converted_trajectory: List[Dict] = [observation_converter.to_gym(obs) for obs in trajectory]
         generator_trajectory: np.ndarray = np.array([obs["generator_features"] for obs in converted_trajectory])
         load_trajectory: np.ndarray = np.array([obs["load_features"] for obs in converted_trajectory])
         line_trajectory: np.ndarray = np.array([obs["line_features"] for obs in converted_trajectory])
@@ -134,9 +136,10 @@ def main():
         gym_env.action_space = DiscreteActSpace()
         agent = BaselineAgent(
             env.action_space,
-            TopologyPolicy(
+            TopoPolicyDQN(
                 action_space=gym_env.action_space,
-                observation_space=gym_env.observation_space
+                observation_space=gym_env.observation_space,
+                model_checkpoint=Path("data/models/stable-baselines/dqn-mlp.zip")
             )
         )
     else:
@@ -158,15 +161,15 @@ def main():
     load_traj_valid = load_traj[-args.num_valid:]
     line_traj_valid = line_traj[-args.num_valid:]
 
-    np.save('dataset/gen_traj_train_' + env + '_.npy', gen_traj_train)
-    np.save('dataset/load_traj_train_' + env + '_.npy', load_traj_train)
-    np.save('dataset/line_traj_train_' + env + '_.npy', line_traj_train)
-    np.save('dataset/gen_traj_valid_' + env + '_.npy', gen_traj_valid)
-    np.save('dataset/load_traj_valid_' + env + '_.npy', load_traj_valid)
-    np.save('dataset/line_traj_valid_' + env + '_.npy', line_traj_valid)
-    np.save('dataset/gen_traj_test_' + env + '_.npy', gen_traj_test)
-    np.save('dataset/load_traj_test_' + env + '_.npy', load_traj_test)
-    np.save('dataset/line_traj_test_' + env + '_.npy', line_traj_test)
+    np.save('dataset/gen_traj_train_' + args.env + '_.npy', gen_traj_train)
+    np.save('dataset/load_traj_train_' + args.env + '_.npy', load_traj_train)
+    np.save('dataset/line_traj_train_' + args.env + '_.npy', line_traj_train)
+    np.save('dataset/gen_traj_valid_' + args.env + '_.npy', gen_traj_valid)
+    np.save('dataset/load_traj_valid_' + args.env + '_.npy', load_traj_valid)
+    np.save('dataset/line_traj_valid_' + args.env + '_.npy', line_traj_valid)
+    np.save('dataset/gen_traj_test_' + args.env + '_.npy', gen_traj_test)
+    np.save('dataset/load_traj_test_' + args.env + '_.npy', load_traj_test)
+    np.save('dataset/line_traj_test_' + args.env + '_.npy', line_traj_test)
 
 if __name__ == '__main__':
     main()

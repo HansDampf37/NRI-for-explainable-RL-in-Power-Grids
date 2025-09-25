@@ -10,10 +10,10 @@ from grid2op.gym_compat import GymnasiumActionSpace, GymnasiumObservationSpace
 from ray.rllib.algorithms import DQNConfig
 from ray.rllib.core.rl_module import RLModule
 
-from baseline_gnn_agent.baseline_agent import TopologyPolicy
+from baselines.baseline_agent import TopologyPolicy
 from common import Grid2OpEnvWrapper
 
-class TopoPolicyDQN(TopologyPolicy[GymnasiumActionSpace, GymnasiumObservationSpace]):
+class TopoPolicyDQN(TopologyPolicy):
     def __init__(self, action_space: GymnasiumActionSpace, observation_space: GymnasiumObservationSpace, model_checkpoint: Path):
         TopologyPolicy.__init__(self, action_space, observation_space)
         # Load the RL module from the checkpoint

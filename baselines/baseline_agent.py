@@ -3,7 +3,7 @@ This script implements a baseline agent. The agent is a greedy agent meaning it 
 _get_tested_action method and execute the one with the highest simulated reward.
 """
 import logging
-from abc import abstractmethod
+from abc import abstractmethod, ABC
 from pathlib import Path
 from typing import List, TypeVar, Generic
 
@@ -14,17 +14,15 @@ from grid2op.Agent import RecoPowerlineAgent
 from grid2op.Observation import BaseObservation
 from grid2op.gym_compat import GymnasiumActionSpace, GymnasiumObservationSpace
 
-TActionSpace = TypeVar('TActionSpace', bound=GymnasiumActionSpace)
-TObservationSpace = TypeVar('TObservationSpace', bound=GymnasiumObservationSpace)
 logger = logging.getLogger(__name__)
 
 
-class TopologyPolicy(Generic[TActionSpace, TObservationSpace]):
+class TopologyPolicy(ABC):
     """
     The Topology policy is used to suggest k topology actions for a given observation.
     """
 
-    def __init__(self, action_space: TActionSpace, observation_space: TObservationSpace):
+    def __init__(self, action_space: GymnasiumActionSpace, observation_space: GymnasiumObservationSpace):
         self.action_space = action_space
         self.observation_space = observation_space
 
@@ -69,7 +67,7 @@ class BaselineAgent(RecoPowerlineAgent):
         self.topology_policy = topology_policy
         self.k = k
 
-    def _get_tested_action(self, observation: BaseObservation) -> BaseAction:
+    def _get_tested_action(self, observation: BaseObservation) -> List[BaseAction]:
         # try to perform reconnection or do nothing
         reconnection_actions = super()._get_tested_action(observation)
 
