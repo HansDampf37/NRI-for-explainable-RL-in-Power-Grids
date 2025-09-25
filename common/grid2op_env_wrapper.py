@@ -4,7 +4,6 @@ from typing import Dict, Literal, Any, Optional
 import grid2op
 from grid2op.gym_compat import BoxGymObsSpace, DiscreteActSpace, BoxGymActSpace, MultiDiscreteActSpace
 from gymnasium import Env
-from gymnasium.spaces import Discrete, MultiDiscrete, Box
 from l2rpn_baselines.utils import GymEnvWithRecoWithDN
 from lightsim2grid import LightSimBackend
 
@@ -62,18 +61,11 @@ class Grid2OpEnvWrapper(Env):
             self._g2op_env.observation_space,
             attr_to_keep=obs_attr_to_keep
         )
-        self.observation_space = Box(
-            shape=self._gym_env.observation_space.shape,
-            low=self._gym_env.observation_space.low,
-            high=self._gym_env.observation_space.high
-        )
 
         # === Action space setup ===
         act_type = env_config.get("act_type", "discrete")
         act_attr_to_keep = copy.deepcopy(env_config.get("act_attr_to_keep", []))
-
         self._gym_env.action_space.close()
-
         if act_type == "discrete":
             if not act_attr_to_keep:
                 act_attr_to_keep = ["set_line_status_simple", "set_bus"]
@@ -81,7 +73,6 @@ class Grid2OpEnvWrapper(Env):
                 self._g2op_env.action_space,
                 attr_to_keep=act_attr_to_keep
             )
-            self.action_space = Discrete(self._gym_env.action_space.n)
 
         elif act_type == "box":
             if not act_attr_to_keep:
@@ -89,11 +80,6 @@ class Grid2OpEnvWrapper(Env):
             self._gym_env.action_space = BoxGymActSpace(
                 self._g2op_env.action_space,
                 attr_to_keep=act_attr_to_keep
-            )
-            self.action_space = Box(
-                shape=self._gym_env.action_space.shape,
-                low=self._gym_env.action_space.low,
-                high=self._gym_env.action_space.high
             )
 
         elif act_type == "multi_discrete":
@@ -103,10 +89,14 @@ class Grid2OpEnvWrapper(Env):
                 self._g2op_env.action_space,
                 attr_to_keep=act_attr_to_keep
             )
-            self.action_space = MultiDiscrete(self._gym_env.action_space.nvec)
 
         else:
             raise NotImplementedError(f"Action type '{act_type}' is not supported.")
+
+        self.observation_space = self._gym_env.observation_space
+        self.action_space = self._gym_env.action_space
+        self.g2op_observation_space = self._g2op_env.observation_space
+        self.g2op_action_space = self._g2op_env.action_space
 
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
         return self._gym_env.reset(seed=seed, options=options)

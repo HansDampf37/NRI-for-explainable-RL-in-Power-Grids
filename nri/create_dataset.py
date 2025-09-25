@@ -18,7 +18,7 @@ import grid2op
 from grid2op.gym_compat import GymEnv, DiscreteActSpace
 from tqdm import tqdm
 
-from baseline_gnn_agent.baseline_agent import BaselineGNNAgent, TopologyPolicy
+from baselines.baseline_agent import BaselineAgent, TopologyPolicy
 from common.graph_structured_observation_space import GraphStructuredBoxObservationSpace
 
 logger = logging.getLogger(__name__)
@@ -132,7 +132,7 @@ def main():
         gym_env.observation_space = GraphStructuredBoxObservationSpace()
         gym_env.action_space.close()
         gym_env.action_space = DiscreteActSpace()
-        agent = BaselineGNNAgent(
+        agent = BaselineAgent(
             env.action_space,
             TopologyPolicy(
                 action_space=gym_env.action_space,
