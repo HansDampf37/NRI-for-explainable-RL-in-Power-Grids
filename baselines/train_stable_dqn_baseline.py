@@ -12,7 +12,6 @@ from stable_baselines3 import DQN
 
 from baselines.baseline_agent import BaselineAgent, TopologyPolicy, evaluate
 from common import Grid2OpEnvWrapper
-from common.GNN import GNNFeatureExtractor
 
 _default_env_name = "l2rpn_case14_sandbox"
 _default_obs_attr_to_keep = ["rho", "p_or", "gen_p", "load_p"]

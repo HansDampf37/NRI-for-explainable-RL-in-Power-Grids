@@ -13,10 +13,9 @@ class TestMessagePassing(unittest.TestCase):
         self.num_edges = 20
         self.batch_size = 4
         self.edge_index = torch.randint(0, self.num_nodes, (2, self.num_edges))
-        self.node_batch = torch.randint(0, self.batch_size, (self.num_nodes,))
 
-        self.node_features = torch.randn(self.num_nodes, self.num_node_features)
-        self.edge_features = torch.randn(self.num_edges, self.num_edge_features)
+        self.node_features = torch.randn(self.batch_size, self.num_nodes, self.num_node_features)
+        self.edge_features = torch.randn(self.batch_size, self.num_edges, self.num_edge_features)
 
     def test_message_passing(self):
         num_node_features_out = 1
@@ -28,8 +27,8 @@ class TestMessagePassing(unittest.TestCase):
             output_e_dim=num_edge_features_out,
         )
         node_features, edge_features = mp(self.node_features, self.edge_features, self.edge_index)
-        self.assertEqual(node_features.shape, torch.Size([self.num_nodes, num_node_features_out]))
-        self.assertEqual(edge_features.shape, torch.Size([self.num_edges, num_edge_features_out]))
+        self.assertEqual(node_features.shape, torch.Size([self.batch_size, self.num_nodes, num_node_features_out]))
+        self.assertEqual(edge_features.shape, torch.Size([self.batch_size, self.num_edges, num_edge_features_out]))
 
     def test_no_residual(self):
         kwargs = dict(
@@ -59,8 +58,8 @@ class TestGnnFeatureExtractor(unittest.TestCase):
         self.batch_size = 4
         self.edge_index = torch.randint(0, self.num_nodes, (2, self.num_edges))
         self.node_batch = torch.randint(0, self.batch_size, (self.num_nodes,))
-        self.node_features = torch.randn(self.num_nodes, self.num_node_features)
-        self.edge_features = torch.randn(self.num_edges, self.num_edge_features)
+        self.node_features = torch.randn(self.batch_size, self.num_nodes, self.num_node_features)
+        self.edge_features = torch.randn(self.batch_size, self.num_edges, self.num_edge_features)
 
     def test_gnn(self):
         output_size = 2
@@ -75,7 +74,7 @@ class TestGnnFeatureExtractor(unittest.TestCase):
             0.1,
             True
         )
-        output = fe(self.node_features, self.edge_features, self.edge_index, self.node_batch)
+        output = fe(self.node_features, self.edge_features, self.edge_index)
         self.assertEqual(output.shape, torch.Size([self.batch_size, output_size + output_size]))
 
     def test_parameter_count(self):
@@ -108,11 +107,9 @@ class TestGnnFeatureExtractor(unittest.TestCase):
         data = dataset[0]
 
         # Prepare inputs
-        x = data.x.float()  # [N, node_features]
+        x = data.x.float().unsqueeze(0)  # [B, N, node_features]
         edge_index = to_undirected(data.edge_index)  # [2, E]
-        num_nodes = x.size(0)
-        e = torch.ones(edge_index.size(1), 4)  # dummy edge features, dim=4
-        node_batch_indices = torch.zeros(num_nodes, dtype=torch.long)
+        e = torch.ones(1, edge_index.size(1), 4)  # dummy edge features, dim=4
 
         # Target = graph label (for test we take the majority of node labels)
         y = data.y.mode()[0].unsqueeze(0)  # just to have a graph-level label
@@ -133,7 +130,7 @@ class TestGnnFeatureExtractor(unittest.TestCase):
         last_loss = None
         for epoch in range(200):
             opt.zero_grad()
-            logits = model(x, e, edge_index, node_batch_indices)[:, :dataset.num_classes]  # [1, num_classes]
+            logits = model(x, e, edge_index)[:, :dataset.num_classes]  # [1, num_classes]
             loss = loss_fn(logits, y)
             first_loss = first_loss or loss.item()
             last_loss = loss.item()

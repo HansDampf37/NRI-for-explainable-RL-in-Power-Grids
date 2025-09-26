@@ -82,16 +82,16 @@ class MessagePassing(nn.Module):
         """
         Forward pass.
 
-        :param x: node features [N, node_in_dim]
-        :param e: edge features [E, edge_in_dim]
+        :param x: node features [B, N, node_in_dim]
+        :param e: edge features [B, E, edge_in_dim]
         :param edge_index: models adjacency [2, E]
-        :return: node features [N, node_out_dim] and edge features [E, edge_out_dim]
+        :return: node features [B, N, node_out_dim] and edge features [B, E, edge_out_dim]
         """
         senders = edge_index[0]  # j
         receivers = edge_index[1]  # i
         # gather x_j and x_i per edge
-        x_j = x[senders]  # [E, x_dim]
-        x_i = x[receivers]  # [E, x_dim]
+        x_j = x[:, senders, :]  # [B, E, x_dim]
+        x_i = x[:, receivers, :]  # [B, E, x_dim]
 
         # update edges: e_out = psi(e_old, x_i, x_j)
         psi_in = torch.cat([e, x_i, x_j], dim=-1)
@@ -102,10 +102,11 @@ class MessagePassing(nn.Module):
         messages = self.phi(phi_in)  # [E, x_out_dim]
 
         # aggregate (sum) messages into nodes by receiver index
-        N = x.size(0)
-        agg = x.new_zeros((N, messages.size(-1)))
+        B = x.size(0)
+        N = x.size(1)
+        agg = x.new_zeros((B, N, messages.size(-1)))
         # index_add_ to sum messages into receivers rows
-        agg.index_add_(0, receivers, messages)
+        agg.index_add_(index=receivers, source=messages, dim=1)
 
         # node update: combine old x and aggregated messages
         node_in = torch.cat([x, agg], dim=-1)
@@ -178,14 +179,13 @@ class GNNFeatureExtractor(nn.Module):
             residual=False,
         )
 
-    def forward(self, x: Tensor, e: Tensor, edge_index: np.ndarray, node_batch_indices: np.ndarray) -> Tensor:
+    def forward(self, x: Tensor, e: Tensor, edge_index: np.ndarray) -> Tensor:
         """
         Forward pass.
 
-        :param x: node features [N, node_in_dim]
-        :param e: edge features [E, edge_in_dim]
+        :param x: node features [B, N, node_in_dim]
+        :param e: edge features [B, E, edge_in_dim]
         :param edge_index: models adjacency [2, E]
-        :param node_batch_indices: batch indices for each node (to which batch does he belong) [N, batch_size]
         :return: output features [B, node_out_dim + edge_out_dim]
         """
         x_h = self.node_proj(x)
@@ -194,20 +194,8 @@ class GNNFeatureExtractor(nn.Module):
         for mp in self.layers:
             x_h, e_h = mp(x_h, e_h, edge_index)
 
-        x_final, e_final = self.final(x_h, e_h, edge_index) # [N, node_out_dim], [E, edge_out_dim]
+        x_final, e_final = self.final(x_h, e_h, edge_index) # [B, N, node_out_dim], [B, E, edge_out_dim]
 
-        batch_size = int(node_batch_indices.max().item()) + 1
-        node_pool = torch.zeros(batch_size, x_final.size(-1), device=x.device)
-        node_pool.index_add_(0, node_batch_indices, x_final)
-        counts = torch.bincount(node_batch_indices, minlength=batch_size).clamp(min=1).unsqueeze(-1)
-        node_pool = node_pool / counts
-
-        # scatter mean over edges
-        senders = edge_index[0]
-        edge_batch_indices = node_batch_indices[senders]
-        edge_pool = torch.zeros(batch_size, e_final.size(-1), device=e.device)
-        edge_pool.index_add_(0, edge_batch_indices, e_final)
-        counts_e = torch.bincount(edge_batch_indices, minlength=batch_size).clamp(min=1).unsqueeze(-1)
-        edge_pool = edge_pool / counts_e
-
+        node_pool = x_final.mean(axis=1)
+        edge_pool = e_final.mean(axis=1)
         return torch.cat([node_pool, edge_pool], dim=-1)
