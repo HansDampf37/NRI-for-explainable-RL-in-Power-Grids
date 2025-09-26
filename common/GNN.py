@@ -2,9 +2,12 @@ from typing import Tuple, Optional
 
 import numpy as np
 import torch
+from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from torch import nn, Tensor
 
-from common.MLP import MLP
+from .MLP import MLP
+from .graph_structured_observation_space import GraphStructuredBoxObservationSpace, EDGE_INDEX, \
+    EDGE_FEATURES, NODE_FEATURES
 
 
 class MessagePassing(nn.Module):
@@ -129,9 +132,9 @@ class GNNFeatureExtractor(nn.Module):
             x_dim: int,
             e_dim: int,
             hidden_x_dim: int,
-            hidden_edge: int,
-            node_out_dim: int,
-            edge_out_dim: int,
+            hidden_e_dim: int,
+            out_x_dim: int,
+            edge_e_dim: int,
             n_layers: int = 3,
             dropout_prob: float = 0.0,
             residual=True
@@ -142,9 +145,9 @@ class GNNFeatureExtractor(nn.Module):
         :param x_dim: input node feature dimension
         :param e_dim: input edge feature dimension
         :param hidden_x_dim: hidden dim for node embeddings
-        :param hidden_edge: hidden dim for edge embeddings
-        :param node_out_dim: output node feature dimension
-        :param edge_out_dim: output edge feature dimension
+        :param hidden_e_dim: hidden dim for edge embeddings
+        :param out_x_dim: output node feature dimension
+        :param edge_e_dim: output edge feature dimension
         :param n_layers: number of message passing layers (default: 3)
         :param dropout_prob: dropout probability (default 0)
         :param residual: do residual connections in Conv layers (default True)
@@ -154,16 +157,16 @@ class GNNFeatureExtractor(nn.Module):
 
         # initial projection to working dims
         self.node_proj = MLP(input_features=x_dim, output_features=hidden_x_dim, hidden_dim=hidden_x_dim)
-        self.edge_proj = MLP(input_features=e_dim, output_features=hidden_edge, hidden_dim=hidden_edge)
+        self.edge_proj = MLP(input_features=e_dim, output_features=hidden_e_dim, hidden_dim=hidden_e_dim)
 
         # build message passing layers
         self.layers = nn.ModuleList([
             MessagePassing(
                 x_dim=hidden_x_dim,
-                e_dim=hidden_edge,
+                e_dim=hidden_e_dim,
                 output_x_dim=hidden_x_dim,
-                output_e_dim=hidden_edge,
-                hidden_dim=max(hidden_x_dim, hidden_edge),
+                output_e_dim=hidden_e_dim,
+                hidden_dim=max(hidden_x_dim, hidden_e_dim),
                 dropout_prob=dropout_prob,
                 residual=residual,
             ) for _ in range(n_layers - 1)
@@ -171,10 +174,10 @@ class GNNFeatureExtractor(nn.Module):
 
         self.final = MessagePassing(
             x_dim=hidden_x_dim,
-            e_dim=hidden_edge,
-            output_x_dim=node_out_dim,
-            output_e_dim=edge_out_dim,
-            hidden_dim=max(hidden_x_dim, node_out_dim),
+            e_dim=hidden_e_dim,
+            output_x_dim=out_x_dim,
+            output_e_dim=edge_e_dim,
+            hidden_dim=max(hidden_x_dim, out_x_dim),
             dropout_prob=dropout_prob,
             residual=False,
         )
@@ -199,3 +202,39 @@ class GNNFeatureExtractor(nn.Module):
         node_pool = x_final.mean(axis=1)
         edge_pool = e_final.mean(axis=1)
         return torch.cat([node_pool, edge_pool], dim=-1)
+
+
+class SB3GNNWrapper(BaseFeaturesExtractor):
+    def __init__(
+            self,
+            observation_space: GraphStructuredBoxObservationSpace,
+            x_dim: int,
+            e_dim: int,
+            hidden_x_dim: int,
+            hidden_e_dim: int,
+            node_out_dim: int,
+            edge_out_dim: int,
+            n_layers: int = 3,
+            dropout_prob: float = 0.0,
+            residual=True
+    ):
+        BaseFeaturesExtractor.__init__(self, observation_space, features_dim=node_out_dim + edge_out_dim)
+        self.gnn_feature_extractor = GNNFeatureExtractor(
+            x_dim=x_dim,
+            e_dim=e_dim,
+            hidden_x_dim=hidden_x_dim,
+            hidden_e_dim=hidden_e_dim,
+            out_x_dim=node_out_dim,
+            edge_e_dim=edge_out_dim,
+            n_layers=n_layers,
+            dropout_prob=dropout_prob,
+            residual=residual
+        )
+
+    def forward(self, observations: dict) -> Tensor:
+        # TODO edge_index batching not clean doesnt work for changing graphs
+        node_features = observations[NODE_FEATURES]  # [B, N, node_in_dim]
+        edge_features = observations[EDGE_FEATURES]  # [B, E, edge_in_dim]
+        edge_index = observations[EDGE_INDEX][0].to(dtype=torch.long)  # [2, E]  (shared across batch)
+        return self.gnn_feature_extractor.forward(node_features, edge_features, edge_index)
+

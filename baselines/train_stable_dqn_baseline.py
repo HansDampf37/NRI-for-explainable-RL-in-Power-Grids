@@ -11,7 +11,8 @@ from grid2op.gym_compat import DiscreteActSpace, BoxGymObsSpace, GymnasiumAction
 from stable_baselines3 import DQN
 
 from baselines.baseline_agent import BaselineAgent, TopologyPolicy, evaluate
-from common import Grid2OpEnvWrapper
+from common import Grid2OpEnvWrapper, GraphStructuredBoxObservationSpace
+from common.GNN import SB3GNNWrapper
 
 _default_env_name = "l2rpn_case14_sandbox"
 _default_obs_attr_to_keep = ["rho", "p_or", "gen_p", "load_p"]
@@ -86,7 +87,7 @@ def train():
         safe_max_rho=_safe_max_rho
     ))
     dqn = DQN(
-        "MlpPolicy",
+        "MultiInputPolicy",
         env,
         verbose=1,
         train_freq=16,
@@ -100,14 +101,28 @@ def train():
         batch_size=128,
         learning_rate=4e-3,
         tensorboard_log=f"data/logs/stable-baselines/{_model_name}",
+        policy_kwargs=dict(
+            features_extractor_class=SB3GNNWrapper,
+            features_extractor_kwargs=dict(
+                x_dim = GraphStructuredBoxObservationSpace.NUM_FEATURES_PER_NODE,
+                e_dim = GraphStructuredBoxObservationSpace.NUM_FEATURES_PER_EDGE,
+                hidden_x_dim = 16,
+                hidden_e_dim = 16,
+                node_out_dim = 128,
+                edge_out_dim = 128,
+                n_layers = 3,
+                dropout_prob = 0.1,
+                residual=True
+            ),
+        ),
         seed=2,
     )
-    dqn.learn(90_000, log_interval=10)
+    dqn.learn(120_000, log_interval=10)
     dqn.save(_model_path)
 
 
 if __name__ == '__main__':
-    #train()
+    train()
     evaluate(
         agent=build_agent(_model_path, _default_env_name),
         env=grid2op.make(_default_env_name),

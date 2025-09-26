@@ -118,9 +118,9 @@ class TestGnnFeatureExtractor(unittest.TestCase):
             x_dim=x.size(-1),
             e_dim=e.size(-1),
             hidden_x_dim=32,
-            hidden_edge=32,
-            node_out_dim=4,
-            edge_out_dim=0,
+            hidden_e_dim=32,
+            out_x_dim=4,
+            edge_e_dim=0,
             n_layers=3,
         )
 

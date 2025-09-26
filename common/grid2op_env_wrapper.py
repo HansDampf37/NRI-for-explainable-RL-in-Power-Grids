@@ -2,10 +2,13 @@ import copy
 from typing import Dict, Literal, Any, Optional
 
 import grid2op
-from grid2op.gym_compat import BoxGymObsSpace, DiscreteActSpace, BoxGymActSpace, MultiDiscreteActSpace
+from grid2op.gym_compat import DiscreteActSpace, BoxGymActSpace, MultiDiscreteActSpace
 from gymnasium import Env
 from l2rpn_baselines.utils import GymEnvWithRecoWithDN
 from lightsim2grid import LightSimBackend
+
+from common.graph_structured_observation_space import GraphStructuredBoxObservationSpace, EDGE_INDEX, EDGE_FEATURES, \
+    NODE_FEATURES
 
 
 class Grid2OpEnvWrapper(Env):
@@ -35,7 +38,6 @@ class Grid2OpEnvWrapper(Env):
                      "backend_options",
                      "env_name",
                      "env_is_test",
-                     "obs_attr_to_keep",
                      "act_type",
                      "act_attr_to_keep",
                      "safe_max_rho"], Any]] = None):
@@ -55,11 +57,10 @@ class Grid2OpEnvWrapper(Env):
         self._gym_env = GymEnvWithRecoWithDN(self._g2op_env, safe_max_rho=safe_max_rho)
 
         # === Observation space setup ===
-        obs_attr_to_keep = copy.deepcopy(env_config.get("obs_attr_to_keep", ["rho", "p_or", "gen_p", "load_p"]))
         self._gym_env.observation_space.close()
-        self._gym_env.observation_space = BoxGymObsSpace(
+        self._gym_env.observation_space = GraphStructuredBoxObservationSpace(
             self._g2op_env.observation_space,
-            attr_to_keep=obs_attr_to_keep
+            spaces_to_keep=[NODE_FEATURES, EDGE_FEATURES, EDGE_INDEX]
         )
 
         # === Action space setup ===
