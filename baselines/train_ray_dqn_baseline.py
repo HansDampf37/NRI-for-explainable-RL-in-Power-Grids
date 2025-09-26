@@ -10,7 +10,7 @@ from grid2op.gym_compat import GymnasiumActionSpace, GymnasiumObservationSpace
 from ray.rllib.algorithms import DQNConfig
 from ray.rllib.core.rl_module import RLModule
 
-from baseline_gnn_agent.baseline_agent import TopologyPolicy
+from baselines.baseline_agent import TopologyPolicy
 from common import Grid2OpEnvWrapper
 
 class TopoPolicyDQN(TopologyPolicy[GymnasiumActionSpace, GymnasiumObservationSpace]):
@@ -52,8 +52,6 @@ def main():
                 "beta": 0.5,
             }
         )
-        .env_runners(num_env_runners=1)
-        .evaluation(evaluation_interval=10)
     )
 
     algo = config.build_algo()

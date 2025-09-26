@@ -12,12 +12,13 @@ from stable_baselines3 import DQN
 
 from baselines.baseline_agent import BaselineAgent, TopologyPolicy, evaluate
 from common import Grid2OpEnvWrapper
+from common.GNN import GNNFeatureExtractor
 
 _default_env_name = "l2rpn_case14_sandbox"
 _default_obs_attr_to_keep = ["rho", "p_or", "gen_p", "load_p"]
 _default_act_attr_to_keep = ["set_line_status_simple", "set_bus"]
 _model_name = "dqn-mlp"
-_model_path = Path(f"../data/models/stable-baselines/{_model_name}")
+_model_path = Path(f"data/models/stable-baselines/{_model_name}")
 _safe_max_rho = 0.95
 
 logging.basicConfig(
@@ -65,6 +66,8 @@ def build_agent(path: Path = _model_path, env_name: str = _default_env_name) -> 
     action_space = DiscreteActSpace(env.action_space, attr_to_keep=_default_act_attr_to_keep)
     obs_space = BoxGymObsSpace(env.observation_space, attr_to_keep=_default_obs_attr_to_keep)
     dqn = DQN.load(path)
+    dqn.action_space = action_space
+    dqn.observation_space = obs_space
     baseline_agent = BaselineAgent(
         env.action_space,
         TopoPolicyStableDQN(dqn, action_space, obs_space)
@@ -97,8 +100,7 @@ def train():
         buffer_size=10000,
         batch_size=128,
         learning_rate=4e-3,
-        policy_kwargs=dict(net_arch=[100, 100]),
-        tensorboard_log=f"../data/logs/stable-baselines/{_model_name}",
+        tensorboard_log=f"data/logs/stable-baselines/{_model_name}",
         seed=2,
     )
     dqn.learn(90_000, log_interval=10)
@@ -106,11 +108,11 @@ def train():
 
 
 if __name__ == '__main__':
-    train()
+    #train()
     evaluate(
         agent=build_agent(_model_path, _default_env_name),
         env=grid2op.make(_default_env_name),
-        path_results=f"../data/evaluations/stable-baselines/{_model_name}",
+        path_results=f"data/evaluations/stable-baselines/{_model_name}",
         nb_episode=3,
         max_iter=500,
         nb_process=2,
