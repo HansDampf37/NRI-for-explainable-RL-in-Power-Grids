@@ -13,7 +13,7 @@ LINES_FEATURES = "lines_features"
 GLOBAL_FEATURES = "global_features"
 
 
-class GraphStructuredBoxObservationSpace(Dict):
+class GraphObservationSpace(Dict):
     """
     This Observation space implements the Dict action space from gymnasium. It returns a dict features for the following
     elements of the grid2op observation object:
@@ -177,9 +177,9 @@ class GraphStructuredBoxObservationSpace(Dict):
         :param obs: g2op Observation
         :return: numpy representation of the edge features
         """
-        line_features = GraphStructuredBoxObservationSpace.line_features_from_observation(obs)
-        lines_connecting_generators = np.zeros((obs.n_gen, GraphStructuredBoxObservationSpace.NUM_FEATURES_PER_LINE))
-        lines_connecting_loads = np.zeros((obs.n_load, GraphStructuredBoxObservationSpace.NUM_FEATURES_PER_LINE))
+        line_features = GraphObservationSpace.line_features_from_observation(obs)
+        lines_connecting_generators = np.zeros((obs.n_gen, GraphObservationSpace.NUM_FEATURES_PER_LINE))
+        lines_connecting_loads = np.zeros((obs.n_load, GraphObservationSpace.NUM_FEATURES_PER_LINE))
 
         # lines_connecting_generators[:,0] = np.ones(obs.n_gen)
         # lines_connecting_loads[:,3] = obs.gen_p

@@ -4,7 +4,7 @@ import grid2op
 from grid2op.gym_compat import GymEnv, DiscreteActSpace
 from stable_baselines3 import DQN
 
-from common.graph_structured_observation_space import GraphStructuredBoxObservationSpace, EDGE_INDEX, \
+from common.graph_structured_observation_space import GraphObservationSpace, EDGE_INDEX, \
     EDGE_FEATURES, NODE_FEATURES
 
 
@@ -13,7 +13,7 @@ class TestGraphStructuredObservationSpace(unittest.TestCase):
         self.env = grid2op.make("l2rpn_case14_sandbox")
         self.gym_env = GymEnv(self.env)
         self.gym_env.observation_space.close()
-        self.gym_env.observation_space = GraphStructuredBoxObservationSpace(self.env.observation_space)
+        self.gym_env.observation_space = GraphObservationSpace(self.env.observation_space)
         self.obs_space = self.gym_env.observation_space
 
     def test_observation_space(self):
@@ -24,7 +24,7 @@ class TestGraphStructuredObservationSpace(unittest.TestCase):
 
     def test_stable_baselines_compatibility(self):
         self.gym_env.action_space.close()
-        self.gym_env.observation_space = GraphStructuredBoxObservationSpace(self.env.observation_space, spaces_to_keep=[NODE_FEATURES])
+        self.gym_env.observation_space = GraphObservationSpace(self.env.observation_space, spaces_to_keep=[NODE_FEATURES])
         self.gym_env.action_space = DiscreteActSpace(self.env.action_space, attr_to_keep=["set_bus"])
         dqn = DQN("MultiInputPolicy", env=self.gym_env)
         dqn.learn(total_timesteps=100)

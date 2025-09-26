@@ -6,7 +6,7 @@ from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from torch import nn, Tensor
 
 from .MLP import MLP
-from .graph_structured_observation_space import GraphStructuredBoxObservationSpace, EDGE_INDEX, \
+from .graph_structured_observation_space import GraphObservationSpace, EDGE_INDEX, \
     EDGE_FEATURES, NODE_FEATURES
 
 
@@ -207,7 +207,7 @@ class GNNFeatureExtractor(nn.Module):
 class SB3GNNWrapper(BaseFeaturesExtractor):
     def __init__(
             self,
-            observation_space: GraphStructuredBoxObservationSpace,
+            observation_space: GraphObservationSpace,
             x_dim: int,
             e_dim: int,
             hidden_x_dim: int,

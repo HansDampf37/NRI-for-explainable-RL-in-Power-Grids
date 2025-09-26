@@ -10,16 +10,17 @@ import argparse
 import logging
 from typing import List, Tuple
 
+import grid2op
 import numpy as np
 from grid2op.Agent import BaseAgent, RandomAgent, DoNothingAgent, RecoPowerlineAgent, TopologyGreedy
 from grid2op.Environment import Environment
 from grid2op.Observation import BaseObservation
-import grid2op
 from grid2op.gym_compat import GymEnv, DiscreteActSpace
 from tqdm import tqdm
 
 from baselines.baseline_agent import BaselineAgent, TopologyPolicy
-from common.graph_structured_observation_space import GraphStructuredBoxObservationSpace
+from common.graph_structured_observation_space import GraphObservationSpace, GENERATOR_FEATURES, LOAD_FEATURES, \
+    LINES_FEATURES, NODE_FEATURES, EDGE_FEATURES, EDGE_INDEX
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +81,7 @@ def generate_dataset(num_sims: int, length: int, agent: BaseAgent, env: Environm
     :param env: the grid2op environment to operate
     :return: trajectory data for generators, loads, and powerlines
     """
-    observation_converter = GraphStructuredBoxObservationSpace()
+    observation_converter = GraphObservationSpace(env.action_space, [GENERATOR_FEATURES, LOAD_FEATURES, LINES_FEATURES])
     generator_trajectories_all = []
     load_trajectories_all = []
     line_trajectories_all = []
@@ -88,9 +89,9 @@ def generate_dataset(num_sims: int, length: int, agent: BaseAgent, env: Environm
     for _ in tqdm(range(num_sims), f"Creating {num_sims} trajectories"):
         trajectory: List[BaseObservation] = sample_trajectory(length=length, agent=agent, env=env)
         converted_trajectory: List[Tuple] = [observation_converter.to_gym(obs) for obs in trajectory]
-        generator_trajectory: np.ndarray = np.array([obs["generator_features"] for obs in converted_trajectory])
-        load_trajectory: np.ndarray = np.array([obs["load_features"] for obs in converted_trajectory])
-        line_trajectory: np.ndarray = np.array([obs["line_features"] for obs in converted_trajectory])
+        generator_trajectory: np.ndarray = np.array([obs[GENERATOR_FEATURES] for obs in converted_trajectory])
+        load_trajectory: np.ndarray = np.array([obs[LOAD_FEATURES] for obs in converted_trajectory])
+        line_trajectory: np.ndarray = np.array([obs[LINES_FEATURES] for obs in converted_trajectory])
 
         generator_trajectories_all.append(generator_trajectory)
         load_trajectories_all.append(load_trajectory)
@@ -129,7 +130,7 @@ def main():
     elif args.agent == 'baseline':
         gym_env = GymEnv(env)
         gym_env.observation_space.close()
-        gym_env.observation_space = GraphStructuredBoxObservationSpace()
+        gym_env.observation_space = GraphObservationSpace(env.close, spaces_to_keep=[NODE_FEATURES, EDGE_FEATURES, EDGE_INDEX])
         gym_env.action_space.close()
         gym_env.action_space = DiscreteActSpace()
         agent = BaselineAgent(

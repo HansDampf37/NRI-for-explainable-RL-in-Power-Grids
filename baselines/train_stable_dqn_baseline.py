@@ -11,8 +11,9 @@ from grid2op.gym_compat import DiscreteActSpace, BoxGymObsSpace, GymnasiumAction
 from stable_baselines3 import DQN
 
 from baselines.baseline_agent import BaselineAgent, TopologyPolicy, evaluate
-from common import Grid2OpEnvWrapper, GraphStructuredBoxObservationSpace
+from common import Grid2OpEnvWrapper, GraphObservationSpace
 from common.GNN import SB3GNNWrapper
+from common.graph_structured_observation_space import NODE_FEATURES, EDGE_FEATURES, EDGE_INDEX
 
 _default_env_name = "l2rpn_case14_sandbox"
 _default_obs_attr_to_keep = ["rho", "p_or", "gen_p", "load_p"]
@@ -79,13 +80,11 @@ def train():
     """
     Trains a model
     """
-    env = Grid2OpEnvWrapper(dict(
+    env = Grid2OpEnvWrapper(
         env_name=_default_env_name,
-        obs_attr_to_keep=_default_obs_attr_to_keep,
-        act_attr_to_keep=_default_act_attr_to_keep,
-        action_type="discrete",
-        safe_max_rho=_safe_max_rho
-    ))
+        safe_max_rho=_safe_max_rho,
+        observation_space_creation=lambda e: GraphObservationSpace(e.observation_space, [NODE_FEATURES, EDGE_FEATURES, EDGE_INDEX])
+    )
     dqn = DQN(
         "MultiInputPolicy",
         env,
@@ -104,8 +103,8 @@ def train():
         policy_kwargs=dict(
             features_extractor_class=SB3GNNWrapper,
             features_extractor_kwargs=dict(
-                x_dim = GraphStructuredBoxObservationSpace.NUM_FEATURES_PER_NODE,
-                e_dim = GraphStructuredBoxObservationSpace.NUM_FEATURES_PER_EDGE,
+                x_dim = GraphObservationSpace.NUM_FEATURES_PER_NODE,
+                e_dim = GraphObservationSpace.NUM_FEATURES_PER_EDGE,
                 hidden_x_dim = 16,
                 hidden_e_dim = 16,
                 node_out_dim = 128,
