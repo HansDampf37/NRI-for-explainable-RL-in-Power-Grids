@@ -9,3 +9,4 @@ packaging~=25.0
 ray~=2.49.2
 pandas~=2.3.2
 stable-baselines3~=2.7.0
+torch-geometric~=2.6.1

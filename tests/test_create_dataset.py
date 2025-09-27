@@ -4,7 +4,7 @@ import grid2op
 from grid2op.Agent import DoNothingAgent, RandomAgent
 from grid2op.Observation import BaseObservation
 
-from common.graph_structured_observation_space import FEATURES_PER_GENERATOR, FEATURES_PER_LOAD, FEATURES_PER_LINE
+from common.graph_structured_observation_space import GraphObservationSpace as Space
 from nri.create_dataset import sample_trajectory, AgentFailsEarly, generate_dataset
 
 class TestCreateDataset(unittest.TestCase):
@@ -28,10 +28,11 @@ class TestCreateDataset(unittest.TestCase):
         self.assertRaises(AgentFailsEarly, sample_trajectory, length, self.random_agent, self.env, max_retries)
 
     def test_generate_dataset(self):
-        num_trajectories = 10
-        len_per_trajectory = 10
-        generators_data, loads_data, lines_data = generate_dataset(num_trajectories, len_per_trajectory, self.do_nothing_agent, self.env)
-        self.assertEqual(generators_data.shape, (num_trajectories, len_per_trajectory, self.env.n_gen, FEATURES_PER_GENERATOR))
-        self.assertEqual(loads_data.shape, (num_trajectories, len_per_trajectory, self.env.n_load, FEATURES_PER_LOAD))
-        self.assertEqual(lines_data.shape, (num_trajectories, len_per_trajectory, self.env.n_line, FEATURES_PER_LINE))
+        num_traj = 10
+        traj_len = 10
+        gen_data, load_data, line_data = generate_dataset(num_traj, traj_len, self.do_nothing_agent, self.env)
+
+        self.assertEqual(gen_data.shape, (num_traj, traj_len, self.env.n_gen, Space.NUM_FEATURES_PER_GENERATOR))
+        self.assertEqual(load_data.shape, (num_traj, traj_len, self.env.n_load, Space.NUM_FEATURES_PER_LOAD))
+        self.assertEqual(line_data.shape, (num_traj, traj_len, self.env.n_line, Space.NUM_FEATURES_PER_LINE))
 
