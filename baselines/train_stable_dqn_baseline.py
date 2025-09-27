@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Optional
 
 import grid2op
+import torch
 from grid2op.gym_compat import DiscreteActSpace
 from stable_baselines3 import DQN
 
@@ -60,6 +61,8 @@ def model_setup(load_weights_from: Optional[Path] = None) -> DQN:
         action_space_creation=lambda e: DiscreteActSpace(e.action_space, attr_to_keep=_default_act_attr_to_keep),
         observation_space_creation=lambda e: GraphObservationSpace(e.observation_space, _default_obs_spaces_to_keep)
     )
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    print(f"Using device: {device}")
     dqn = DQN(
         "MultiInputPolicy",
         env,
@@ -90,6 +93,7 @@ def model_setup(load_weights_from: Optional[Path] = None) -> DQN:
                 residual=True
             ),
         ),
+        device=device,
         seed=2,
     )
     if load_weights_from is not None:
