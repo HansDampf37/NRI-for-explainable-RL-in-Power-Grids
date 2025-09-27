@@ -5,28 +5,21 @@ _get_tested_action method and execute the one with the highest simulated reward.
 import logging
 from abc import abstractmethod
 from pathlib import Path
-from typing import List, TypeVar, Generic
+from typing import List
 
-from grid2op.Environment import Environment
-from grid2op.Runner import Runner
 from grid2op.Action import BaseAction, ActionSpace, TopologySetAction
 from grid2op.Agent import RecoPowerlineAgent
+from grid2op.Environment import Environment
 from grid2op.Observation import BaseObservation
-from grid2op.gym_compat import GymnasiumActionSpace, GymnasiumObservationSpace
+from grid2op.Runner import Runner
 
-TActionSpace = TypeVar('TActionSpace', bound=GymnasiumActionSpace)
-TObservationSpace = TypeVar('TObservationSpace', bound=GymnasiumObservationSpace)
 logger = logging.getLogger(__name__)
 
 
-class TopologyPolicy(Generic[TActionSpace, TObservationSpace]):
+class TopologyPolicy:
     """
     The Topology policy is used to suggest k topology actions for a given observation.
     """
-
-    def __init__(self, action_space: TActionSpace, observation_space: TObservationSpace):
-        self.action_space = action_space
-        self.observation_space = observation_space
 
     @abstractmethod
     def get_k_best_actions(self, observation: BaseObservation, k: int = 3) -> List[TopologySetAction]:
@@ -83,22 +76,30 @@ class BaselineAgent(RecoPowerlineAgent):
             return reconnection_actions + topology_actions
 
 
-def evaluate(agent: BaselineAgent, env: Environment, path_results: Path, **runner_kwargs):
+def evaluate(agent: BaselineAgent, env: Environment, num_episodes: int, max_episode_length: int, path_results: Path):
     """
     Runs an agent on an environment for evaluation.
     :param agent: The agent
     :param env: the environment
+    :param num_episodes: the number of episodes to run
+    :param max_episode_length: the maximum number of steps to take per episode
     :param path_results: where to store the results
-    :param runner_kwargs: additional arguments to pass to the runner.run method
     :return:
     """
     runner = Runner(**env.get_params_for_runner(), agentInstance=agent, agentClass=None)
-    res = runner.run(path_save=path_results, **runner_kwargs)
+    res = runner.run(
+        nb_episode=num_episodes,
+        max_iter=max_episode_length,
+        path_save=path_results,
+        add_detailed_output=True,
+        pbar=True
+    )
 
     # print results
     print("The results for the evaluated agent are:")
-    for _, chron_id, cum_reward, nb_time_step, max_ts in res:
-        msg_tmp = "\tFor chronics with id {}\n".format(chron_id)
-        msg_tmp += "\t\t - cumulative reward: {:.6f}\n".format(cum_reward)
-        msg_tmp += "\t\t - number of time steps completed: {:.0f} / {:.0f}".format(nb_time_step, max_ts)
+    for _, chron_id, cum_reward, nb_time_step, max_ts, data in res:
+        msg_tmp = f"\tFor chronics with id '{chron_id}'\n"
+        msg_tmp += f"\t\t - return: {cum_reward:.2f}\n"
+        msg_tmp += f"\t\t - rewards: {data.rewards.mean():.2f} ± {data.rewards.std():.2f}\n"
+        msg_tmp += f"\t\t - number of time steps completed: {nb_time_step:.0f} / {max_ts:.0f}"
         print(msg_tmp)
