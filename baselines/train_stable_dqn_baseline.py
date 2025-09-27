@@ -8,7 +8,6 @@ import torch
 from grid2op.Action import TopologySetAction
 from grid2op.Observation import BaseObservation
 from grid2op.gym_compat import DiscreteActSpace
-from grid2op.gym_compat.utils import ALL_ATTR_FOR_DISCRETE
 from stable_baselines3 import DQN
 
 from baselines.baseline_agent import BaselineAgent, TopologyPolicy, evaluate
@@ -100,9 +99,9 @@ def model_setup(load_weights_from: Optional[Path] = None) -> DQN:
     :return: The untrained DQN model
     """
     env = Grid2OpEnvWrapper(
-        env_name=_default_env_name,
+        env_name=_default_env_name + "_train",
         safe_max_rho=_safe_max_rho,
-        action_space_creation=lambda e: DiscreteActSpace(e.action_space, attr_to_keep=ALL_ATTR_FOR_DISCRETE),
+        action_space_creation=lambda e: DiscreteActSpace(e.action_space, attr_to_keep=_default_act_attr_to_keep),
         observation_space_creation=lambda e: GraphObservationSpace(e.observation_space, _default_obs_spaces_to_keep)
     )
     dqn = DQN(
@@ -146,7 +145,7 @@ if __name__ == '__main__':
     train()
     evaluate(
         agent=build_agent(_model_path, _default_env_name),
-        env=grid2op.make(_default_env_name), # todo use test env for eval
+        env=grid2op.make(_default_env_name + "_test"),
         num_episodes=3,
         max_episode_length=20,
         path_results=f"data/evaluations/stable-baselines/{_model_name}"
