@@ -12,7 +12,8 @@ class TestTrainDQN(unittest.TestCase):
         dqn.learn(10)
 
     def test_build_agent(self):
-        agent = build_agent(env_name="l2rpn_case14_sandbox")
+        agent = build_agent(env_name="l2rpn_case14_sandbox", load_weights_from=None)
+        agent.topology_policy.get_k_best_actions = lambda _1, _2: []
         env = grid2op.make("l2rpn_case14_sandbox")
         agent_action = agent.act(env.current_obs, 0)
         self.assertIsInstance(agent_action, BaseAction)
