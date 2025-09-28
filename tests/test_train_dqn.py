@@ -3,7 +3,6 @@ import unittest
 import grid2op
 import hydra
 from grid2op.Action import BaseAction
-from omegaconf import DictConfig
 
 from baselines.train_stable_dqn_baseline import model_setup, build_agent
 

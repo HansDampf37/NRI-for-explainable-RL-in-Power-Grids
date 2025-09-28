@@ -9,7 +9,7 @@ from typing import List, Optional
 
 import numpy as np
 from grid2op.Action import BaseAction, ActionSpace, TopologySetAction
-from grid2op.Agent import RecoPowerlineAgent
+from grid2op.Agent import RecoPowerlineAgent, BaseAgent
 from grid2op.Environment import Environment
 from grid2op.Observation import BaseObservation
 from grid2op.Runner import Runner
@@ -78,7 +78,7 @@ class BaselineAgent(RecoPowerlineAgent):
 
 
 def evaluate_agent(
-        agent: BaselineAgent,
+        agent: BaseAgent,
         env: Environment,
         num_episodes: int,
         path_results: Path,

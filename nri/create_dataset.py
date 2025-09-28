@@ -12,16 +12,16 @@ from pathlib import Path
 from typing import List, Tuple, Dict
 
 import grid2op
+import hydra
 import numpy as np
 from grid2op.Agent import BaseAgent, RandomAgent, DoNothingAgent, RecoPowerlineAgent, TopologyGreedy
 from grid2op.Environment import Environment
 from grid2op.Observation import BaseObservation
 from grid2op.gym_compat import GymEnv, DiscreteActSpace
+from omegaconf import DictConfig
 from tqdm import tqdm
 
-from baselines.baseline_agent import BaselineAgent
-from baselines.topo_policy_stable_dqn import TopoPolicyStableDQN
-from baselines.train_stable_dqn_baseline import model_setup
+from baselines.train_stable_dqn_baseline import build_agent
 from common.graph_structured_observation_space import GraphObservationSpace, GENERATOR_FEATURES, LOAD_FEATURES, \
     LINES_FEATURES, NODE_FEATURES, EDGE_FEATURES, EDGE_INDEX
 
@@ -104,8 +104,8 @@ def generate_dataset(num_sims: int, length: int, agent: BaseAgent, env: Environm
             np.stack(load_trajectories_all),
             np.stack(line_trajectories_all))
 
-
-def main():
+@hydra.main(config_path="../hydra_configs", config_name="nri_training", version_base="1.3")
+def main(cfg: DictConfig):
     parser = argparse.ArgumentParser()
     parser.add_argument('--env', type=str, default='l2rpn_case14_sandbox', help='The name of the env.')
     parser.add_argument('--agent', type=str, default='do_nothing', help='One of "do_nothing", "random",'
@@ -136,14 +136,8 @@ def main():
         gym_env.observation_space = GraphObservationSpace(env.observation_space, spaces_to_keep=[NODE_FEATURES, EDGE_FEATURES, EDGE_INDEX])
         gym_env.action_space.close()
         gym_env.action_space = DiscreteActSpace()
-        model_path = Path("") # TODO save dedicated baseline models
-        dqn = model_setup(load_weights_from=model_path)
-        agent = BaselineAgent(
-            env.action_space,
-            TopoPolicyStableDQN(
-                dqn
-            )
-        )
+        model_path = Path("data/models/stable-baselines/dqn-gnn-baseline.zip")
+        agent = build_agent(cfg, load_weights_from=model_path)
     else:
         raise NotImplementedError(f"Unknown agent '{args.agent}'")
 

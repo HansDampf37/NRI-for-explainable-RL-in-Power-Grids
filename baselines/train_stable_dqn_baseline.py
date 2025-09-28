@@ -37,6 +37,7 @@ def train(cfg: DictConfig):
                 raise KeyboardInterrupt()
             elif save.lower() in ["y", "yes"]:
                 dqn.save(Path(base_path_models.joinpath(cfg.model.name)))
+                raise KeyboardInterrupt()
 
     dqn.save(Path(base_path_models.joinpath(cfg.model.name)))
 
@@ -45,7 +46,7 @@ def evaluate(cfg: DictConfig):
     for dataset in ["train", "test", "val"]:
         env = grid2op.make(f"{cfg.env.env_name}_{dataset}", backend=LightSimBackend())
         evaluate_agent(
-            agent=build_agent(cfg.env.env_name, Path(base_path_models.joinpath(cfg.model.name))),
+            agent=build_agent(cfg, Path(base_path_models.joinpath(cfg.model.name))),
             env=env,
             num_episodes=50, # len(env.chronics_handler.subpaths),  # run all episodes
             path_results=Path(base_path_evaluations.joinpath(cfg.model.name, dataset))
@@ -107,7 +108,7 @@ def model_setup(cfg: DictConfig, load_weights_from: Optional[Path] = None) -> DQ
 
 @hydra.main(config_path="../hydra_configs", config_name="config", version_base="1.3")
 def main(cfg: DictConfig):
-    train(cfg)
+    #train(cfg)
     evaluate(cfg)
 
 
