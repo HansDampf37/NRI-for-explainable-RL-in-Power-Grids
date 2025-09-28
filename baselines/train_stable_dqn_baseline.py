@@ -5,9 +5,10 @@ from typing import Optional
 import grid2op
 import torch
 from grid2op.gym_compat import DiscreteActSpace
+from lightsim2grid import LightSimBackend
 from stable_baselines3 import DQN
 
-from baselines.baseline_agent import BaselineAgent, evaluate
+from baselines.baseline_agent import BaselineAgent, evaluate_agent
 from baselines.topo_policy_stable_dqn import TopoPolicyStableDQN
 from common import Grid2OpEnvWrapper, GraphObservationSpace
 from common.GNN import SB3GNNWrapper
@@ -45,8 +46,22 @@ def train():
     Creates a model using the setup_method, trains it and saves it.
     """
     dqn = model_setup()
-    dqn.learn(300_000, log_interval=10)
-    dqn.save(_model_path)
+    save_model = True
+    try:
+        dqn.learn(300_000, log_interval=10)
+    except KeyboardInterrupt:
+        answered = False
+        while not answered:
+            save = input("You interrupted the training. Do you want to safe the model? (Y/N)")
+            if save.lower() in ["n", "no"]:
+                save_model = False
+                answered = True
+            elif save.lower() in ["y", "yes"]:
+                save_model = True
+                answered = True
+    finally:
+        if save_model:
+            dqn.save(_model_path)
 
 
 def model_setup(load_weights_from: Optional[Path] = None) -> DQN:
@@ -101,16 +116,17 @@ def model_setup(load_weights_from: Optional[Path] = None) -> DQN:
     return dqn
 
 
-def main():
-    train()
-    evaluate(
-        agent=build_agent(_model_path, _default_env_name),
-        env=grid2op.make(_default_env_name + "_test"),
-        num_episodes=50,
-        max_episode_length=2000,
-        path_results=Path(f"data/evaluations/stable-baselines/{_model_name}")
-    )
+def evaluate():
+    for dataset in ["train", "test", "val"]:
+        env = grid2op.make(f"{_default_env_name}_{dataset}", backend=LightSimBackend())
+        evaluate_agent(
+            agent=build_agent(_model_path, _default_env_name),
+            env=env,
+            num_episodes=50, # len(env.chronics_handler.subpaths),  # run all episodes
+            path_results=Path(f"data/evaluations/stable-baselines/{_model_name}/{dataset}")
+        )
 
 
 if __name__ == '__main__':
-    main()
+    # train()
+    evaluate()
