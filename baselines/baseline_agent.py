@@ -5,8 +5,9 @@ _get_tested_action method and execute the one with the highest simulated reward.
 import logging
 from abc import abstractmethod, ABC
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
+import numpy as np
 from grid2op.Action import BaseAction, ActionSpace, TopologySetAction
 from grid2op.Agent import RecoPowerlineAgent
 from grid2op.Environment import Environment
@@ -76,14 +77,19 @@ class BaselineAgent(RecoPowerlineAgent):
             return reconnection_actions + topology_actions
 
 
-def evaluate(agent: BaselineAgent, env: Environment, num_episodes: int, max_episode_length: int, path_results: Path):
+def evaluate_agent(
+        agent: BaselineAgent,
+        env: Environment,
+        num_episodes: int,
+        path_results: Path,
+        max_episode_length: Optional[int] = None):
     """
     Runs an agent on an environment for evaluation.
     :param agent: The agent
     :param env: the environment
     :param num_episodes: the number of episodes to run
-    :param max_episode_length: the maximum number of steps to take per episode
     :param path_results: where to store the results
+    :param max_episode_length: the maximum number of steps to take per episode
     :return:
     """
     runner = Runner(**env.get_params_for_runner(), agentInstance=agent, agentClass=None)
@@ -92,14 +98,20 @@ def evaluate(agent: BaselineAgent, env: Environment, num_episodes: int, max_epis
         max_iter=max_episode_length,
         path_save=path_results,
         add_detailed_output=True,
-        pbar=True
+        pbar=True,
     )
 
     # print results
     print("The results for the evaluated agent are:")
+    survival_duration = []
+    returns = []
     for _, chron_id, cum_reward, nb_time_step, max_ts, data in res:
         msg_tmp = f"\tFor chronics with id '{chron_id}'\n"
         msg_tmp += f"\t\t - return: {cum_reward:.2f}\n"
-        msg_tmp += f"\t\t - rewards: {data.rewards.mean():.2f} ± {data.rewards.std():.2f}\n"
+        msg_tmp += f"\t\t - rewards: {np.nan_to_num(data.rewards).mean():.2f} ± {np.nan_to_num(data.rewards).std():.2f}\n"
         msg_tmp += f"\t\t - number of time steps completed: {nb_time_step:.0f} / {max_ts:.0f}"
         print(msg_tmp)
+        survival_duration.append(nb_time_step)
+        returns.append(cum_reward)
+
+    print("Evaluation finished. To plot evaluation results use the notebook in the visualization folder.")
