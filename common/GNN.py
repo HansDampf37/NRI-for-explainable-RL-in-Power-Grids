@@ -208,8 +208,6 @@ class SB3GNNWrapper(BaseFeaturesExtractor):
     def __init__(
             self,
             observation_space: GraphObservationSpace,
-            x_dim: int,
-            e_dim: int,
             hidden_x_dim: int,
             hidden_e_dim: int,
             node_out_dim: int,
@@ -220,8 +218,8 @@ class SB3GNNWrapper(BaseFeaturesExtractor):
     ):
         BaseFeaturesExtractor.__init__(self, observation_space, features_dim=node_out_dim + edge_out_dim)
         self.gnn_feature_extractor = GNNFeatureExtractor(
-            x_dim=x_dim,
-            e_dim=e_dim,
+            x_dim=observation_space.spaces[NODE_FEATURES].shape[1],
+            e_dim=observation_space.spaces[EDGE_FEATURES].shape[1],
             hidden_x_dim=hidden_x_dim,
             hidden_e_dim=hidden_e_dim,
             out_x_dim=node_out_dim,

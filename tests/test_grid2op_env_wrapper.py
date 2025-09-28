@@ -19,8 +19,8 @@ class TestGrid2opEnvWrapper(unittest.TestCase):
     def test_config_2(self):
         self.env = Grid2OpEnvWrapper(
             env_name="l2rpn_idf_2023",
-            action_space_creation=lambda e: BoxGymActSpace(e.action_space),
-            observation_space_creation=lambda e: BoxGymObsSpace(e.observation_space, attr_to_keep=["rho"]))
+            act_space_creation=lambda e: BoxGymActSpace(e.action_space),
+            obs_space_creation=lambda e: BoxGymObsSpace(e.observation_space, attr_to_keep=["rho"]))
         self.assertEqual(self.env._g2op_env.n_gen, 62)
         self.assertIsInstance(self.env.action_space, Box)
         self.assertIsInstance(self.env.observation_space, Box)

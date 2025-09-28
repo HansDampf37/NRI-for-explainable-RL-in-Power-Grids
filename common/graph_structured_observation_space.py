@@ -32,15 +32,15 @@ class GraphObservationSpace(Dict):
     NUM_FEATURES_PER_EDGE = NUM_FEATURES_PER_LINE
     NUM_GLOBAL_FEATURES = 6
 
-    def __init__(self, g2op_obs_space: ObservationSpace, spaces_to_keep: Optional[List[str]] = None):
+    def __init__(self, grid2op_observation_space: ObservationSpace, spaces_to_keep: Optional[List[str]] = None):
         """
         Constructor.
-        :param g2op_obs_space: original g2op observation space
+        :param grid2op_observation_space: original g2op observation space
         :param spaces_to_keep: which spaces to keep (global_features, node_features, edge_features, edge_index, generator_features, load_features, line_features)
         """
         spaces_to_keep = spaces_to_keep or [NODE_FEATURES, EDGE_FEATURES, EDGE_INDEX]
-        super().__init__(self._dict_description_from_inputs(g2op_obs_space, spaces_to_keep))
-        self.edge_index = self._generate_edge_index(g2op_obs_space)
+        super().__init__(self._dict_description_from_inputs(grid2op_observation_space, spaces_to_keep))
+        self.edge_index = self._generate_edge_index(grid2op_observation_space)
         self.spaces_to_keep = spaces_to_keep
 
     def to_gym(self, g2op_obs: BaseObservation) -> dict[str, np.ndarray]:

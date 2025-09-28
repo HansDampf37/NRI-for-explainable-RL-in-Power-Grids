@@ -20,8 +20,8 @@ class Grid2OpEnvWrapper(Env):
     def __init__(self,
                  env_name: str = "l2rpn_case14_sandbox",
                  safe_max_rho: float = 0.95,
-                 action_space_creation=lambda env: DiscreteActSpace(env.action_space),
-                 observation_space_creation=lambda env: BoxGymObsSpace(grid2op_observation_space=env.observation_space)):
+                 act_space_creation=lambda env: DiscreteActSpace(env.action_space),
+                 obs_space_creation=lambda env: BoxGymObsSpace(grid2op_observation_space=env.observation_space)):
         super().__init__()
         # === Grid2Op environment setup ===
         self._g2op_env = grid2op.make(env_name, backend=LightSimBackend())
@@ -29,11 +29,11 @@ class Grid2OpEnvWrapper(Env):
 
         # === Observation space setup ===
         self._gym_env.observation_space.close()
-        self._gym_env.observation_space = observation_space_creation(self._g2op_env)
+        self._gym_env.observation_space = obs_space_creation(self._g2op_env)
 
         # === Action space setup ===
         self._gym_env.action_space.close()
-        self._gym_env.action_space = action_space_creation(self._g2op_env)
+        self._gym_env.action_space = act_space_creation(self._g2op_env)
 
         self.observation_space = self._gym_env.observation_space
         self.action_space = self._gym_env.action_space

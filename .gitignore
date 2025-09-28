@@ -12,7 +12,6 @@ batch_scripts/
 
 # Distribution / packaging
 .Python
-env/
 build/
 develop-eggs/
 dist/

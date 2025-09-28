@@ -1,0 +1,11 @@
+_target_: grid2op.gym_compat.BoxGymObsSpace
+attr_to_keep:
+    - rho
+    - line_status
+    - topo_vect
+    - gen_p
+    - load_p
+    - storage_charge
+    - storage_power
+    - duration_next_maintenance
+    - time_next_maintenance

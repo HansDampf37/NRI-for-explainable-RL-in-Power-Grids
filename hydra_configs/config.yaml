@@ -1,0 +1,10 @@
+defaults:
+    -   env: case14
+    -   model: mlp_dqn
+    -   train: default_dqn
+    -   obs_space: box_obs_space
+    -   act_space: discrete_set_bus
+
+hydra:
+    run:
+        dir: data/output/${now:%Y-%m-%d_%H-%M-%S}

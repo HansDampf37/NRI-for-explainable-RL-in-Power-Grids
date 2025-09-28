@@ -1,0 +1,3 @@
+_target_: grid2op.gym_compat.DiscreteActSpace
+attr_to_keep:
+    - set_bus

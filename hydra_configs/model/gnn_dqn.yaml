@@ -1,0 +1,18 @@
+defaults:
+    - dqn_base
+
+name: dqn-gnn
+
+sb3:
+    policy: "MultiInputPolicy"
+    policy_kwargs:
+        net_arch: [ 100 ]
+        features_extractor_class: SB3GNNWrapper
+        features_extractor_kwargs:
+            hidden_x_dim: 16
+            hidden_e_dim: 16
+            node_out_dim: 128
+            edge_out_dim: 128
+            n_layers: 3
+            dropout_prob: 0.1
+            residual: true

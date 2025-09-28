@@ -1,0 +1,4 @@
+_target_: common.grid2op_env_wrapper.Grid2OpEnvWrapper
+env_name: "l2rpn_case14_sandbox"
+safe_max_rho: 0.9
+
