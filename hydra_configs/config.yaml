@@ -1,8 +1,8 @@
 defaults:
     -   env: case14
-    -   model: mlp_dqn
+    -   model: gnn_dqn
     -   train: default_dqn
-    -   obs_space: box_obs_space
+    -   obs_space: graph_obs_space
     -   act_space: discrete_set_bus
 
 hydra:

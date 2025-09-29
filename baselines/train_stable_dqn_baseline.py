@@ -108,7 +108,7 @@ def model_setup(cfg: DictConfig, load_weights_from: Optional[Path] = None) -> DQ
 
 @hydra.main(config_path="../hydra_configs", config_name="config", version_base="1.3")
 def main(cfg: DictConfig):
-    #train(cfg)
+    train(cfg)
     evaluate(cfg)
 
 
