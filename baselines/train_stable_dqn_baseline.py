@@ -69,10 +69,6 @@ def build_agent(cfg: DictConfig, load_weights_from: Optional[Path] = None) -> Ba
 
 
 def model_setup(cfg: DictConfig, load_weights_from: Optional[Path] = None) -> DQN:
-    # check if cuda is available
-    device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    print(f"Using device: {device}")
-
     # create grid2opWrapperEnvironment from hydra config using action and observation spaces from the config
     env: Grid2OpEnvWrapper = instantiate(
         cfg.env,
@@ -91,7 +87,11 @@ def model_setup(cfg: DictConfig, load_weights_from: Optional[Path] = None) -> DQ
     elif cfg.model.sb3.policy_kwargs.get("features_extractor_class") is not None:
         raise ValueError("Unknown feature extractor class" + cfg.model.sb3.policy_kwargs.get("features_extractor_class"))
 
-    dqn = instantiate(
+    # check if cuda is available
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"Using device: {device}")
+
+    dqn: DQN = instantiate(
         cfg.model.sb3,
         env=env,
         device=device,
@@ -101,7 +101,7 @@ def model_setup(cfg: DictConfig, load_weights_from: Optional[Path] = None) -> DQ
 
     # load weights
     if load_weights_from is not None:
-        dqn.load(load_weights_from)
+        dqn.load(load_weights_from, custom_objects=dict(action_space=env.action_space, observation_space=env.observation_space))
     return dqn
 
 
