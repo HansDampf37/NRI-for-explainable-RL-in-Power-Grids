@@ -83,7 +83,7 @@ def evaluate(cfg: DictConfig):
 
 def build_agent(cfg: DictConfig, load_weights_from: Optional[Path] = None) -> BaselineAgent:
     """
-    Given a model path, builds an agent with a topology policy that can be used to search for promising actions.
+    Given a hydra config and a place to load the model weights from returns a reproducible Agent.
 
     :param cfg: the hydra config
     :param load_weights_from: the path to the model to load
@@ -97,6 +97,13 @@ def build_agent(cfg: DictConfig, load_weights_from: Optional[Path] = None) -> Ba
 
 
 def model_setup(cfg: DictConfig, load_weights_from: Optional[Path] = None) -> DQN:
+    """
+    Given the hydra config and a place to load the model weights from returns a reproducible DQN.
+
+    :param cfg: the hydra config
+    :param load_weights_from: the path to the model to load
+    """
+    # create grid2opWrapperEnvironment from hydra config using action and observation spaces from the config
     env: Grid2OpEnvWrapper = get_env(cfg)
 
     # model

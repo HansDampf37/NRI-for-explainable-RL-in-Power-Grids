@@ -77,12 +77,7 @@ class BaselineAgent(RecoPowerlineAgent):
             return reconnection_actions + topology_actions
 
 
-def evaluate_agent(
-        agent: BaseAgent,
-        env: Environment,
-        num_episodes: int,
-        path_results: Path,
-        max_episode_length: Optional[int] = None):
+def evaluate_agent(agent: BaseAgent, env: Environment, path_results: Path, num_episodes: int, max_episode_length: Optional[int] = None):
     """
     Runs an agent on an environment for evaluation.
     :param agent: The agent
