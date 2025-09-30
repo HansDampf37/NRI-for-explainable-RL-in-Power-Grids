@@ -10,6 +10,11 @@ from baselines.baseline_agent import evaluate_agent
 
 
 def evaluate(cfg: DictConfig):
+    """
+    Evaluate heuristic agents on our datasets.
+
+    :param cfg: the hydra config
+    """
     for dataset in ["train", "test", "val"]:
         env = grid2op.make(f"{cfg.env.env_name}_{dataset}", backend=LightSimBackend())
         for agent, name in zip([RecoPowerlineAgent(env.action_space), DoNothingAgent(env.action_space)],
@@ -17,7 +22,7 @@ def evaluate(cfg: DictConfig):
             evaluate_agent(
                 agent=agent,
                 env=env,
-                num_episodes=50, # len(env.chronics_handler.subpaths),  # run all episodes
+                num_episodes=cfg.eval.nb_episodes,
                 path_results=Path("../data/evaluations/heuristic_agents").joinpath(name, dataset)
             )
 
