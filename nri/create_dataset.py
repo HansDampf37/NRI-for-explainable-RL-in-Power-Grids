@@ -6,9 +6,7 @@ This dataset can further be used for NRI. The contained dataset contains traject
 - powerlines
 """
 
-import argparse
 import logging
-from pathlib import Path
 from typing import List, Tuple, Dict
 
 import grid2op
@@ -21,7 +19,7 @@ from grid2op.gym_compat import GymEnv, DiscreteActSpace
 from omegaconf import DictConfig
 from tqdm import tqdm
 
-from baselines.train_stable_dqn_baseline import build_agent
+from baselines.train_stable_dqn_baseline import build_agent, base_path_models
 from common.graph_structured_observation_space import GraphObservationSpace, GENERATOR_FEATURES, LOAD_FEATURES, \
     LINES_FEATURES
 
@@ -107,66 +105,56 @@ def generate_dataset(num_sims: int, length: int, agent: BaseAgent, env: Environm
 @hydra.main(config_path="../hydra_configs", config_name="nri_training", version_base="1.3")
 def main(cfg: DictConfig):
     print(cfg)
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--env', type=str, default='l2rpn_case14_sandbox', help='The name of the env.')
-    parser.add_argument('--agent', type=str, default='do_nothing', help='One of "do_nothing", "random",'
-                                                                        ' "reconnect", "topology_greedy", "baseline"')
-    parser.add_argument('--num-train', type=int, default=500, help='Number of training trajectories to generate.')
-    parser.add_argument('--num-valid', type=int, default=100, help='Number of validation trajectories to generate.')
-    parser.add_argument('--num-test', type=int, default=100, help='Number of test trajectories to generate.')
-    parser.add_argument('--length', type=int, default=400, help='Length of trajectory.')
-    args = parser.parse_args()
-
     # create env
-    env = grid2op.make(args.env)
+    env = grid2op.make(cfg.env.name)
 
     # create agent
-    if args.agent == 'random':
+    if cfg.agent == 'random':
         agent = RandomAgent(env.action_space)
-    elif args.agent == 'do_nothing':
+    elif cfg.agent == 'do_nothing':
         agent = DoNothingAgent(env.action_space)
-    elif args.agent == 'reconnect':
+    elif cfg.agent == 'reconnect':
         agent = RecoPowerlineAgent(env.action_space)
-    elif args.agent == 'topology_greedy':
+    elif cfg.agent == 'topology_greedy':
         agent = TopologyGreedy(env.action_space)
         logger.warning("You have configured the topology greedy agent that will simulate every topology action. "
                        "This is only feasible for small environments.")
-    elif args.agent == 'baseline':
+    elif cfg.agent == 'baseline':
         gym_env = GymEnv(env)
         gym_env.observation_space.close()
         gym_env.observation_space = GraphObservationSpace(env.observation_space)
         gym_env.action_space.close()
         gym_env.action_space = DiscreteActSpace()
-        model_path = Path("data/models/stable-baselines/dqn-gnn-baseline.zip")
+        model_path = base_path_models.joinpath(cfg.baseline_name)
         agent = build_agent(cfg, load_weights_from=model_path)
     else:
-        raise NotImplementedError(f"Unknown agent '{args.agent}'")
+        raise NotImplementedError(f"Unknown agent '{cfg.agent}'")
 
-    total = args.num_train + args.num_valid + args.num_test
-    logger.info(f"Running {args.agent} on {args.env} to produce {total} trajectories...")
-    gen_traj, load_traj, line_traj = generate_dataset(args.num_train, args.length, agent=agent, env=env)
+    total = cfg.num_train_trajecctories + cfg.num_val_trajectories + cfg.num_test_trajectories
+    logger.info(f"Running {cfg.agent} on {cfg.env.name} to produce {total} trajectories...")
+    gen_traj, load_traj, line_traj = generate_dataset(total, cfg.trajectory_length, agent=agent, env=env)
 
-    gen_traj_train = gen_traj[:args.num_train]
-    load_traj_train = load_traj[:args.num_train]
-    line_traj_train = line_traj[:args.num_train]
+    gen_traj_train = gen_traj[:cfg.num_train_trajecctorie]
+    load_traj_train = load_traj[:cfg.num_train_trajecctorie]
+    line_traj_train = line_traj[:cfg.num_train_trajecctorie]
 
-    gen_traj_test = gen_traj[args.num_train:args.num_train + args.num_test]
-    load_traj_test = load_traj[args.num_train:args.num_train + args.num_test]
-    line_traj_test = line_traj[args.num_train:args.num_train + args.num_test]
+    gen_traj_test = gen_traj[cfg.num_train_trajecctorie:cfg.num_train_trajecctorie + cfg.num_test_trajectories]
+    load_traj_test = load_traj[cfg.num_train_trajecctorie:cfg.num_train_trajecctorie + cfg.num_test_trajectories]
+    line_traj_test = line_traj[cfg.num_train_trajecctorie:cfg.num_train_trajecctorie + cfg.num_test_trajectories]
 
-    gen_traj_valid = gen_traj[-args.num_valid:]
-    load_traj_valid = load_traj[-args.num_valid:]
-    line_traj_valid = line_traj[-args.num_valid:]
+    gen_traj_valid = gen_traj[-cfg.num_val_trajectories:]
+    load_traj_valid = load_traj[-cfg.num_val_trajectories:]
+    line_traj_valid = line_traj[-cfg.num_val_trajectories:]
 
-    np.save('dataset/gen_traj_train_' + args.env + '_.npy', gen_traj_train)
-    np.save('dataset/load_traj_train_' + args.env + '_.npy', load_traj_train)
-    np.save('dataset/line_traj_train_' + args.env + '_.npy', line_traj_train)
-    np.save('dataset/gen_traj_valid_' + args.env + '_.npy', gen_traj_valid)
-    np.save('dataset/load_traj_valid_' + args.env + '_.npy', load_traj_valid)
-    np.save('dataset/line_traj_valid_' + args.env + '_.npy', line_traj_valid)
-    np.save('dataset/gen_traj_test_' + args.env + '_.npy', gen_traj_test)
-    np.save('dataset/load_traj_test_' + args.env + '_.npy', load_traj_test)
-    np.save('dataset/line_traj_test_' + args.env + '_.npy', line_traj_test)
+    np.save('dataset/gen_traj_train_' + cfg.env.name + '_.npy', gen_traj_train)
+    np.save('dataset/load_traj_train_' + cfg.env.name + '_.npy', load_traj_train)
+    np.save('dataset/line_traj_train_' + cfg.env.name + '_.npy', line_traj_train)
+    np.save('dataset/gen_traj_valid_' + cfg.env.name + '_.npy', gen_traj_valid)
+    np.save('dataset/load_traj_valid_' + cfg.env.name + '_.npy', load_traj_valid)
+    np.save('dataset/line_traj_valid_' + cfg.env.name + '_.npy', line_traj_valid)
+    np.save('dataset/gen_traj_test_' + cfg.env.name + '_.npy', gen_traj_test)
+    np.save('dataset/load_traj_test_' + cfg.env.name + '_.npy', load_traj_test)
+    np.save('dataset/line_traj_test_' + cfg.env.name + '_.npy', line_traj_test)
 
 if __name__ == '__main__':
     main()

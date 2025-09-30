@@ -1,12 +1,13 @@
 defaults:
+    -   baseline_name: dqn-gnn_uc3
     -   env: case14
-    -   model: gnn_dqn
-    -   train: default_dqn
-    -   obs_space: graph_obs_space
-    -   act_space: discrete_set_bus
-    -   eval: default
+    -   agent: baseline
+    -   num_train_trajectories: 1000
+    -   num_test_trajectories: 100
+    -   num_val_trajectories: 100
+    -   trajectory_length: 400
     - _self_
 
 hydra:
     run:
-        dir: data/output/${now:%Y-%m-%d_%H-%M-%S}
+        dir: data/output/nri_dataset_creation${now:%Y-%m-%d_%H-%M-%S}

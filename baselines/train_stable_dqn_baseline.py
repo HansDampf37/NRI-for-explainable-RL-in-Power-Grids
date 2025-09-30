@@ -19,9 +19,9 @@ from common.grid2op_env_wrapper import get_env
 logging.basicConfig(level=logging.WARN, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-base_path_models = Path("data/models/stable-baselines/")
-base_path_logs = Path("data/logs/stable-baselines/")
-base_path_evaluations = Path("data/evaluations/stable-baselines/")
+base_path_models: Path = Path("data/models/stable-baselines/")
+base_path_logs: Path = Path("data/logs/stable-baselines/")
+base_path_evaluations: Path = Path("data/evaluations/stable-baselines/")
 
 
 def train(cfg: DictConfig):
