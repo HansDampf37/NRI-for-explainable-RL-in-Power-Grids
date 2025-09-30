@@ -7,6 +7,8 @@ from hydra.utils import instantiate
 from l2rpn_baselines.utils import GymEnvWithRecoWithDN
 from lightsim2grid import LightSimBackend
 
+from common.rewards import MazeRLReward
+
 
 class Grid2OpEnvWrapper(Env):
     """
@@ -25,7 +27,7 @@ class Grid2OpEnvWrapper(Env):
                  obs_space_creation=lambda env: BoxGymObsSpace(grid2op_observation_space=env.observation_space)):
         super().__init__()
         # === Grid2Op environment setup ===
-        self._g2op_env = grid2op.make(env_name, backend=LightSimBackend())
+        self._g2op_env = grid2op.make(env_name, backend=LightSimBackend(), reward_class=MazeRLReward)
         self._gym_env = GymEnvWithRecoWithDN(self._g2op_env, safe_max_rho=safe_max_rho)
 
         # === Observation space setup ===
