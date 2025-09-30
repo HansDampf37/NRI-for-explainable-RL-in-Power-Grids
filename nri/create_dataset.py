@@ -133,7 +133,7 @@ def main(cfg: DictConfig):
     elif args.agent == 'baseline':
         gym_env = GymEnv(env)
         gym_env.observation_space.close()
-        gym_env.observation_space = GraphObservationSpace(env.observation_space, spaces_to_keep=[NODE_FEATURES, EDGE_FEATURES, EDGE_INDEX])
+        gym_env.observation_space = GraphObservationSpace(env.observation_space)
         gym_env.action_space.close()
         gym_env.action_space = DiscreteActSpace()
         model_path = Path("data/models/stable-baselines/dqn-gnn-baseline.zip")
