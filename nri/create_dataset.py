@@ -23,7 +23,7 @@ from tqdm import tqdm
 
 from baselines.train_stable_dqn_baseline import build_agent
 from common.graph_structured_observation_space import GraphObservationSpace, GENERATOR_FEATURES, LOAD_FEATURES, \
-    LINES_FEATURES, NODE_FEATURES, EDGE_FEATURES, EDGE_INDEX
+    LINES_FEATURES
 
 logger = logging.getLogger(__name__)
 
