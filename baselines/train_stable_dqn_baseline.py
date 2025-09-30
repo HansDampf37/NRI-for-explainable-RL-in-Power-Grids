@@ -45,6 +45,10 @@ def train(cfg: DictConfig):
 
 
 def evaluate(cfg: DictConfig):
+    """
+    Loads and evaluates a trained topology policy. Results are stored under data/evaluation.
+    :param cfg: The hydra configuration.
+    """
     dqn: DQN = model_setup(cfg, load_weights_from=Path(base_path_models.joinpath(cfg.model.name)))
     env: Grid2OpEnvWrapper = get_env(cfg)
 
