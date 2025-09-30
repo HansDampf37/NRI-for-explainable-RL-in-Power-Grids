@@ -1,10 +1,11 @@
+import json
 import logging
+import os
 from pathlib import Path
 from typing import Optional
 
 import grid2op
 import hydra
-import torch
 from hydra.utils import instantiate
 from lightsim2grid import LightSimBackend
 from omegaconf import DictConfig
@@ -13,8 +14,9 @@ from stable_baselines3 import DQN
 from baselines.baseline_agent import BaselineAgent, evaluate_agent
 from baselines.topo_policy_stable_dqn import TopoPolicyStableDQN
 from common import Grid2OpEnvWrapper
+from common.grid2op_env_wrapper import get_env
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.WARN, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 base_path_models = Path("data/models/stable-baselines/")
@@ -43,13 +45,39 @@ def train(cfg: DictConfig):
 
 
 def evaluate(cfg: DictConfig):
+    dqn: DQN = model_setup(cfg, load_weights_from=Path(base_path_models.joinpath(cfg.model.name)))
+    env: Grid2OpEnvWrapper = get_env(cfg)
+
+    for _ in range(cfg.eval.nb_episodes):
+        obs, info = env.reset()
+        cumulative_reward = 0
+        episode_length = 0
+        while True:
+            act, _ = dqn.predict(obs, deterministic=True)
+            obs, reward, done, truncated, info = env.step(act.item())
+            if done or truncated:
+                break
+            cumulative_reward += reward
+            episode_length += 1
+        print(f"Survived {episode_length} steps with a return of {cumulative_reward:.2f}")
+        name_chronic = os.path.basename(info['time_series_id'])
+        base_path = Path(base_path_evaluations.joinpath(cfg.model.name + "_topology_policy", name_chronic))
+        base_path.mkdir(parents=True, exist_ok=True)
+        with open(base_path.joinpath("episode_meta.json"), 'w') as f:
+            json.dump({
+            "agent_seed": None,
+            "chronics_max_timestep": -1,
+            "cumulative_reward": cumulative_reward,
+            "nb_timestep_played": episode_length
+        }, f, indent=4)
+
     for dataset in ["train", "test", "val"]:
         env = grid2op.make(f"{cfg.env.env_name}_{dataset}", backend=LightSimBackend())
         evaluate_agent(
             agent=build_agent(cfg, Path(base_path_models.joinpath(cfg.model.name))),
             env=env,
-            num_episodes=50, # len(env.chronics_handler.subpaths),  # run all episodes
-            path_results=Path(base_path_evaluations.joinpath(cfg.model.name, dataset))
+            num_episodes=cfg.eval.nb_episodes, # len(env.chronics_handler.subpaths),  # run all episodes
+            path_results=Path(base_path_evaluations.joinpath(cfg.model.name + "_agent", dataset))
         )
 
 
@@ -69,12 +97,7 @@ def build_agent(cfg: DictConfig, load_weights_from: Optional[Path] = None) -> Ba
 
 
 def model_setup(cfg: DictConfig, load_weights_from: Optional[Path] = None) -> DQN:
-    # create grid2opWrapperEnvironment from hydra config using action and observation spaces from the config
-    env: Grid2OpEnvWrapper = instantiate(
-        cfg.env,
-        obs_space_creation = lambda e: instantiate(cfg.obs_space, grid2op_observation_space=e.observation_space),
-        act_space_creation = lambda e: instantiate(cfg.act_space, grid2op_action_space=e.action_space)
-    )
+    env: Grid2OpEnvWrapper = get_env(cfg)
 
     # model
     hacky_feature_extractor_kwargs = {}
@@ -87,23 +110,17 @@ def model_setup(cfg: DictConfig, load_weights_from: Optional[Path] = None) -> DQ
     elif cfg.model.sb3.policy_kwargs.get("features_extractor_class") is not None:
         raise ValueError("Unknown feature extractor class" + cfg.model.sb3.policy_kwargs.get("features_extractor_class"))
 
-    # check if cuda is available
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"Using device: {device}")
-
     dqn: DQN = instantiate(
         cfg.model.sb3,
         env=env,
-        device=device,
         tensorboard_log=base_path_logs.joinpath(cfg.model.name),
         **hacky_feature_extractor_kwargs
     )
 
     # load weights
     if load_weights_from is not None:
-        dqn.load(load_weights_from, custom_objects=dict(action_space=env.action_space, observation_space=env.observation_space))
+        dqn.set_parameters(load_weights_from)
     return dqn
-
 
 
 @hydra.main(config_path="../hydra_configs", config_name="config", version_base="1.3")

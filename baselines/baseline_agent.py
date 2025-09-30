@@ -93,6 +93,7 @@ def evaluate_agent(
     :return:
     """
     runner = Runner(**env.get_params_for_runner(), agentInstance=agent, agentClass=None)
+    path_results.mkdir(exist_ok=True, parents=True)
     res = runner.run(
         nb_episode=num_episodes,
         max_iter=max_episode_length,
@@ -103,15 +104,11 @@ def evaluate_agent(
 
     # print results
     print("The results for the evaluated agent are:")
-    survival_duration = []
-    returns = []
     for _, chron_id, cum_reward, nb_time_step, max_ts, data in res:
         msg_tmp = f"\tFor chronics with id '{chron_id}'\n"
         msg_tmp += f"\t\t - return: {cum_reward:.2f}\n"
         msg_tmp += f"\t\t - rewards: {np.nan_to_num(data.rewards).mean():.2f} ± {np.nan_to_num(data.rewards).std():.2f}\n"
         msg_tmp += f"\t\t - number of time steps completed: {nb_time_step:.0f} / {max_ts:.0f}"
         print(msg_tmp)
-        survival_duration.append(nb_time_step)
-        returns.append(cum_reward)
 
     print("Evaluation finished. To plot evaluation results use the notebook in the visualization folder.")

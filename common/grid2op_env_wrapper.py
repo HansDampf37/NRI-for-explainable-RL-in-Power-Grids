@@ -3,6 +3,7 @@ from typing import Optional
 import grid2op
 from grid2op.gym_compat import DiscreteActSpace, BoxGymObsSpace
 from gymnasium import Env
+from hydra.utils import instantiate
 from l2rpn_baselines.utils import GymEnvWithRecoWithDN
 from lightsim2grid import LightSimBackend
 
@@ -45,3 +46,18 @@ class Grid2OpEnvWrapper(Env):
 
     def step(self, action):
         return self._gym_env.step(action)
+
+
+def get_env(cfg):
+    """
+    Creates a Grid2opWrapperEnvironment from hydra config using action and observation spaces from the config
+
+    :param cfg: The hydra config
+    :return: The environment
+    """
+    env: Grid2OpEnvWrapper = instantiate(
+        cfg.env,
+        obs_space_creation=lambda e: instantiate(cfg.obs_space, grid2op_observation_space=e.observation_space),
+        act_space_creation=lambda e: instantiate(cfg.act_space, grid2op_action_space=e.action_space)
+    )
+    return env
