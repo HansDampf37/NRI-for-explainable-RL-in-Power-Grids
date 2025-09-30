@@ -4,6 +4,8 @@ defaults:
     -   train: default_dqn
     -   obs_space: graph_obs_space
     -   act_space: discrete_set_bus
+    -   eval: default
+    - _self_
 
 hydra:
     run:
