@@ -12,12 +12,11 @@ from common.rewards import MazeRLReward
 
 class Grid2OpEnvWrapper(Env):
     """
-    Gymnasium-compatible wrapper for Grid2Op environments.
+    Gymnasium-compatible wrapper for Grid2Op environments with heuristic actions
 
     This class wraps a Grid2Op environment and exposes it through a standard
     Gymnasium interface. This wrapper implements the same logic as GymEnvWithRecoWithDN
     (automatically reconnect powerlines do nothing if load is low).
-
     """
 
     def __init__(self,
@@ -26,15 +25,12 @@ class Grid2OpEnvWrapper(Env):
                  act_space_creation=lambda env: DiscreteActSpace(env.action_space),
                  obs_space_creation=lambda env: BoxGymObsSpace(grid2op_observation_space=env.observation_space)):
         super().__init__()
-        # === Grid2Op environment setup ===
         self._g2op_env = grid2op.make(env_name, backend=LightSimBackend(), reward_class=MazeRLReward)
         self._gym_env = GymEnvWithRecoWithDN(self._g2op_env, safe_max_rho=safe_max_rho)
 
-        # === Observation space setup ===
         self._gym_env.observation_space.close()
         self._gym_env.observation_space = obs_space_creation(self._g2op_env)
 
-        # === Action space setup ===
         self._gym_env.action_space.close()
         self._gym_env.action_space = act_space_creation(self._g2op_env)
 

@@ -6,8 +6,8 @@ from grid2op.Reward import BaseReward
 
 class MazeRLReward(BaseReward):
     """
-    This reward class implements the reward formulated by Dorfer et al. in their paper ![Power Grid Congestion Management via Topology Optimization with AlphaZero](https://arxiv.org/pdf/2211.05612)
-    Rewards is bounded in [0,1] and grow with decreasing max rho
+    This reward class implements the reward formulated by Dorfer et al. in their paper (https://arxiv.org/pdf/2211.05612).
+    Rewards are bounded in [0,1] and grow with decreasing max rho.
     """
     def __init__(self, logger=None):
         BaseReward.__init__(self, logger=logger)

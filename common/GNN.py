@@ -14,7 +14,7 @@ class MessagePassing(nn.Module):
     """
     Implements:
       e_{j,i}^{(k)} = psi^{(k)}( e_{j,i}^{(k-1)}, x_i^{(k-1)}, x_j^{(k-1)} )
-      x_i^{(k)} = sigma( x_i^{(k-1)}, sum_{j in N(i)} phi^{(k)}( x_i^{(k-1)}, x_j^{(k-1)}, e_{j,i}^{(k)} ) )
+      x_i^{(k)} = update_node( x_i^{(k-1)}, sum_{j in N(i)} phi^{(k)}( x_i^{(k-1)}, x_j^{(k-1)}, e_{j,i}^{(k)} ) )
     Inputs:
       x: [N, x_dim]
       e: [E, e_dim]
@@ -124,7 +124,8 @@ class MessagePassing(nn.Module):
 
 class GNNFeatureExtractor(nn.Module):
     """
-    Stacks multiple MessagePassing layers.
+    Stacks multiple MessagePassing layers. Followed by mean pooling and concatenation of pooled edge and node features.
+    The output will have a dimension of out_x_dim + out_e_dim.
     """
 
     def __init__(
@@ -140,7 +141,7 @@ class GNNFeatureExtractor(nn.Module):
             residual=True
     ):
         """
-        Instantiate our GNN policy
+        Instantiate GNN policy
 
         :param x_dim: input node feature dimension
         :param e_dim: input edge feature dimension
