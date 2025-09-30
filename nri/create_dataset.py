@@ -106,6 +106,7 @@ def generate_dataset(num_sims: int, length: int, agent: BaseAgent, env: Environm
 
 @hydra.main(config_path="../hydra_configs", config_name="nri_training", version_base="1.3")
 def main(cfg: DictConfig):
+    print(cfg)
     parser = argparse.ArgumentParser()
     parser.add_argument('--env', type=str, default='l2rpn_case14_sandbox', help='The name of the env.')
     parser.add_argument('--agent', type=str, default='do_nothing', help='One of "do_nothing", "random",'
