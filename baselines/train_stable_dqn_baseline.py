@@ -29,6 +29,7 @@ def train(cfg: DictConfig):
     Creates a model using the setup_method, trains it and saves it.
     """
     dqn = model_setup(cfg)
+    model_save_path = Path(base_path_models.joinpath(cfg.baseline.model.name))
     try:
         dqn.learn(cfg.baseline.train.timesteps, log_interval=10)
     except KeyboardInterrupt:
@@ -38,10 +39,12 @@ def train(cfg: DictConfig):
             if save.lower() in ["n", "no"]:
                 raise KeyboardInterrupt()
             elif save.lower() in ["y", "yes"]:
-                dqn.save(Path(base_path_models.joinpath(cfg.baseline.model.name)))
+                dqn.save(model_save_path)
+                print(f"Model saved under {model_save_path}")
                 raise KeyboardInterrupt()
 
-    dqn.save(Path(base_path_models.joinpath(cfg.baseline.model.name)))
+    dqn.save(model_save_path)
+    print(f"Model saved under {model_save_path}")
 
 
 def evaluate(cfg: DictConfig):
