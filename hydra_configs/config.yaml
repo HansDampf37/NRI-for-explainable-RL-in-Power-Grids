@@ -1,10 +1,7 @@
 defaults:
     -   env: case14
-    -   model: gnn_dqn
-    -   train: default_dqn
-    -   obs_space: graph_obs_space
-    -   act_space: discrete_set_bus
-    -   eval: default
+    -   baseline: gnn_dqn
+    -   nri: default
     - _self_
 
 hydra:

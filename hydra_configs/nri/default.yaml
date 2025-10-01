@@ -1,0 +1,9 @@
+defaults:
+    -   obs_space: node_features_obs_space # the observations in our dataset will be from this space
+
+agent: baseline # which agent is operating the grid
+model_path: data/models/stable-baselines/dqn-gnn_uc3 # if we use baseline we need to provide a path to the weights
+num_train_trajectories: 1000 # the number of trajectories in the training set
+num_test_trajectories: 100
+num_val_trajectories: 100
+trajectory_length: 400 # the number of observations in one trajectory

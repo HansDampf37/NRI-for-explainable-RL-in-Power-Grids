@@ -7,6 +7,7 @@ This dataset can further be used for NRI. The contained dataset contains traject
 """
 
 import logging
+from datetime import datetime
 from typing import List, Tuple, Dict
 
 import grid2op
@@ -15,16 +16,14 @@ import numpy as np
 from grid2op.Agent import BaseAgent, RandomAgent, DoNothingAgent, RecoPowerlineAgent, TopologyGreedy
 from grid2op.Environment import Environment
 from grid2op.Observation import BaseObservation
-from grid2op.gym_compat import GymEnv, DiscreteActSpace
+from hydra.utils import instantiate
 from omegaconf import DictConfig
 from tqdm import tqdm
 
-from baselines.train_stable_dqn_baseline import build_agent, base_path_models
-from common.graph_structured_observation_space import GraphObservationSpace, GENERATOR_FEATURES, LOAD_FEATURES, \
-    LINES_FEATURES
+from baselines.train_stable_dqn_baseline import build_agent
+from common.graph_structured_observation_space import GraphObservationSpace
 
 logger = logging.getLogger(__name__)
-
 
 
 class AgentFailsEarly(Exception):
@@ -72,89 +71,69 @@ def sample_trajectory(length: int, agent: BaseAgent, env: Environment, max_retri
     return trajectory
 
 
-def generate_dataset(num_sims: int, length: int, agent: BaseAgent, env: Environment) -> Tuple[
-    np.ndarray, np.ndarray, np.ndarray]:
+def generate_dataset(num_sims: int, length: int, agent: BaseAgent, env: Environment, observation_converter: GraphObservationSpace) -> Dict:
     """
     Creates a dataset containing multiple trajectories of the environment being operated by some agent.
     :param num_sims: the amount of trajectories to generate
     :param length: the length of each trajectory
     :param agent: the agent to operate the environment
     :param env: the grid2op environment to operate
-    :return: trajectory data for generators, loads, and powerlines
+    :param observation_converter: the graph observation space to use
+    :return: trajectory data for the observed grid entities
     """
-    observation_converter = GraphObservationSpace(env.observation_space, [GENERATOR_FEATURES, LOAD_FEATURES, LINES_FEATURES])
-    generator_trajectories_all = []
-    load_trajectories_all = []
-    line_trajectories_all = []
+    trajectories = {}
 
     for _ in tqdm(range(num_sims), f"Creating {num_sims} trajectories"):
         trajectory: List[BaseObservation] = sample_trajectory(length=length, agent=agent, env=env)
         converted_trajectory: List[Dict[str, np.ndarray]] = [observation_converter.to_gym(obs) for obs in trajectory]
-        generator_trajectory: np.ndarray = np.array([obs[GENERATOR_FEATURES] for obs in converted_trajectory])
-        load_trajectory: np.ndarray = np.array([obs[LOAD_FEATURES] for obs in converted_trajectory])
-        line_trajectory: np.ndarray = np.array([obs[LINES_FEATURES] for obs in converted_trajectory])
+        for grid_entity in observation_converter.spaces_to_keep:
+            if grid_entity not in trajectories:
+                trajectories[grid_entity] = []
 
-        generator_trajectories_all.append(generator_trajectory)
-        load_trajectories_all.append(load_trajectory)
-        line_trajectories_all.append(line_trajectory)
+            trajectories[grid_entity].append(np.array([obs[grid_entity] for obs in converted_trajectory]))
 
-    return (np.stack(generator_trajectories_all),
-            np.stack(load_trajectories_all),
-            np.stack(line_trajectories_all))
+    return {grid_entity: np.stack(trajectories[grid_entity]) for grid_entity in observation_converter.spaces_to_keep}
 
-@hydra.main(config_path="../hydra_configs", config_name="nri_training", version_base="1.3")
+
+@hydra.main(config_path="../hydra_configs", config_name="config", version_base="1.3")
 def main(cfg: DictConfig):
     print(cfg)
-    # create env
-    env = grid2op.make(cfg.env.name)
+    # create env + observation space
+    env = grid2op.make(cfg.env.env_name)
+    observation_converter: GraphObservationSpace = instantiate(
+        cfg.nri.obs_space,
+        grid2op_observation_space=env.observation_space
+    )
 
     # create agent
-    if cfg.agent == 'random':
+    if cfg.nri.agent == 'random':
         agent = RandomAgent(env.action_space)
-    elif cfg.agent == 'do_nothing':
+    elif cfg.nri.agent == 'do_nothing':
         agent = DoNothingAgent(env.action_space)
-    elif cfg.agent == 'reconnect':
+    elif cfg.nri.agent == 'reconnect':
         agent = RecoPowerlineAgent(env.action_space)
-    elif cfg.agent == 'topology_greedy':
+    elif cfg.nri.agent == 'topology_greedy':
         agent = TopologyGreedy(env.action_space)
         logger.warning("You have configured the topology greedy agent that will simulate every topology action. "
                        "This is only feasible for small environments.")
-    elif cfg.agent == 'baseline':
-        gym_env = GymEnv(env)
-        gym_env.observation_space.close()
-        gym_env.observation_space = GraphObservationSpace(env.observation_space)
-        gym_env.action_space.close()
-        gym_env.action_space = DiscreteActSpace()
-        model_path = base_path_models.joinpath(cfg.baseline_name)
-        agent = build_agent(cfg, load_weights_from=model_path)
+    elif cfg.nri.agent == 'baseline':
+        agent = build_agent(cfg, load_weights_from=cfg.nri.model_path)
     else:
-        raise NotImplementedError(f"Unknown agent '{cfg.agent}'")
+        raise NotImplementedError(f"Unknown agent '{cfg.nri.agent}'")
 
-    total = cfg.num_train_trajecctories + cfg.num_val_trajectories + cfg.num_test_trajectories
-    logger.info(f"Running {cfg.agent} on {cfg.env.name} to produce {total} trajectories...")
-    gen_traj, load_traj, line_traj = generate_dataset(total, cfg.trajectory_length, agent=agent, env=env)
+    total = cfg.nri.num_train_trajectories + cfg.nri.num_val_trajectories + cfg.nri.num_test_trajectories
+    logger.info(f"Running {cfg.nri.agent} on {cfg.env.env_name} to produce {total} trajectories...")
+    data = generate_dataset(total, cfg.nri.trajectory_length, agent, env, observation_converter)
 
-    gen_traj_train = gen_traj[:cfg.num_train_trajecctorie]
-    load_traj_train = load_traj[:cfg.num_train_trajecctorie]
-    line_traj_train = line_traj[:cfg.num_train_trajecctorie]
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H:%M")
+    for grid_entity in data:
+        train_data = data[grid_entity][:cfg.nri.num_train_trajectories]
+        test_data = data[grid_entity][cfg.nri.num_train_trajectories:cfg.nri.num_train_trajectories + cfg.nri.num_test_trajectories]
+        val_data = data[grid_entity][-cfg.nri.num_val_trajectories:]
+        np.save(f'data/nri_dataset/train_{grid_entity}_{cfg.env.env_name}_{timestamp}_.npy', train_data)
+        np.save(f'data/nri_dataset/test_{grid_entity}_{cfg.env.env_name}_{timestamp}_.npy', test_data)
+        np.save(f'data/nri_dataset/val_{grid_entity}_{cfg.env.env_name}_{timestamp}_.npy', val_data)
 
-    gen_traj_test = gen_traj[cfg.num_train_trajecctorie:cfg.num_train_trajecctorie + cfg.num_test_trajectories]
-    load_traj_test = load_traj[cfg.num_train_trajecctorie:cfg.num_train_trajecctorie + cfg.num_test_trajectories]
-    line_traj_test = line_traj[cfg.num_train_trajecctorie:cfg.num_train_trajecctorie + cfg.num_test_trajectories]
-
-    gen_traj_valid = gen_traj[-cfg.num_val_trajectories:]
-    load_traj_valid = load_traj[-cfg.num_val_trajectories:]
-    line_traj_valid = line_traj[-cfg.num_val_trajectories:]
-
-    np.save('dataset/gen_traj_train_' + cfg.env.name + '_.npy', gen_traj_train)
-    np.save('dataset/load_traj_train_' + cfg.env.name + '_.npy', load_traj_train)
-    np.save('dataset/line_traj_train_' + cfg.env.name + '_.npy', line_traj_train)
-    np.save('dataset/gen_traj_valid_' + cfg.env.name + '_.npy', gen_traj_valid)
-    np.save('dataset/load_traj_valid_' + cfg.env.name + '_.npy', load_traj_valid)
-    np.save('dataset/line_traj_valid_' + cfg.env.name + '_.npy', line_traj_valid)
-    np.save('dataset/gen_traj_test_' + cfg.env.name + '_.npy', gen_traj_test)
-    np.save('dataset/load_traj_test_' + cfg.env.name + '_.npy', load_traj_test)
-    np.save('dataset/line_traj_test_' + cfg.env.name + '_.npy', line_traj_test)
 
 if __name__ == '__main__':
     main()

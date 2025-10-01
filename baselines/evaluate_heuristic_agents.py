@@ -22,7 +22,7 @@ def evaluate(cfg: DictConfig):
             evaluate_agent(
                 agent=agent,
                 env=env,
-                num_episodes=cfg.eval.nb_episodes,
+                num_episodes=cfg.baseline.eval.nb_episodes,
                 path_results=Path("../data/evaluations/heuristic_agents").joinpath(name, dataset)
             )
 

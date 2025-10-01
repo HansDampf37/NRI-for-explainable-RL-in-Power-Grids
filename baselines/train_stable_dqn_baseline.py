@@ -30,7 +30,7 @@ def train(cfg: DictConfig):
     """
     dqn = model_setup(cfg)
     try:
-        dqn.learn(cfg.train.timesteps, log_interval=10)
+        dqn.learn(cfg.baseline.train.timesteps, log_interval=10)
     except KeyboardInterrupt:
         answered = False
         while not answered:
@@ -38,10 +38,10 @@ def train(cfg: DictConfig):
             if save.lower() in ["n", "no"]:
                 raise KeyboardInterrupt()
             elif save.lower() in ["y", "yes"]:
-                dqn.save(Path(base_path_models.joinpath(cfg.model.name)))
+                dqn.save(Path(base_path_models.joinpath(cfg.baseline.model.name)))
                 raise KeyboardInterrupt()
 
-    dqn.save(Path(base_path_models.joinpath(cfg.model.name)))
+    dqn.save(Path(base_path_models.joinpath(cfg.baseline.model.name)))
 
 
 def evaluate(cfg: DictConfig):
@@ -49,10 +49,10 @@ def evaluate(cfg: DictConfig):
     Loads and evaluates a trained topology policy. Results are stored under data/evaluation.
     :param cfg: The hydra configuration.
     """
-    dqn: DQN = model_setup(cfg, load_weights_from=Path(base_path_models.joinpath(cfg.model.name)))
+    dqn: DQN = model_setup(cfg, load_weights_from=Path(base_path_models.joinpath(cfg.baseline.model.name)))
     env: Grid2OpEnvWrapper = get_env(cfg)
 
-    for _ in range(cfg.eval.nb_episodes):
+    for _ in range(cfg.baseline.eval.nb_episodes):
         obs, info = env.reset()
         cumulative_reward = 0
         episode_length = 0
@@ -65,7 +65,7 @@ def evaluate(cfg: DictConfig):
             episode_length += 1
         print(f"Survived {episode_length} steps with a return of {cumulative_reward:.2f}")
         name_chronic = os.path.basename(info['time_series_id'])
-        base_path = Path(base_path_evaluations.joinpath(cfg.model.name + "_topology_policy", name_chronic))
+        base_path = Path(base_path_evaluations.joinpath(cfg.baseline.model.name + "_topology_policy", name_chronic))
         base_path.mkdir(parents=True, exist_ok=True)
         with open(base_path.joinpath("episode_meta.json"), 'w') as f:
             json.dump({
@@ -78,10 +78,10 @@ def evaluate(cfg: DictConfig):
     for dataset in ["train", "test", "val"]:
         env = grid2op.make(f"{cfg.env.env_name}_{dataset}", backend=LightSimBackend())
         evaluate_agent(
-            agent=build_agent(cfg, Path(base_path_models.joinpath(cfg.model.name))),
+            agent=build_agent(cfg, Path(base_path_models.joinpath(cfg.baseline.model.name))),
             env=env,
-            num_episodes=cfg.eval.nb_episodes, # len(env.chronics_handler.subpaths),  # run all episodes
-            path_results=Path(base_path_evaluations.joinpath(cfg.model.name + "_agent", dataset))
+            num_episodes=cfg.baseline.eval.nb_episodes, # len(env.chronics_handler.subpaths),  # run all episodes
+            path_results=Path(base_path_evaluations.joinpath(cfg.baseline.model.name + "_agent", dataset))
         )
 
 
@@ -113,18 +113,18 @@ def model_setup(cfg: DictConfig, load_weights_from: Optional[Path] = None) -> DQ
     # model
     hacky_feature_extractor_kwargs = {}
     # the class is stored as str and after too much time trying to do better I decided to keep it like this
-    if cfg.model.sb3.policy_kwargs.get("features_extractor_class") == "SB3GNNWrapper":
+    if cfg.baseline.model.sb3.policy_kwargs.get("features_extractor_class") == "SB3GNNWrapper":
         from common.GNN import SB3GNNWrapper
         hacky_feature_extractor_kwargs["policy_kwargs"] = {
             "features_extractor_class": SB3GNNWrapper
         }
-    elif cfg.model.sb3.policy_kwargs.get("features_extractor_class") is not None:
-        raise ValueError("Unknown feature extractor class" + cfg.model.sb3.policy_kwargs.get("features_extractor_class"))
+    elif cfg.baseline.model.sb3.policy_kwargs.get("features_extractor_class") is not None:
+        raise ValueError("Unknown feature extractor class" + cfg.baseline.model.sb3.policy_kwargs.get("features_extractor_class"))
 
     dqn: DQN = instantiate(
-        cfg.model.sb3,
+        cfg.baseline.model.sb3,
         env=env,
-        tensorboard_log=base_path_logs.joinpath(cfg.model.name),
+        tensorboard_log=base_path_logs.joinpath(cfg.baseline.model.name),
         **hacky_feature_extractor_kwargs
     )
 

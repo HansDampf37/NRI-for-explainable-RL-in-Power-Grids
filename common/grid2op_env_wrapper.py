@@ -48,14 +48,14 @@ class Grid2OpEnvWrapper(Env):
 
 def get_env(cfg):
     """
-    Creates a Grid2opWrapperEnvironment from hydra config using action and observation spaces from the config
+    Creates a Grid2opWrapperEnvironment from hydra config using action and observation spaces from the configs baseline
 
     :param cfg: The hydra config
     :return: The environment
     """
     env: Grid2OpEnvWrapper = instantiate(
         cfg.env,
-        obs_space_creation=lambda e: instantiate(cfg.obs_space, grid2op_observation_space=e.observation_space),
-        act_space_creation=lambda e: instantiate(cfg.act_space, grid2op_action_space=e.action_space)
+        obs_space_creation=lambda e: instantiate(cfg.baseline.obs_space, grid2op_observation_space=e.observation_space),
+        act_space_creation=lambda e: instantiate(cfg.baseline.act_space, grid2op_action_space=e.action_space)
     )
     return env
