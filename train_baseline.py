@@ -1,4 +1,4 @@
-from baselines.train_stable_dqn_baseline import main
+from baselines.train_stable_baseline import main
 import torch
 
 if not torch.cuda.is_available():

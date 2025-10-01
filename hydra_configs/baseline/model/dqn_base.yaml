@@ -13,3 +13,5 @@ sb3:
     learning_rate: 4e-3
 
 name: dqn
+topology_policy:
+    _target_: baselines.topo_policies_sb3.TopoPolicyStableDQN

@@ -1,0 +1,18 @@
+sb3:
+    _target_: stable_baselines3.ppo.ppo.PPO
+    verbose: 1
+    learning_rate: 4e-3
+    n_steps: 2048
+    batch_size: 256
+    n_epochs: 10
+    gamma: 0.99
+    gae_lambda: 0.95
+    clip_range: 0.2
+    normalize_advantage: true
+    ent_coef: 0.1
+    vf_coef: 0.5
+    max_grad_norm: 0.5
+
+name: ppo
+topology_policy:
+    _target_: baselines.topo_policies_sb3.TopoPolicyStablePPO

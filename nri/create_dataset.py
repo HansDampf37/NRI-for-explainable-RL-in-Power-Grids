@@ -16,7 +16,7 @@ from hydra.utils import instantiate
 from omegaconf import DictConfig
 from tqdm import tqdm
 
-from baselines.train_stable_dqn_baseline import build_agent
+from baselines.train_stable_baseline import build_agent
 from common.graph_structured_observation_space import GraphObservationSpace
 
 logger = logging.getLogger(__name__)

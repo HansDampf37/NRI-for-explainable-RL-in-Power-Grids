@@ -4,7 +4,7 @@ import grid2op
 import hydra
 from grid2op.Action import BaseAction
 
-from baselines.train_stable_dqn_baseline import model_setup, build_agent
+from baselines.train_stable_baseline import model_setup, build_agent
 
 
 class TestTrainDQN(unittest.TestCase):

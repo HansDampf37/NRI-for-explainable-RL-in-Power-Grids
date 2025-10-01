@@ -1,6 +1,6 @@
 defaults:
     -   model: gnn_dqn
-    -   train: default_dqn
+    -   train: default
     -   eval: default
     -   obs_space: graph_obs_space
     -   act_space: discrete_set_bus

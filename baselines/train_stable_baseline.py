@@ -9,10 +9,9 @@ import hydra
 from hydra.utils import instantiate
 from lightsim2grid import LightSimBackend
 from omegaconf import DictConfig
-from stable_baselines3 import DQN
+from stable_baselines3.common.base_class import BaseAlgorithm
 
 from baselines.baseline_agent import BaselineAgent, evaluate_agent
-from baselines.topo_policy_stable_dqn import TopoPolicyStableDQN
 from common import Grid2OpEnvWrapper
 from common.grid2op_env_wrapper import get_env
 
@@ -28,10 +27,10 @@ def train(cfg: DictConfig):
     """
     Creates a model using the setup_method, trains it and saves it.
     """
-    dqn = model_setup(cfg)
+    alg: BaseAlgorithm = model_setup(cfg)
     model_save_path = Path(base_path_models.joinpath(cfg.baseline.model.name))
     try:
-        dqn.learn(cfg.baseline.train.timesteps, log_interval=10)
+        alg.learn(cfg.baseline.train.timesteps, log_interval=10)
     except KeyboardInterrupt:
         answered = False
         while not answered:
@@ -39,11 +38,11 @@ def train(cfg: DictConfig):
             if save.lower() in ["n", "no"]:
                 raise KeyboardInterrupt()
             elif save.lower() in ["y", "yes"]:
-                dqn.save(model_save_path)
+                alg.save(model_save_path)
                 print(f"Model saved under {model_save_path}")
                 raise KeyboardInterrupt()
 
-    dqn.save(model_save_path)
+    alg.save(model_save_path)
     print(f"Model saved under {model_save_path}")
 
 
@@ -52,7 +51,7 @@ def evaluate(cfg: DictConfig):
     Loads and evaluates a trained topology policy. Results are stored under data/evaluation.
     :param cfg: The hydra configuration.
     """
-    dqn: DQN = model_setup(cfg, load_weights_from=Path(base_path_models.joinpath(cfg.baseline.model.name)))
+    alg: BaseAlgorithm = model_setup(cfg, load_weights_from=Path(base_path_models.joinpath(cfg.baseline.model.name)))
     env: Grid2OpEnvWrapper = get_env(cfg)
 
     for _ in range(cfg.baseline.eval.nb_episodes):
@@ -60,7 +59,7 @@ def evaluate(cfg: DictConfig):
         cumulative_reward = 0
         episode_length = 0
         while True:
-            act, _ = dqn.predict(obs, deterministic=True)
+            act, _ = alg.predict(obs, deterministic=True)
             obs, reward, done, truncated, info = env.step(act.item())
             if done or truncated:
                 break
@@ -83,7 +82,7 @@ def evaluate(cfg: DictConfig):
         evaluate_agent(
             agent=build_agent(cfg, Path(base_path_models.joinpath(cfg.baseline.model.name))),
             env=env,
-            num_episodes=cfg.baseline.eval.nb_episodes, # len(env.chronics_handler.subpaths),  # run all episodes
+            num_episodes=cfg.baseline.eval.nb_episodes,
             path_results=Path(base_path_evaluations.joinpath(cfg.baseline.model.name + "_agent", dataset))
         )
 
@@ -96,14 +95,14 @@ def build_agent(cfg: DictConfig, load_weights_from: Optional[Path] = None) -> Ba
     :param load_weights_from: the path to the model to load
     :return: a baseline agent using the trained topology policy
     """
-    dqn = model_setup(cfg, load_weights_from)
+    alg = model_setup(cfg, load_weights_from)
     return BaselineAgent(
         grid2op.make(cfg.env.env_name).action_space,
-        TopoPolicyStableDQN(dqn),
+        instantiate(cfg.baseline.model.topology_policy, alg=alg),
     )
 
 
-def model_setup(cfg: DictConfig, load_weights_from: Optional[Path] = None) -> DQN:
+def model_setup(cfg: DictConfig, load_weights_from: Optional[Path] = None) -> BaseAlgorithm:
     """
     Given the hydra config and a place to load the model weights from returns a reproducible DQN.
 
@@ -124,7 +123,7 @@ def model_setup(cfg: DictConfig, load_weights_from: Optional[Path] = None) -> DQ
     elif cfg.baseline.model.sb3.policy_kwargs.get("features_extractor_class") is not None:
         raise ValueError("Unknown feature extractor class" + cfg.baseline.model.sb3.policy_kwargs.get("features_extractor_class"))
 
-    dqn: DQN = instantiate(
+    alg: BaseAlgorithm = instantiate(
         cfg.baseline.model.sb3,
         env=env,
         tensorboard_log=base_path_logs.joinpath(cfg.baseline.model.name),
@@ -133,8 +132,8 @@ def model_setup(cfg: DictConfig, load_weights_from: Optional[Path] = None) -> DQ
 
     # load weights
     if load_weights_from is not None:
-        dqn.set_parameters(load_weights_from)
-    return dqn
+        alg.set_parameters(load_weights_from)
+    return alg
 
 
 @hydra.main(config_path="../hydra_configs", config_name="config", version_base="1.3")
