@@ -30,7 +30,7 @@ class TopoPolicyStableDQN(TopologyPolicy):
         # Convert observation to a tensor
         gym_obs = self.dqn.observation_space.to_gym(observation)
         if isinstance(gym_obs, np.ndarray):
-            obs_batch = torch.from_numpy(gym_obs).unsqueeze(0).to(dtype=torch.float32)
+            obs_batch = torch.from_numpy(gym_obs).unsqueeze(0).to(dtype=torch.float32, device=self.dqn.device)
         elif isinstance(gym_obs, Dict):
             obs_batch = {}
             for key, value in gym_obs.items():
