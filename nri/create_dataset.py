@@ -1,14 +1,10 @@
 """
 This script contains code to generate a dataset containing trajectories of the environment being operated by some agent.
-This dataset can further be used for NRI. The contained dataset contains trajectories for the following entities:
-- generators
-- loads
-- powerlines
 """
 
 import logging
 from datetime import datetime
-from typing import List, Tuple, Dict
+from typing import List, Dict
 
 import grid2op
 import hydra
