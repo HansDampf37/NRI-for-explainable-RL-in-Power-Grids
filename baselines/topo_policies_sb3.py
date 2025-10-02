@@ -34,7 +34,7 @@ class TopoPolicyStableDQN(TopologyPolicy):
         elif isinstance(gym_obs, Dict):
             obs_batch = {}
             for key, value in gym_obs.items():
-                obs_batch[key] = torch.from_numpy(value).unsqueeze(0).to(dtype=torch.float32)
+                obs_batch[key] = torch.from_numpy(value).unsqueeze(0).to(dtype=torch.float32, device=self.dqn.device)
         else:
             raise NotImplementedError(f"Unknown gym obs type {gym_obs.__class__.__name__}")
 
@@ -54,7 +54,7 @@ class TopoPolicyStablePPO(TopologyPolicy):
     Implements the interface of a topology policy. Uses a PPO trained by the stable-baselines3 library.
     """
 
-    def __init__(self, alg: DQN):
+    def __init__(self, alg: PPO): #TODO check if this can be unified with TopoPolicyStableDQN
         """
         Initializes the topology policy that can be used to search for promising moves
 
@@ -74,7 +74,7 @@ class TopoPolicyStablePPO(TopologyPolicy):
         elif isinstance(gym_obs, Dict):
             obs_batch = {}
             for key, value in gym_obs.items():
-                obs_batch[key] = torch.from_numpy(value).unsqueeze(0).to(dtype=torch.float32)
+                obs_batch[key] = torch.from_numpy(value).unsqueeze(0).to(dtype=torch.float32, device=self.ppo.device)
         else:
             raise NotImplementedError(f"Unknown gym obs type {gym_obs.__class__.__name__}")
 
