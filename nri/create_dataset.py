@@ -1,7 +1,6 @@
 """
 This script contains code to generate a dataset containing trajectories of the environment being operated by some agent.
 """
-
 import logging
 from datetime import datetime
 from typing import List, Dict
@@ -13,7 +12,7 @@ from grid2op.Agent import BaseAgent, RandomAgent, DoNothingAgent, RecoPowerlineA
 from grid2op.Environment import Environment
 from grid2op.Observation import BaseObservation
 from hydra.utils import instantiate
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 
 from baselines.train_stable_baseline import build_agent
@@ -67,7 +66,8 @@ def sample_trajectory(length: int, agent: BaseAgent, env: Environment, max_retri
     return trajectory
 
 
-def generate_dataset(num_sims: int, length: int, agent: BaseAgent, env: Environment, observation_converter: GraphObservationSpace) -> Dict:
+def generate_dataset(num_sims: int, length: int, agent: BaseAgent, env: Environment,
+                     observation_converter: GraphObservationSpace) -> Dict:
     """
     Creates a dataset containing multiple trajectories of the environment being operated by some agent.
     :param num_sims: the amount of trajectories to generate
@@ -93,7 +93,7 @@ def generate_dataset(num_sims: int, length: int, agent: BaseAgent, env: Environm
 
 @hydra.main(config_path="../hydra_configs", config_name="config", version_base="1.3")
 def main(cfg: DictConfig):
-    print(cfg)
+    print(OmegaConf.to_yaml(cfg))
     # create env + observation space
     env = grid2op.make(cfg.env.env_name)
     observation_converter: GraphObservationSpace = instantiate(

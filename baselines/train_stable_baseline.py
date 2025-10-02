@@ -8,7 +8,7 @@ import grid2op
 import hydra
 from hydra.utils import instantiate
 from lightsim2grid import LightSimBackend
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 from stable_baselines3.common.base_class import BaseAlgorithm
 
 from baselines.baseline_agent import BaselineAgent, evaluate_agent
@@ -81,7 +81,7 @@ def evaluate(cfg: DictConfig):
         env = grid2op.make(f"{cfg.env.env_name}_{dataset}", backend=LightSimBackend())
         evaluate_agent(
             agent=build_agent(cfg, Path(base_path_models.joinpath(cfg.baseline.model.name))),
-            env=env,
+            env=grid2op_env,
             num_episodes=cfg.baseline.eval.nb_episodes,
             path_results=Path(base_path_evaluations.joinpath(cfg.baseline.model.name + "_agent", dataset))
         )
@@ -138,6 +138,7 @@ def model_setup(cfg: DictConfig, load_weights_from: Optional[Path] = None) -> Ba
 
 @hydra.main(config_path="../hydra_configs", config_name="config", version_base="1.3")
 def main(cfg: DictConfig):
+    print(OmegaConf.to_yaml(cfg))
     train(cfg)
     evaluate(cfg)
 
