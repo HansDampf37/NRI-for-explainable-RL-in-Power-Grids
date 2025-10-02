@@ -15,5 +15,5 @@ cd ..
 module load devel/miniforge
 conda activate RL
 
-python test_cuda.py && PYTHONPATH=$(pwd) python train_baseline.py baseline.model=gnn_dqn baseline.obs_space=graph_obs_space env.safe_max_rho=0.9 baseline.model.name=gnn-dqn-rho98-mazereward_uc3
+python test_cuda.py && PYTHONPATH=$(pwd) python baselines/train_stable_baseline.py baseline=gnn_dqn env.safe_max_rho=0.9 baseline.model.name=gnn-dqn-rho9-mazereward_uc3
 EOF
