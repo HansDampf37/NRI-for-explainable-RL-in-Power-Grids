@@ -14,6 +14,7 @@ from stable_baselines3.common.base_class import BaseAlgorithm
 from baselines.baseline_agent import BaselineAgent, evaluate_agent
 from common import Grid2OpEnvWrapper
 from common.grid2op_env_wrapper import get_env
+from common.rewards import MazeRLReward
 
 logging.basicConfig(level=logging.WARN, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -78,7 +79,7 @@ def evaluate(cfg: DictConfig):
         }, f, indent=4)
 
     for dataset in ["train", "test", "val"]:
-        env = grid2op.make(f"{cfg.env.env_name}_{dataset}", backend=LightSimBackend())
+        grid2op_env = grid2op.make(f"{cfg.env.env_name}_{dataset}", backend=LightSimBackend(), reward_class=MazeRLReward)
         evaluate_agent(
             agent=build_agent(cfg, Path(base_path_models.joinpath(cfg.baseline.model.name))),
             env=grid2op_env,
