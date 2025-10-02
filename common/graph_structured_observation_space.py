@@ -1,3 +1,21 @@
+"""
+This script contains observation space classes that transform the observation from grid2op into gymnasium Dict-like
+observations. The dict structures the data into node-data, edge-data, global data, and edge index.
+The edge index is an adjacency list of shape [2, NUM_EDGES].
+
+This script contains two classes:
+GraphObservationSpace:
+This observation considers the Graph G=(V,E) where:
+- V = {loads, generators, substations}
+- E = {powerlines, connections from loads/generators to substations}
+
+BipartiteGraphObservationSpace:
+This observation considers the bipartit Graph G=(V+E,E') where:
+- V = {loads, generators, substations}
+- E = {powerlines, connections from loads/generators to substations}
+- E' = {(v,e) in V x E | v == e[0] || v == e[1]}
+"""
+
 from typing import List, Optional
 
 import numpy as np
@@ -7,9 +25,6 @@ from gymnasium.spaces import Dict, Box
 NODES = "node_features"
 EDGES = "edge_features"
 EDGE_INDEX = "edge_index"
-GENERATORS = "generator_features"
-LOADS = "load_features"
-LINES = "lines_features"
 GLOBAL = "global_features"
 
 
@@ -17,13 +32,10 @@ class GraphObservationSpace(Dict):
     """
     This Observation space implements the Dict action space from gymnasium. It returns a dict features for the following
     elements of the grid2op observation object:
-    - generator_features: a Box-space containing features for generators
-    - load_features: a Box-space containing features for loads
-    - line_features: a Box-space containing features for lines
     - global_features: a Box-space containing global features of the powergrid (time, date, ...)
     - edge_index: a Box-space containing the adjacency list as [2, E] array
     - node_features: a Box-space containing merged features for nodes (generators, loads, substations)
-    - edge_features: identical to line_features but including zero entries for connections from loads and generators to substations
+    - edge_features: a Box-space containing powerline features for edges (and zero feature vectors for powerlines connecting loads and generators to their substations)
 
 
     This assumes a static graph structure of the grid which is realistic for the grid2op scenario.
@@ -64,55 +76,10 @@ class GraphObservationSpace(Dict):
             result[EDGES] = self.edge_features_from_observation(g2op_obs)
         if NODES in self.spaces_to_keep:
             result[NODES] = self.node_features_from_observation(g2op_obs)
-        if LINES in self.spaces_to_keep:
-            result[LINES] = self.line_features_from_observation(g2op_obs)
-        if GENERATORS in self.spaces_to_keep:
-            result[GENERATORS] = self.generator_features_from_observation(g2op_obs)
-        if LOADS in self.spaces_to_keep:
-            result[LOADS] = self.load_features_from_observation(g2op_obs)
         if EDGE_INDEX in self.spaces_to_keep:
             result[EDGE_INDEX] = self.edge_index
 
         return result
-
-    @staticmethod
-    def generator_features_from_observation(obs: BaseObservation) -> np.ndarray:
-        """
-        Returns a numpy representation of the features for generators in the observation. The returned numpy array
-        is of shape (n, x) where n is the number of generators and x is the number of features per generator.
-
-        :param obs: The observation
-        :return: the numpy representation of the generators in the observation
-        """
-        return np.array([
-            obs.gen_pmax,  # the maximum power (in MW)
-            obs.gen_p,  # the current power (in MW)
-            obs.gen_q,  # the current reactive power (in MVar)
-            obs.gen_v,  # the voltage at the bus (in kV)
-            obs.gen_theta,  # the voltage angle at the bus (in deg)
-            obs.target_dispatch,  # the dispatch asked for by the agent
-            obs.actual_dispatch,
-            # the dispatch implemented by the environment (might differ to the above due to physical constraints)
-            obs.curtailment_limit_mw,  # the production limit of the renewable generator (in MW)
-            obs.gen_bus  # the bus that this generator is connected to (1, 2 or -1)
-        ]).transpose()
-
-    @staticmethod
-    def load_features_from_observation(obs: BaseObservation) -> np.ndarray:
-        """
-        Returns a numpy representation of the features for loads in the observation. The returned numpy array
-        is of shape (n, x) where n is the number of loads and x is the number of features per load.
-
-        :param obs: The observation
-        :return: the numpy representation of the loads in the observation
-        """
-        return np.array([
-            obs.load_p,  # the power (in MW)
-            obs.load_q,  # the reactive power (in MVar)
-            obs.load_v,  # the voltage at the bus (in kV)
-            obs.load_theta,  # the voltage angle at the bus (in deg)
-            obs.load_bus  # the bus that this load is connected to (1, 2 or -1)
-        ]).transpose()
 
     @staticmethod
     def line_features_from_observation(obs: BaseObservation) -> np.ndarray:
@@ -189,12 +156,6 @@ class GraphObservationSpace(Dict):
         lines_connecting_generators = np.zeros((obs.n_gen, GraphObservationSpace.NUM_FEATURES_PER_LINE))
         lines_connecting_loads = np.zeros((obs.n_load, GraphObservationSpace.NUM_FEATURES_PER_LINE))
 
-        # lines_connecting_generators[:,0] = np.ones(obs.n_gen)
-        # lines_connecting_loads[:,3] = obs.gen_p
-        # lines_connecting_loads[:,4] = obs.gen_q
-        # lines_connecting_loads[:,6] = obs.gen_theta
-        # lines_connecting_loads[:,0] = np.ones(obs.n_load)
-
         return np.concatenate([line_features, lines_connecting_generators, lines_connecting_loads], axis=0)
 
     def close(self):
@@ -232,12 +193,6 @@ class GraphObservationSpace(Dict):
             result[NODES] = Box(low=-np.inf, high=np.inf, shape=(self.n_node, self.NUM_FEATURES_PER_NODE))
         if EDGES in spaces_to_keep:
             result[EDGES] = Box(low=-np.inf, high=np.inf, shape=(self.n_edge, self.NUM_FEATURES_PER_EDGE))
-        if LOADS in spaces_to_keep:
-            result[LOADS] = Box(low=-np.inf, high=np.inf, shape=(self.n_load, self.NUM_FEATURES_PER_LOAD))
-        if GENERATORS in spaces_to_keep:
-            result[GENERATORS] = Box(low=-np.inf, high=np.inf, shape=(self.n_gen, self.NUM_FEATURES_PER_GENERATOR))
-        if LINES in spaces_to_keep:
-            result[LINES] = Box(low=-np.inf, high=np.inf, shape=(self.n_line, self.NUM_FEATURES_PER_LINE))
         if EDGE_INDEX in spaces_to_keep:
             result[EDGE_INDEX] = Box(low=0, high=1, shape=(2, self.n_edge), dtype=np.long)
 
@@ -258,6 +213,7 @@ class BipartitGraphObservationSpace(Dict):
         self.graph_obs_space = GraphObservationSpace(grid2op_observation_space,[NODES, EDGES, EDGE_INDEX])
         self.n_node_bipart = self.graph_obs_space.n_node + self.graph_obs_space.n_edge
         self.n_edge_bipart = 2*self.graph_obs_space.n_edge
+        self.spaces_to_keep = [NODES, EDGE_INDEX]
 
         super().__init__({
             NODES: Box(low=-np.inf, high=np.inf, shape=(self.n_node_bipart, self.NUM_FEATURES_PER_NODE)),

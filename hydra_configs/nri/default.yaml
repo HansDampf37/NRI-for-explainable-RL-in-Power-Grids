@@ -1,5 +1,5 @@
 defaults:
-    -   obs_space: node_features_obs_space # the observations in our dataset will be from this space
+    -   obs_space: bipartit_node_features_obs_space # the observations in our dataset will be from this space
 
 agent: baseline # which agent is operating the grid
 model_path: data/models/stable-baselines/dqn-gnn_uc3 # if we use baseline we need to provide a path to the weights

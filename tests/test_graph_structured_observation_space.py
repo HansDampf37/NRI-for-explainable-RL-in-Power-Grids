@@ -35,16 +35,6 @@ class TestGraphStructuredObservationSpace(unittest.TestCase):
         line_features = self.obs_space.line_features_from_observation(obs)
         self.assertEqual(line_features.shape, (self.env.n_line, self.obs_space.NUM_FEATURES_PER_LINE))
 
-    def test_load_features_from_obs(self):
-        obs = self.env.reset()
-        load_features = self.obs_space.load_features_from_observation(obs)
-        self.assertEqual(load_features.shape, (self.env.n_load, self.obs_space.NUM_FEATURES_PER_LOAD))
-
-    def test_generator_features_from_obs(self):
-        obs = self.env.reset()
-        gen_features = self.obs_space.generator_features_from_observation(obs)
-        self.assertEqual(gen_features.shape, (self.env.n_gen, self.obs_space.NUM_FEATURES_PER_GENERATOR))
-
     def test_node_features_from_obs(self):
         obs = self.env.reset()
         num_nodes = self.env.n_gen + self.env.n_load + self.env.n_sub
