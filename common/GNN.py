@@ -7,7 +7,7 @@ from torch import nn, Tensor
 
 from .MLP import MLP
 from .graph_structured_observation_space import GraphObservationSpace, EDGE_INDEX, \
-    EDGE_FEATURES, NODE_FEATURES
+    EDGES, NODES
 
 
 class MessagePassing(nn.Module):
@@ -219,8 +219,8 @@ class SB3GNNWrapper(BaseFeaturesExtractor):
     ):
         BaseFeaturesExtractor.__init__(self, observation_space, features_dim=node_out_dim + edge_out_dim)
         self.gnn_feature_extractor = GNNFeatureExtractor(
-            x_dim=observation_space.spaces[NODE_FEATURES].shape[1],
-            e_dim=observation_space.spaces[EDGE_FEATURES].shape[1],
+            x_dim=observation_space.spaces[NODES].shape[1],
+            e_dim=observation_space.spaces[EDGES].shape[1],
             hidden_x_dim=hidden_x_dim,
             hidden_e_dim=hidden_e_dim,
             out_x_dim=node_out_dim,
@@ -232,8 +232,8 @@ class SB3GNNWrapper(BaseFeaturesExtractor):
 
     def forward(self, observations: dict[str, Tensor]) -> Tensor:
         # TODO edge_index batching not clean doesnt work for changing graphs
-        node_features = observations[NODE_FEATURES]  # [B, N, node_in_dim]
-        edge_features = observations[EDGE_FEATURES]  # [B, E, edge_in_dim]
+        node_features = observations[NODES]  # [B, N, node_in_dim]
+        edge_features = observations[EDGES]  # [B, E, edge_in_dim]
         edge_index = observations[EDGE_INDEX][0].to(dtype=torch.long)  # [2, E]  (shared across batch)
         return self.gnn_feature_extractor.forward(node_features, edge_features, edge_index)
 

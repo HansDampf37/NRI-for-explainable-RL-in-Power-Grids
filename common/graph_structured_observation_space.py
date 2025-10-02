@@ -4,13 +4,13 @@ import numpy as np
 from grid2op.Observation import BaseObservation, ObservationSpace
 from gymnasium.spaces import Dict, Box
 
-NODE_FEATURES = "node_features"
-EDGE_FEATURES = "edge_features"
+NODES = "node_features"
+EDGES = "edge_features"
 EDGE_INDEX = "edge_index"
-GENERATOR_FEATURES = "generator_features"
-LOAD_FEATURES = "load_features"
-LINES_FEATURES = "lines_features"
-GLOBAL_FEATURES = "global_features"
+GENERATORS = "generator_features"
+LOADS = "load_features"
+LINES = "lines_features"
+GLOBAL = "global_features"
 
 
 class GraphObservationSpace(Dict):
@@ -21,7 +21,10 @@ class GraphObservationSpace(Dict):
     - load_features: a Box-space containing features for loads
     - line_features: a Box-space containing features for lines
     - global_features: a Box-space containing global features of the powergrid (time, date, ...)
-    - adj_matrix: a Box-space containing adjacency matrix of the grid
+    - edge_index: a Box-space containing the adjacency list as [2, E] array
+    - node_features: a Box-space containing merged features for nodes (generators, loads, substations)
+    - edge_features: identical to line_features but including zero entries for connections from loads and generators to substations
+
 
     This assumes a static graph structure of the grid which is realistic for the grid2op scenario.
     """
@@ -38,10 +41,15 @@ class GraphObservationSpace(Dict):
         :param grid2op_observation_space: original g2op observation space
         :param spaces_to_keep: which spaces to keep (global_features, node_features, edge_features, edge_index, generator_features, load_features, line_features)
         """
-        spaces_to_keep = spaces_to_keep or [NODE_FEATURES, EDGE_FEATURES, EDGE_INDEX]
-        super().__init__(self._dict_description_from_inputs(grid2op_observation_space, spaces_to_keep))
+        self.spaces_to_keep = spaces_to_keep or [NODES, EDGES, EDGE_INDEX]
+        self.n_gen = grid2op_observation_space.n_gen
+        self.n_load = grid2op_observation_space.n_load
+        self.n_line = grid2op_observation_space.n_line
+        self.n_sub = grid2op_observation_space.n_sub
+        self.n_node = self.n_load + self.n_sub + self.n_gen
+        self.n_edge = self.n_line + self.n_load + self.n_gen
         self.edge_index = self._generate_edge_index(grid2op_observation_space)
-        self.spaces_to_keep = spaces_to_keep
+        super().__init__(self._dict_description_from_inputs(self.spaces_to_keep))
 
     def to_gym(self, g2op_obs: BaseObservation) -> dict[str, np.ndarray]:
         """
@@ -50,18 +58,18 @@ class GraphObservationSpace(Dict):
         :return: a gym-like dict observation.
         """
         result: dict[str, np.ndarray] = {}
-        if GLOBAL_FEATURES in self.spaces_to_keep:
-            result[GLOBAL_FEATURES] = self.global_features_from_observation(g2op_obs)
-        if EDGE_FEATURES in self.spaces_to_keep:
-            result[EDGE_FEATURES] = self.edge_features_from_observation(g2op_obs)
-        if NODE_FEATURES in self.spaces_to_keep:
-            result[NODE_FEATURES] = self.node_features_from_observation(g2op_obs)
-        if LINES_FEATURES in self.spaces_to_keep:
-            result[LINES_FEATURES] = self.line_features_from_observation(g2op_obs)
-        if GENERATOR_FEATURES in self.spaces_to_keep:
-            result[GENERATOR_FEATURES] = self.generator_features_from_observation(g2op_obs)
-        if LOAD_FEATURES in self.spaces_to_keep:
-            result[LOAD_FEATURES] = self.load_features_from_observation(g2op_obs)
+        if GLOBAL in self.spaces_to_keep:
+            result[GLOBAL] = self.global_features_from_observation(g2op_obs)
+        if EDGES in self.spaces_to_keep:
+            result[EDGES] = self.edge_features_from_observation(g2op_obs)
+        if NODES in self.spaces_to_keep:
+            result[NODES] = self.node_features_from_observation(g2op_obs)
+        if LINES in self.spaces_to_keep:
+            result[LINES] = self.line_features_from_observation(g2op_obs)
+        if GENERATORS in self.spaces_to_keep:
+            result[GENERATORS] = self.generator_features_from_observation(g2op_obs)
+        if LOADS in self.spaces_to_keep:
+            result[LOADS] = self.load_features_from_observation(g2op_obs)
         if EDGE_INDEX in self.spaces_to_keep:
             result[EDGE_INDEX] = self.edge_index
 
@@ -189,7 +197,6 @@ class GraphObservationSpace(Dict):
 
         return np.concatenate([line_features, lines_connecting_generators, lines_connecting_loads], axis=0)
 
-
     def close(self):
         pass
 
@@ -214,30 +221,72 @@ class GraphObservationSpace(Dict):
             np.concatenate([powerline_target_idx, generator_target_idx, load_idx])
         ])
 
-    def _dict_description_from_inputs(self, g2op_obs_space: ObservationSpace, spaces_to_keep: List[str]) -> dict:
+    def _dict_description_from_inputs(self, spaces_to_keep: List[str]) -> dict:
         """
         Helper function to describe the final dict space
         """
-        n_gen = g2op_obs_space.n_gen
-        n_load = g2op_obs_space.n_load
-        n_sub = g2op_obs_space.n_sub
-        n_line = g2op_obs_space.n_line
-        n_node = n_gen + n_load + n_sub
-        n_edge = n_line + n_gen + n_load
         result = dict()
-        if GLOBAL_FEATURES in spaces_to_keep:
-            result[GLOBAL_FEATURES] = Box(low=-np.inf, high=np.inf, shape=(self.NUM_GLOBAL_FEATURES,))
-        if NODE_FEATURES in spaces_to_keep:
-            result[NODE_FEATURES] = Box(low=-np.inf, high=np.inf, shape=(n_node, self.NUM_FEATURES_PER_NODE))
-        if EDGE_FEATURES in spaces_to_keep:
-            result[EDGE_FEATURES] = Box(low=-np.inf, high=np.inf, shape=(n_edge, self.NUM_FEATURES_PER_EDGE))
-        if LOAD_FEATURES in spaces_to_keep:
-            result[LOAD_FEATURES] = Box(low=-np.inf, high=np.inf, shape=(n_load, self.NUM_FEATURES_PER_LOAD))
-        if GENERATOR_FEATURES in spaces_to_keep:
-            result[GENERATOR_FEATURES] = Box(low=-np.inf, high=np.inf, shape=(n_gen, self.NUM_FEATURES_PER_GENERATOR))
-        if LINES_FEATURES in spaces_to_keep:
-            result[LINES_FEATURES] = Box(low=-np.inf, high=np.inf, shape=(n_line, self.NUM_FEATURES_PER_LINE))
+        if GLOBAL in spaces_to_keep:
+            result[GLOBAL] = Box(low=-np.inf, high=np.inf, shape=(self.NUM_GLOBAL_FEATURES,))
+        if NODES in spaces_to_keep:
+            result[NODES] = Box(low=-np.inf, high=np.inf, shape=(self.n_node, self.NUM_FEATURES_PER_NODE))
+        if EDGES in spaces_to_keep:
+            result[EDGES] = Box(low=-np.inf, high=np.inf, shape=(self.n_edge, self.NUM_FEATURES_PER_EDGE))
+        if LOADS in spaces_to_keep:
+            result[LOADS] = Box(low=-np.inf, high=np.inf, shape=(self.n_load, self.NUM_FEATURES_PER_LOAD))
+        if GENERATORS in spaces_to_keep:
+            result[GENERATORS] = Box(low=-np.inf, high=np.inf, shape=(self.n_gen, self.NUM_FEATURES_PER_GENERATOR))
+        if LINES in spaces_to_keep:
+            result[LINES] = Box(low=-np.inf, high=np.inf, shape=(self.n_line, self.NUM_FEATURES_PER_LINE))
         if EDGE_INDEX in spaces_to_keep:
-            result[EDGE_INDEX] = Box(low=0, high=1, shape=(2, n_edge), dtype=np.long)
+            result[EDGE_INDEX] = Box(low=0, high=1, shape=(2, self.n_edge), dtype=np.long)
 
         return result
+
+
+class BipartitGraphObservationSpace(Dict):
+    """
+    This Observation space structures observation data similar to GraphObservationSpace in a graph-like structure.
+    In contrast to GraphObservationSpace this class creates a bipartit meta-graph G=(V+E, E').
+    The node set V+E contains nodes and edges from our previous graph. The edge set E' connects nodes v and e if they
+    are adjacent in the original graph.
+    """
+
+    NUM_FEATURES_PER_NODE = GraphObservationSpace.NUM_FEATURES_PER_NODE + GraphObservationSpace.NUM_FEATURES_PER_EDGE
+
+    def __init__(self, grid2op_observation_space: ObservationSpace):
+        self.graph_obs_space = GraphObservationSpace(grid2op_observation_space,[NODES, EDGES, EDGE_INDEX])
+        self.n_node_bipart = self.graph_obs_space.n_node + self.graph_obs_space.n_edge
+        self.n_edge_bipart = 2*self.graph_obs_space.n_edge
+
+        super().__init__({
+            NODES: Box(low=-np.inf, high=np.inf, shape=(self.n_node_bipart, self.NUM_FEATURES_PER_NODE)),
+            EDGE_INDEX: Box(low=0, high=1, shape=(2, self.n_edge_bipart), dtype=np.long)
+        })
+
+    def to_gym(self, g2op_obs: BaseObservation) -> dict[str, np.ndarray]:
+        d = self.graph_obs_space.to_gym(g2op_obs)
+        node_features = d[NODES]  # [N, N_dim]
+        edge_features = d[EDGES]  # [E, E_dim]
+        number_nodes, number_node_features = node_features.shape  # N, N_dim
+        number_edges, number_edge_features = edge_features.shape  # E, E_dim
+        padding_1 = np.zeros(shape=(number_edges, number_node_features))  # [E, N_dim]
+        padding_2 = np.zeros(shape=(number_nodes, number_edge_features))  # [N, E_dim]
+        padded_node_features = np.concatenate([node_features, padding_1], axis=0)  # [N + E, N_dim]
+        padded_edge_features = np.concatenate([padding_2, edge_features], axis=0)  # [N + E, E_dim]
+        bipartit_node_features = np.concatenate([padded_node_features, padded_edge_features], axis=1)  # [N + E, N_dim + E_dim]
+
+        edge_index = d[EDGE_INDEX]
+        edge_indices = np.arange(number_edges) + number_nodes
+
+        bipartit_edge_index_source = np.stack([edge_index[0], edge_indices])
+        bipartit_edge_index_target = np.stack([edge_indices, edge_index[1]])
+        bipartit_edge_index = np.concatenate([bipartit_edge_index_source, bipartit_edge_index_target], axis=1)
+
+        return {
+            NODES: bipartit_node_features,
+            EDGE_INDEX: bipartit_edge_index
+        }
+
+    def close(self):
+        pass
