@@ -71,7 +71,6 @@ class BaselineAgent(RecoPowerlineAgent):
             # if we are safe we don't do anything except reconnections
             return reconnection_actions
         else:
-            logger.info("Congestion detected. Searching for topology actions.")
             # we search for topology actions if max rho is too high
             topology_actions = self.topology_policy.get_k_best_actions(observation, self.k)
             return reconnection_actions + topology_actions

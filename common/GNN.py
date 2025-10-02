@@ -183,7 +183,7 @@ class GNNFeatureExtractor(nn.Module):
             residual=False,
         )
 
-    def forward(self, x: Tensor, e: Tensor, edge_index: np.ndarray) -> Tensor:
+    def forward(self, x: Tensor, e: Tensor, edge_index: np.ndarray | Tensor) -> Tensor:
         """
         Forward pass.
 
@@ -230,7 +230,7 @@ class SB3GNNWrapper(BaseFeaturesExtractor):
             residual=residual
         )
 
-    def forward(self, observations: dict) -> Tensor:
+    def forward(self, observations: dict[str, Tensor]) -> Tensor:
         # TODO edge_index batching not clean doesnt work for changing graphs
         node_features = observations[NODE_FEATURES]  # [B, N, node_in_dim]
         edge_features = observations[EDGE_FEATURES]  # [B, E, edge_in_dim]
