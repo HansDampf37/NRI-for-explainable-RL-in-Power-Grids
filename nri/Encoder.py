@@ -1,10 +1,11 @@
-from typing import Union
+from typing import Union, Optional
 
 import numpy as np
 import torch
 from torch import nn, Tensor
 
 from common.MLP import MLP
+from nri.utils import fully_connected_edge_index
 
 
 class Encoder(nn.Module):
@@ -58,23 +59,11 @@ class Encoder(nn.Module):
             dropout_prob=do_prob
         )
 
-    @staticmethod
-    def fully_connected_edge_index(num_nodes: int, self_loops: bool = False) -> Tensor:
+    def forward(self, x: Tensor, edge_index: Optional[Tensor] = None) -> Tensor:
         """
-        Create an edge index representing a fully connected graph with num_nodes nodes.
-        """
-        senders, receivers = torch.meshgrid(
-            torch.arange(num_nodes), torch.arange(num_nodes), indexing="ij"
-        )
-        edge_index = torch.stack([senders.flatten(), receivers.flatten()], dim=0)
-        if not self_loops:
-            edge_index = edge_index[:, edge_index[0] != edge_index[1]]
-        return edge_index
-
-    def forward(self, x: Tensor) -> Tensor:
-        """
-        Predicts edge type for each edge.
+        Predicts edge type for each edge in edge_index.
         :param x: node features [B, N, nb_timesteps * X_dim]
+        :param edge_index: node adjacency [2, E]. Only latent edges that are included in this argument are detected. Per default this is fully meshed.
         """
         # Input shape: [num_sims, num_atoms, num_timesteps, num_dims]
         num_trajectory = x.size(0)
@@ -83,7 +72,7 @@ class Encoder(nn.Module):
         node_features = x.size(3)
         # New shape: [num_sims, num_atoms, num_timesteps*num_dims]
         x = x.view(num_trajectory, num_nodes, trajectory_len * node_features)
-        edge_index = self.fully_connected_edge_index(num_nodes).to(x.device)
+        edge_index = edge_index or fully_connected_edge_index(num_nodes=num_nodes, self_loops=False).to(x.device)
 
         # embed each node in lower dimensional space
         x = self.f_emb(x)  # 2-layer ELU net per node

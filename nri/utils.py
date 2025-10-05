@@ -1,10 +1,25 @@
 import numpy as np
 import torch
+from torch import Tensor
 from torch.utils.data.dataset import TensorDataset
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
 from torch.autograd import Variable
 
+
+def fully_connected_edge_index(num_nodes: int, self_loops: bool = False) -> Tensor:
+    """
+    Create an edge index representing a fully connected graph with num_nodes nodes.
+    :param num_nodes: Number of nodes in the graph.
+    :param self_loops: If true, create self-loops.
+    """
+    senders, receivers = torch.meshgrid(
+        torch.arange(num_nodes), torch.arange(num_nodes), indexing="ij"
+    )
+    edge_index = torch.stack([senders.flatten(), receivers.flatten()], dim=0)
+    if not self_loops:
+        edge_index = edge_index[:, edge_index[0] != edge_index[1]]
+    return edge_index
 
 def my_softmax(input, axis=1):
     trans_input = input.transpose(axis, 0).contiguous()

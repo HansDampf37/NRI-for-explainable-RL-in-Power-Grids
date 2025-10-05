@@ -120,7 +120,7 @@ class TestGnnFeatureExtractor(unittest.TestCase):
             hidden_x_dim=32,
             hidden_e_dim=32,
             out_x_dim=4,
-            edge_e_dim=0,
+            out_e_dim=0,
             n_layers=3,
         )
 

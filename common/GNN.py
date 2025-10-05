@@ -135,7 +135,7 @@ class GNNFeatureExtractor(nn.Module):
             hidden_x_dim: int,
             hidden_e_dim: int,
             out_x_dim: int,
-            edge_e_dim: int,
+            out_e_dim: int,
             n_layers: int = 3,
             dropout_prob: float = 0.0,
             residual=True
@@ -148,7 +148,7 @@ class GNNFeatureExtractor(nn.Module):
         :param hidden_x_dim: hidden dim for node embeddings
         :param hidden_e_dim: hidden dim for edge embeddings
         :param out_x_dim: output node feature dimension
-        :param edge_e_dim: output edge feature dimension
+        :param out_e_dim: output edge feature dimension
         :param n_layers: number of message passing layers (default: 3)
         :param dropout_prob: dropout probability (default 0)
         :param residual: do residual connections in Conv layers (default True)
@@ -177,7 +177,7 @@ class GNNFeatureExtractor(nn.Module):
             x_dim=hidden_x_dim,
             e_dim=hidden_e_dim,
             output_x_dim=out_x_dim,
-            output_e_dim=edge_e_dim,
+            output_e_dim=out_e_dim,
             hidden_dim=max(hidden_x_dim, out_x_dim),
             dropout_prob=dropout_prob,
             residual=False,
@@ -224,7 +224,7 @@ class SB3GNNWrapper(BaseFeaturesExtractor):
             hidden_x_dim=hidden_x_dim,
             hidden_e_dim=hidden_e_dim,
             out_x_dim=node_out_dim,
-            edge_e_dim=edge_out_dim,
+            out_e_dim=edge_out_dim,
             n_layers=n_layers,
             dropout_prob=dropout_prob,
             residual=residual
