@@ -92,7 +92,8 @@ class Edge2Node(nn.Module):
 class EdgeNode2Node(nn.Module):
     """
     Implements the edge to node message passing by Kipf et al. in their decoder.
-    In contrast to the simple Edge2Node module this module inputs previous node features in the mlp
+    In contrast to the simple Edge2Node module here node features do not only depend on adjacent edge features but
+    also on previous node features.
     """
     def __init__(self, x_dim: int, e_dim: int, hidden_dim: int, x_out_dim: int, dropout_prob=0.):
         """

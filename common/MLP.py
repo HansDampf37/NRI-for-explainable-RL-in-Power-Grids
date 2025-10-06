@@ -52,7 +52,11 @@ class MLP(nn.Module):
         return x.view(inputs.shape) # shape it back
 
     def forward(self, inputs: Tensor) -> Tensor:
-        # Input shape: [num_trajectories, num_nodes, num_features]
+        """
+        Forwards the input through this module. The input can have multiple batch dimensions.
+        :param inputs: the input tensor [..., input_features]
+        :return: the output tensor [..., output_features]
+        """
         x = f.elu(self.fc1(inputs))
         x = f.dropout(x, self.dropout_prob, training=self.training)
         x = f.elu(self.fc2(x))

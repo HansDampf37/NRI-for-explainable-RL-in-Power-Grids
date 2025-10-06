@@ -115,8 +115,8 @@ class Decoder(nn.Module):
             predictions.append(x_t)
 
         # Combine predictions
-        T_and_modulo = predictions[0].size(1) * pred_steps
-        output = torch.zeros(B, T_and_modulo, N, x_dim, device=x.device)
+        T_plus_modulo_tail = predictions[0].size(1) * pred_steps
+        output = torch.zeros(B, T_plus_modulo_tail, N, x_dim, device=x.device)
         for i, p in enumerate(predictions):
             output[:, i::pred_steps, :, :] = p
 
