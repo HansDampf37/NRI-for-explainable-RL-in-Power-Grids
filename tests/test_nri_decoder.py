@@ -12,12 +12,13 @@ class TestDecoder(unittest.TestCase):
         self.x_dim = 16
         self.hidden_dim = 32
         self.num_edge_types = 2
+        self.trajectory_length = 100
 
         # random edge index [2, E]
         self.edge_index = torch.randint(0, self.num_nodes, (2, self.num_edges))
 
-        # node features: [B, N, F]
-        self.x = torch.randn(self.batch_size, self.num_nodes, self.x_dim)
+        # node features: [B, T, N, F]
+        self.x = torch.randn(self.batch_size, self.trajectory_length, self.num_nodes, self.x_dim)
 
         # edge type probabilities: [B, E, edge_types]
         self.edge_types = torch.rand(self.batch_size, self.edge_index.size(1), self.num_edge_types)
@@ -35,12 +36,13 @@ class TestDecoder(unittest.TestCase):
     def test_single_step_forward_shape(self):
         """Check that single_step_forward returns output of same shape as input."""
         with torch.no_grad():
-            out = self.decoder.single_step_forward(self.x, self.edge_types, self.edge_index)
-        self.assertEqual(out.shape, self.x.shape)
+            x = self.x[:, [0], :, :]
+            out = self.decoder.single_step_forward(x, self.edge_types, self.edge_index)
+        self.assertEqual(out.shape, x.shape)
 
     def test_differentiable(self):
         """Check that gradients can flow through the output."""
-        x = self.x.clone().requires_grad_(True)
+        x = self.x[:,[0],:,:].clone().requires_grad_(True)
         out = self.decoder.single_step_forward(x, self.edge_types, self.edge_index)
         loss = out.sum()
         loss.backward()
@@ -49,6 +51,12 @@ class TestDecoder(unittest.TestCase):
 
     def test_forward_shape(self):
         with torch.no_grad():
-            out = self.decoder.forward(self.x, self.edge_types, self.edge_index)
-        print(out, out.shape)
+            out = self.decoder.forward(self.x, self.edge_types, self.edge_index, pred_steps=4)
+        self.assertEqual(out.shape, self.x.shape)
+
+    def test_forward_with_pred_steps_modulo_1(self):
+        with torch.no_grad():
+            # 100 timesteps cannot be split into chunks of size 7
+            out = self.decoder.forward(self.x, self.edge_types, self.edge_index, pred_steps=7)
+        self.assertEqual(out.shape, self.x.shape)
 

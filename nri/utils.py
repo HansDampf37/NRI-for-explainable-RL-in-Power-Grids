@@ -38,14 +38,14 @@ class Node2Edge(nn.Module):
     def forward(self, x: Tensor, edge_index: Union[np.array, Tensor]) -> Tensor:
         """
         Aggregates node features into edge features.
-        :param x: node features [B, N, X_dim]
+        :param x: node features [B, T, N, X_dim]
         :param edge_index: adjacency information [2, E]
         """
         senders = edge_index[0]  # j
         receivers = edge_index[1]  # i
         # gather x_j and x_i per edge
-        x_j = x[:, senders, :]  # [B, E, x_dim]
-        x_i = x[:, receivers, :]  # [B, E, x_dim]
+        x_j = x[..., senders, :]  # [B, T, E, x_dim]
+        x_i = x[..., receivers, :]  # [B, T, E, x_dim]
         node_aggr = torch.cat([x_i, x_j], dim=-1)
         return self.psi(node_aggr)
 
@@ -72,18 +72,21 @@ class Edge2Node(nn.Module):
 
     def forward(self, e: Tensor, edge_index: Union[np.array, Tensor]) -> Tensor:
         """
-        Aggregates edge features into node features.
-        :param e: edge features [B, E, E_dim]
+        Aggregates edge features into node features. The input can have multiple batch dimensions.
+
+        :param e: edge features [..., E, E_dim]
         :param edge_index: adjacency information [2, E]
+        :return: node features [..., N, X_dim]
         """
         receivers = edge_index[1]
         # aggregate edge messages into nodes by receiver index
         with torch.no_grad():
-            batch_size = e.size(0)  # B
-            num_nodes = int(edge_index.max().item()) + 1
-            agg = e.new_zeros((batch_size, num_nodes, e.size()[-1]))
-        # index_add_ to sum messages into receivers rows
-        agg.index_reduce_(dim=1, index=receivers, source=e, reduce="mean")
+            N = int(edge_index.max().item()) + 1
+            target_shape = list(e.size())
+            target_shape[-2] = N
+            agg = e.new_zeros(tuple(target_shape))
+        # index_reduce_ to average messages into receivers rows
+        agg.index_reduce_(dim=-2, index=receivers, source=e, reduce="mean")
         return self.phi(agg)
 
 class EdgeNode2Node(nn.Module):
@@ -111,17 +114,20 @@ class EdgeNode2Node(nn.Module):
 
     def forward(self, x: Tensor, e: Tensor, edge_index: Union[np.array, Tensor]) -> Tensor:
         """
-        Aggregates node + edge features into node features.
-        :param x: node features [B, N, X_dim]
-        :param e: edge features [B, E, E_dim]
+        Aggregates node + edge features into node features. The input can have multiple batch dimensions.
+
+        :param x: node features [..., N, X_dim]
+        :param e: edge features [..., E, E_dim]
         :param edge_index: adjacency information [2, E]
+        :return: node features [..., N, X_dim]
         """
         receivers = edge_index[1]
         # aggregate edge messages into nodes by receiver index
         with torch.no_grad():
-            batch_size = e.size(0)  # B
-            num_nodes = int(edge_index.max().item()) + 1
-            agg = e.new_zeros((batch_size, num_nodes, e.size()[-1]))
-        # index_add_ to sum messages into receivers rows
-        agg.index_reduce_(dim=1, index=receivers, source=e, reduce="mean")
+            N = x.size(-2)
+            target_shape = list(e.size())
+            target_shape[-2] = N
+            agg = e.new_zeros(tuple(target_shape))
+        # index_reduce_ to average messages into receivers rows
+        agg.index_reduce_(dim=-2, index=receivers, source=e, reduce="mean")
         return self.phi(torch.cat([agg, x], dim=-1))

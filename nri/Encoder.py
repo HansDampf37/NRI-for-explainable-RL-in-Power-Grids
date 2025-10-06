@@ -10,7 +10,7 @@ from nri.utils import fully_connected_edge_index, Node2Edge, Edge2Node
 class Encoder(nn.Module):
     """
     Encoder closely inspired by Kipf et al.
-    Predicts posterior p(z|x) where x is one or more time steps of our environment and z is a distribution over edge types
+    Predicts posterior p(z|x) where x encodes several timesteps of our environment and z is a distribution over edge types
     for each edge of the fully meshed graph.
     """
     def __init__(self, x_dim: int, trajectory_length: int, hidden_dim: int, e_out_dim: int = 2, do_prob=0.):
@@ -62,17 +62,12 @@ class Encoder(nn.Module):
     def forward(self, x: Tensor, edge_index: Optional[Tensor] = None) -> Tensor:
         """
         Predicts edge type for each edge in edge_index.
-        :param x: node features [B, N, nb_timesteps, X_dim]
+        :param x: node features [B, T, N, X_dim]
         :param edge_index: node adjacency [2, E]. Only latent edges that are included in this argument are detected. Per default this is fully meshed.
         """
-        # Input shape: [num_sims, num_atoms, num_timesteps, num_dims]
-        num_trajectory = x.size(0)
-        num_nodes = x.size(1)
-        trajectory_len = x.size(2)
-        node_features = x.size(3)
-        # New shape: [num_sims, num_atoms, num_timesteps*num_dims]
-        x = x.view(num_trajectory, num_nodes, trajectory_len * node_features)
-        edge_index = edge_index if edge_index is not None else fully_connected_edge_index(x.size(dim=1))
+        B, T, N, x_dim = x.shape
+        x = x.view(B, N, T * x_dim)
+        edge_index = edge_index if edge_index is not None else fully_connected_edge_index(N)
 
         # embed each node in lower dimensional space
         x = self.f_emb(x)  # 2-layer ELU net per node
