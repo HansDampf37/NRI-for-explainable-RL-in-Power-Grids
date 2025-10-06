@@ -25,7 +25,7 @@ class TestNRIEncoder(unittest.TestCase):
             trajectory_length=self.trajectory_length,
             hidden_dim=self.hidden_dim,
             e_out_dim=self.e_out_dim,
-            do_prob=0.1
+            dropout_prob=0.1
         )
 
     def test_forward(self):
