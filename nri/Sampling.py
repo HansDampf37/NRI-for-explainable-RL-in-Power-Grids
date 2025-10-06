@@ -1,11 +1,13 @@
 import torch
-import torch.nn.functional as F
+import torch.nn.functional as f
 from torch import nn, Tensor
-from torch.autograd import Variable
 
 
 class GumbelSoftmax(nn.Module):
-    def __init__(self, tau: float=1.0, eps: float=1e-10):
+    """
+    Differentiable sampling from a categorical distribution using the Gumbel-Softmax trick.
+    """
+    def __init__(self, tau: float=1.0, eps: float = 1e-10):
         """
         Creates a gumbel-softmax module
         :param tau: non-negative scalar temperature
@@ -17,15 +19,22 @@ class GumbelSoftmax(nn.Module):
 
     def sample_gumbel(self, shape: torch.Size) -> Tensor:
         """
-        Sample Tensor according to gumbel distribution
+        Sample Gumbel noise from Gumbel(0, 1)
         """
         uniform_samples = torch.rand(shape).float()
         return -torch.log(self.eps - torch.log(uniform_samples + self.eps))
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor, hard: bool = False) -> Tensor:
         """
-        Draw a sample from the Gumbel-Softmax distribution.
-        :param x: [..., n_class] unnormalized log-probs
+        Draw a differentiable sample from the Gumbel-Softmax distribution.
+        :param x: logits [..., n_classes]
+        :param hard: if True, return one-hot (hard) samples with straight-through gradients
         """
         gumbel_noise = self.sample_gumbel(x.size()).to(device=x.device)
-        return F.softmax(x + Variable(gumbel_noise) / self.tau, dim=-1)
+        y = f.softmax((x + gumbel_noise) / self.tau, dim=-1)
+
+        if hard:
+            y_hard = torch.zeros_like(y)
+            y_hard.scatter_(-1, y.argmax(dim=-1, keepdim=True), 1.0)
+            y = (y_hard - y).detach() + y
+        return y

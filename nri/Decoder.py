@@ -72,12 +72,12 @@ class Decoder(nn.Module):
         _, E, NUM_EDGE_TYPES = edge_types.shape
 
         start_idx = 1 if self.skip_first else 0
-        edge_index = edge_index if edge_index is not None else fully_connected_edge_index(x.size(dim=1))
-        edge_types = edge_types.view(B, 1, E, NUM_EDGE_TYPES, 1)
+        edge_index = edge_index if edge_index is not None else fully_connected_edge_index(N, x.device)
+        edge_types = edge_types.view(B, 1, E, NUM_EDGE_TYPES)
 
         edge_properties_all = []
         for k in range(start_idx, self.num_edge_types):
-            edge_properties = edge_types[..., k, :] * self.node2edge_list[k](x, edge_index)
+            edge_properties = edge_types[..., k:k+1] * self.node2edge_list[k](x, edge_index)
             edge_properties_all.append(edge_properties)
         e = sum(edge_properties_all)
 
@@ -104,8 +104,8 @@ class Decoder(nn.Module):
         :param pred_steps: number of time steps to predict. Defaults to 1.
         :return: node features for next time step [B, N, pred_steps, X_dim]
         """
-        edge_index = edge_index if edge_index is not None else fully_connected_edge_index(x.size(dim=1))
         B, T, N, x_dim = x.shape
+        edge_index = edge_index if edge_index is not None else fully_connected_edge_index(N, x.device)
         assert pred_steps <= T, "pred_steps exceeds available timesteps"
         x_t = x[:, 0::pred_steps, :, :]
 
@@ -120,4 +120,4 @@ class Decoder(nn.Module):
         for i, p in enumerate(predictions):
             output[:, i::pred_steps, :, :] = p
 
-        return output[:, :T, :, :]
+        return output[:, :(T-1), :, :]

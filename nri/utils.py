@@ -7,11 +7,12 @@ from torch import Tensor, nn
 from common.MLP import MLP
 
 
-def fully_connected_edge_index(num_nodes: int, self_loops: bool = False) -> Tensor:
+def fully_connected_edge_index(num_nodes: int, device: str = "cpu", self_loops: bool = False) -> Tensor:
     """
     Create an edge index representing a fully connected graph with num_nodes nodes.
     :param num_nodes: Number of nodes in the graph.
     :param self_loops: If true, create self-loops.
+    :param device: Device to use.
     """
     senders, receivers = torch.meshgrid(
         torch.arange(num_nodes), torch.arange(num_nodes), indexing="ij"
@@ -19,7 +20,7 @@ def fully_connected_edge_index(num_nodes: int, self_loops: bool = False) -> Tens
     edge_index = torch.stack([senders.flatten(), receivers.flatten()], dim=0)
     if not self_loops:
         edge_index = edge_index[:, edge_index[0] != edge_index[1]]
-    return edge_index
+    return edge_index.to(device=device)
 
 class Node2Edge(nn.Module):
     """
@@ -80,11 +81,10 @@ class Edge2Node(nn.Module):
         """
         receivers = edge_index[1]
         # aggregate edge messages into nodes by receiver index
-        with torch.no_grad():
-            N = int(edge_index.max().item()) + 1
-            target_shape = list(e.size())
-            target_shape[-2] = N
-            agg = e.new_zeros(tuple(target_shape))
+        N = int(edge_index.max().item()) + 1
+        target_shape = list(e.size())
+        target_shape[-2] = N
+        agg = e.new_zeros(tuple(target_shape))
         # index_reduce_ to average messages into receivers rows
         agg.index_reduce_(dim=-2, index=receivers, source=e, reduce="mean")
         return self.phi(agg)
@@ -124,11 +124,17 @@ class EdgeNode2Node(nn.Module):
         """
         receivers = edge_index[1]
         # aggregate edge messages into nodes by receiver index
-        with torch.no_grad():
-            N = x.size(-2)
-            target_shape = list(e.size())
-            target_shape[-2] = N
-            agg = e.new_zeros(tuple(target_shape))
+        N = x.size(-2)
+        target_shape = list(e.size())
+        target_shape[-2] = N
+        agg = e.new_zeros(tuple(target_shape))
         # index_reduce_ to average messages into receivers rows
         agg.index_reduce_(dim=-2, index=receivers, source=e, reduce="mean")
         return self.phi(torch.cat([agg, x], dim=-1))
+
+def uniform_dist(dimension: int) -> torch.Tensor:
+    """
+    Return a uniform distribution with given dimension.
+    """
+    dist = np.ones((dimension,))
+    return Tensor(dist / np.sum(dist))

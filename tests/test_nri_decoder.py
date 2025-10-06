@@ -13,6 +13,7 @@ class TestDecoder(unittest.TestCase):
         self.hidden_dim = 32
         self.num_edge_types = 2
         self.trajectory_length = 100
+        self.prediction_length = self.trajectory_length - 1
 
         # random edge index [2, E]
         self.edge_index = torch.randint(0, self.num_nodes, (2, self.num_edges))
@@ -50,13 +51,15 @@ class TestDecoder(unittest.TestCase):
         self.assertEqual(x.grad.shape, x.shape)
 
     def test_forward_shape(self):
+        out_target_shape = (self.batch_size, self.prediction_length, self.num_nodes, self.x_dim)
         with torch.no_grad():
             out = self.decoder.forward(self.x, self.edge_types, self.edge_index, pred_steps=4)
-        self.assertEqual(out.shape, self.x.shape)
+        self.assertEqual(out.shape, out_target_shape)
 
     def test_forward_with_pred_steps_modulo_1(self):
+        out_target_shape = (self.batch_size, self.prediction_length, self.num_nodes, self.x_dim)
         with torch.no_grad():
             # 100 timesteps cannot be split into chunks of size 7
             out = self.decoder.forward(self.x, self.edge_types, self.edge_index, pred_steps=7)
-        self.assertEqual(out.shape, self.x.shape)
+        self.assertEqual(out.shape, out_target_shape)
 

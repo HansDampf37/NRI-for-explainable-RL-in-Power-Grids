@@ -68,7 +68,7 @@ class Encoder(nn.Module):
         B, T, N, x_dim = x.shape
         x = x.transpose(1, 2).contiguous()
         x = x.view(B, N, T * x_dim)
-        edge_index = edge_index if edge_index is not None else fully_connected_edge_index(N)
+        edge_index = edge_index if edge_index is not None else fully_connected_edge_index(N, x.device)
 
         # embed each node in lower dimensional space
         x = self.f_emb(x)  # 2-layer ELU net per node

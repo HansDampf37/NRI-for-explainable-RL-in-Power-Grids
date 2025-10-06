@@ -69,7 +69,7 @@ class NRIModule(nn.Module):
         :return: Predicted next step feature vector of shape [B, T, N, X_dim] and p(z|x)
         """
         B, T, N, X_dim = x.shape
-        edge_index = edge_index if edge_index is not None else fully_connected_edge_index(N)
+        edge_index = edge_index if edge_index is not None else fully_connected_edge_index(N, x.device)
         encoder_logits = self.encoder(x, edge_index)
 
         p_z_given_x = f.softmax(encoder_logits, dim=-1)
