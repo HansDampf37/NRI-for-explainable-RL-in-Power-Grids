@@ -23,8 +23,8 @@ class TestMessagePassing(unittest.TestCase):
         mp = MessagePassing(
             x_dim=self.num_node_features,
             e_dim=self.num_edge_features,
-            output_x_dim=num_node_features_out,
-            output_e_dim=num_edge_features_out,
+            x_out_dim=num_node_features_out,
+            e_out_dim=num_edge_features_out,
         )
         node_features, edge_features = mp(self.node_features, self.edge_features, self.edge_index)
         self.assertEqual(node_features.shape, torch.Size([self.batch_size, self.num_nodes, num_node_features_out]))
@@ -34,8 +34,8 @@ class TestMessagePassing(unittest.TestCase):
         kwargs = dict(
             x_dim=self.num_node_features,
             e_dim=self.num_edge_features,
-            output_x_dim=self.num_node_features + 1,
-            output_e_dim=self.num_edge_features + 1,
+            x_out_dim=self.num_node_features + 1,
+            e_out_dim=self.num_edge_features + 1,
             residual=True,
         )
         self.assertRaises(ValueError, MessagePassing, **kwargs)
@@ -44,8 +44,8 @@ class TestMessagePassing(unittest.TestCase):
         MessagePassing(
             x_dim=self.num_node_features,
             e_dim=self.num_edge_features,
-            output_x_dim=self.num_node_features,
-            output_e_dim=self.num_edge_features,
+            x_out_dim=self.num_node_features,
+            e_out_dim=self.num_edge_features,
             residual=True,
         )
 
@@ -117,10 +117,10 @@ class TestGnnFeatureExtractor(unittest.TestCase):
         model = GNNFeatureExtractor(
             x_dim=x.size(-1),
             e_dim=e.size(-1),
-            hidden_x_dim=32,
-            hidden_e_dim=32,
-            out_x_dim=4,
-            out_e_dim=0,
+            x_hidden_dim=32,
+            e_hidden_dim=32,
+            x_out_dim=4,
+            e_out_dim=0,
             n_layers=3,
         )
 

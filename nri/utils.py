@@ -1,13 +1,10 @@
 from typing import Union
-from common.MLP import MLP
+
 import numpy as np
 import torch
 from torch import Tensor, nn
-from torch.utils.data.dataset import TensorDataset
-from torch.utils.data import DataLoader
-import torch.nn.functional as F
-from torch.autograd import Variable
 
+from common.MLP import MLP
 
 
 def fully_connected_edge_index(num_nodes: int, self_loops: bool = False) -> Tensor:
@@ -28,13 +25,13 @@ class Node2Edge(nn.Module):
     """
    Implements the Node to edge message passing by Kipf et al.
    """
-    def __init__(self, node_dim: int, hidden_dim: int, edge_dim: int, dropout_prob=0.):
+    def __init__(self, x_dim: int, hidden_dim: int, e_dim: int, dropout_prob=0.):
         # maps 2 node embeddings to one edge embedding
         super(Node2Edge, self).__init__()
         self.psi = MLP(
-            input_features=node_dim * 2,
+            input_features=x_dim * 2,
             hidden_dim=hidden_dim,
-            output_features=edge_dim,
+            output_features=e_dim,
             dropout_prob=dropout_prob
         )
 
@@ -56,20 +53,20 @@ class Edge2Node(nn.Module):
     """
     Implements the edge to node message passing by Kipf et al. in their encoder
     """
-    def __init__(self, edge_dim: int, hidden_dim: int, node_dim: int, dropout_prob=0.):
+    def __init__(self, e_dim: int, hidden_dim: int, x_dim: int, dropout_prob=0.):
         """
         Constructor.
-        :param edge_dim: edge features in the input
+        :param e_dim: edge features in the input
         :param hidden_dim: hidden dimension for the MLP
-        :param node_dim: node features in the output of this module
+        :param x_dim: node features in the output of this module
         :param dropout_prob: dropout probability
         """
         # maps adjacent edge embeddings onto a new node embedding
         super(Edge2Node, self).__init__()
         self.phi = MLP(
-            input_features=edge_dim,
+            input_features=e_dim,
             hidden_dim=hidden_dim,
-            output_features=node_dim,
+            output_features=x_dim,
             dropout_prob=dropout_prob
         )
 
@@ -94,21 +91,21 @@ class EdgeNode2Node(nn.Module):
     Implements the edge to node message passing by Kipf et al. in their decoder.
     In contrast to the simple Edge2Node module this module inputs previous node features in the mlp
     """
-    def __init__(self, node_in_dim: int, edge_dim: int, hidden_dim: int, node_out_dim: int, dropout_prob=0.):
+    def __init__(self, x_dim: int, e_dim: int, hidden_dim: int, x_out_dim: int, dropout_prob=0.):
         """
         Constructor.
-        :param node_in_dim: node features in the input
-        :param edge_dim: edge features in the input
+        :param x_dim: node features in the input
+        :param e_dim: edge features in the input
         :param hidden_dim: hidden dimension for the MLP
-        :param node_out_dim: node features in the output of this module
+        :param x_out_dim: node features in the output of this module
         :param dropout_prob: dropout probability
         """
         # maps adjacent edge embeddings + node embeddings onto a new node embedding
         super(EdgeNode2Node, self).__init__()
         self.phi = MLP(
-            input_features=edge_dim + node_in_dim,
+            input_features=e_dim + x_dim,
             hidden_dim=hidden_dim,
-            output_features=node_out_dim,
+            output_features=x_out_dim,
             dropout_prob=dropout_prob
         )
 

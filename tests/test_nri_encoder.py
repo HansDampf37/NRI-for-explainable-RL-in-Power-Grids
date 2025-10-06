@@ -23,7 +23,7 @@ class TestNRIEncoder(unittest.TestCase):
         self.encoder = Encoder(
             x_dim=self.node_dim * self.trajectory_length,
             hidden_dim=self.hidden_dim,
-            out_e_dim=self.e_out_dim,
+            e_out_dim=self.e_out_dim,
             do_prob=0.1
         )
 

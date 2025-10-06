@@ -35,19 +35,19 @@ class Decoder(nn.Module):
 
         self.node2edge_list = nn.ModuleList([
             Node2Edge(
-                node_dim=x_dim,
+                x_dim=x_dim,
                 hidden_dim=hidden_dim,
-                edge_dim=hidden_dim,
+                e_dim=hidden_dim,
                 dropout_prob=dropout_prob,
             )
             for _ in range(num_edge_types)
         ])
 
         self.edge_node2node = EdgeNode2Node(
-            node_in_dim=x_dim,
-            edge_dim=hidden_dim,
+            x_dim=x_dim,
+            e_dim=hidden_dim,
             hidden_dim=hidden_dim,
-            node_out_dim=x_dim,
+            x_out_dim=x_dim,
             dropout_prob=dropout_prob
         )
 
@@ -68,6 +68,7 @@ class Decoder(nn.Module):
         start_idx = 1 if self.skip_first else 0
         edge_index = edge_index if edge_index is not None else fully_connected_edge_index(x.size(dim=1))
         edge_types = edge_types.unsqueeze(-1) # add 1-d dim for features so we can broadcast with edge-features
+
         edge_properties_all = []
         for k in range(start_idx, self.num_edge_types):
             edge_properties = edge_types[:, :, k, :] * self.node2edge_list[k](x, edge_index)
@@ -81,17 +82,19 @@ class Decoder(nn.Module):
         self,
         x: Tensor,
         edge_types: Tensor,
-        edge_index: Tensor,
+        edge_index: Optional[Tensor] = None,
         pred_steps: int = 1
     ) -> Tensor:
         """
-        Make multistep predictions given the inputs and rel type predictions.
+        Make multistep predictions given the inputs and edge type predictions.
         :param x: node features [B, N, X_dim]
         :param edge_types: edge type predicted by the encoder # [B, E, edge_types]
         :param edge_index: edge index used by the encoder [2, E]. Defaults to fully meshed edge index.
         :param pred_steps: number of time steps to predict. Defaults to 1.
         :return: node features for next time step [B, N, pred_steps, X_dim]
         """
+        edge_index = edge_index if edge_index is not None else fully_connected_edge_index(x.size(dim=1))
+
         x = x.transpose(1, 2).contiguous()  # [B, T, N, x_dim]
         B, T, N, x_dim = x.shape
         assert pred_steps <= T, "pred_steps exceeds available timesteps"

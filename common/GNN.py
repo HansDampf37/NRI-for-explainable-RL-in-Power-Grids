@@ -28,8 +28,8 @@ class MessagePassing(nn.Module):
             self,
             x_dim: int,
             e_dim: int,
-            output_x_dim: Optional[int] = None,
-            output_e_dim: Optional[int] = None,
+            x_out_dim: Optional[int] = None,
+            e_out_dim: Optional[int] = None,
             hidden_dim: int = 64,
             residual: bool = False,
             dropout_prob: float = 0.0,
@@ -39,8 +39,8 @@ class MessagePassing(nn.Module):
 
         :param x_dim: The number of node features in the input
         :param e_dim: The number of edge features in the input
-        :param output_x_dim: The number of node features in the output (defaults to x_dim)
-        :param output_e_dim: The number of edge features in the output (defaults to e_dim)
+        :param x_out_dim: The number of node features in the output (defaults to x_dim)
+        :param e_out_dim: The number of edge features in the output (defaults to e_dim)
         :param hidden_dim: The number of hidden units in the message passing MLPs (default: 128)
         :param residual: If True, add x and e to x_out and e_out respectively (default: False). Only works of x_dim = x_out_dim and e_dim = e_out_dim
         :param dropout_prob: the probability to do dropout in the message passing MLPs (default 0)
@@ -48,10 +48,10 @@ class MessagePassing(nn.Module):
         super(MessagePassing, self).__init__()
         self.x_dim = x_dim
         self.e_dim = e_dim
-        self.x_out_dim = output_x_dim or x_dim
-        self.e_out_dim = output_e_dim or e_dim
+        self.x_out_dim = x_out_dim or x_dim
+        self.e_out_dim = e_out_dim or e_dim
         self.residual = residual
-        if residual and (x_dim != output_x_dim or e_dim != output_e_dim):
+        if residual and (x_dim != x_out_dim or e_dim != e_out_dim):
             raise ValueError("Cannot use residual connections. x_dim != x_out_dim or e_dim != e_out_dim.")
 
         # psi: update edge embedding from (e, x_i, x_j)
@@ -132,10 +132,10 @@ class GNNFeatureExtractor(nn.Module):
             self,
             x_dim: int,
             e_dim: int,
-            hidden_x_dim: int,
-            hidden_e_dim: int,
-            out_x_dim: int,
-            out_e_dim: int,
+            x_hidden_dim: int,
+            e_hidden_dim: int,
+            x_out_dim: int,
+            e_out_dim: int,
             n_layers: int = 3,
             dropout_prob: float = 0.0,
             residual=True
@@ -145,10 +145,10 @@ class GNNFeatureExtractor(nn.Module):
 
         :param x_dim: input node feature dimension
         :param e_dim: input edge feature dimension
-        :param hidden_x_dim: hidden dim for node embeddings
-        :param hidden_e_dim: hidden dim for edge embeddings
-        :param out_x_dim: output node feature dimension
-        :param out_e_dim: output edge feature dimension
+        :param x_hidden_dim: hidden dim for node embeddings
+        :param e_hidden_dim: hidden dim for edge embeddings
+        :param x_out_dim: output node feature dimension
+        :param e_out_dim: output edge feature dimension
         :param n_layers: number of message passing layers (default: 3)
         :param dropout_prob: dropout probability (default 0)
         :param residual: do residual connections in Conv layers (default True)
@@ -157,28 +157,28 @@ class GNNFeatureExtractor(nn.Module):
         self.n_layers = n_layers
 
         # initial projection to working dims
-        self.node_proj = MLP(input_features=x_dim, output_features=hidden_x_dim, hidden_dim=hidden_x_dim)
-        self.edge_proj = MLP(input_features=e_dim, output_features=hidden_e_dim, hidden_dim=hidden_e_dim)
+        self.node_proj = MLP(input_features=x_dim, output_features=x_hidden_dim, hidden_dim=x_hidden_dim)
+        self.edge_proj = MLP(input_features=e_dim, output_features=e_hidden_dim, hidden_dim=e_hidden_dim)
 
         # build message passing layers
         self.layers = nn.ModuleList([
             MessagePassing(
-                x_dim=hidden_x_dim,
-                e_dim=hidden_e_dim,
-                output_x_dim=hidden_x_dim,
-                output_e_dim=hidden_e_dim,
-                hidden_dim=max(hidden_x_dim, hidden_e_dim),
+                x_dim=x_hidden_dim,
+                e_dim=e_hidden_dim,
+                x_out_dim=x_hidden_dim,
+                e_out_dim=e_hidden_dim,
+                hidden_dim=max(x_hidden_dim, e_hidden_dim),
                 dropout_prob=dropout_prob,
                 residual=residual,
             ) for _ in range(n_layers - 1)
         ])
 
         self.final = MessagePassing(
-            x_dim=hidden_x_dim,
-            e_dim=hidden_e_dim,
-            output_x_dim=out_x_dim,
-            output_e_dim=out_e_dim,
-            hidden_dim=max(hidden_x_dim, out_x_dim),
+            x_dim=x_hidden_dim,
+            e_dim=e_hidden_dim,
+            x_out_dim=x_out_dim,
+            e_out_dim=e_out_dim,
+            hidden_dim=max(x_hidden_dim, x_out_dim),
             dropout_prob=dropout_prob,
             residual=False,
         )
@@ -209,22 +209,22 @@ class SB3GNNWrapper(BaseFeaturesExtractor):
     def __init__(
             self,
             observation_space: GraphObservationSpace,
-            hidden_x_dim: int,
-            hidden_e_dim: int,
-            node_out_dim: int,
-            edge_out_dim: int,
+            x_hidden_dim: int,
+            e_hidden_dim: int,
+            x_out_dim: int,
+            e_out_dim: int,
             n_layers: int = 3,
             dropout_prob: float = 0.0,
             residual=True
     ):
-        BaseFeaturesExtractor.__init__(self, observation_space, features_dim=node_out_dim + edge_out_dim)
+        BaseFeaturesExtractor.__init__(self, observation_space, features_dim=x_out_dim + e_out_dim)
         self.gnn_feature_extractor = GNNFeatureExtractor(
             x_dim=observation_space.spaces[NODES].shape[1],
             e_dim=observation_space.spaces[EDGES].shape[1],
-            hidden_x_dim=hidden_x_dim,
-            hidden_e_dim=hidden_e_dim,
-            out_x_dim=node_out_dim,
-            out_e_dim=edge_out_dim,
+            x_hidden_dim=x_hidden_dim,
+            e_hidden_dim=e_hidden_dim,
+            x_out_dim=x_out_dim,
+            e_out_dim=e_out_dim,
             n_layers=n_layers,
             dropout_prob=dropout_prob,
             residual=residual
