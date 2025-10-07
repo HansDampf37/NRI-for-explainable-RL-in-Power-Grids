@@ -4,8 +4,6 @@ import numpy as np
 import torch
 from torch import nn, Tensor
 
-from nri.utils import uniform_dist
-
 
 class ElboLoss(nn.Module):
     """
@@ -17,11 +15,12 @@ class ElboLoss(nn.Module):
 
     This objective should be maximized. This module therefore implements the ELBO loss defined as -L
     """
+
     def __init__(self, prior: Optional[np.ndarray] = None, variance: float = 1.0, eps: float = 1e-10):
         super(ElboLoss, self).__init__()
         self.variance = variance
         self.eps = eps
-        self.prior = prior
+        self.prior: Tensor = Tensor(prior) if prior is not None else None
 
     def forward(self, predictions: Tensor, target: Tensor, posterior_probs: Tensor) -> Tensor:
         reconstruction = self.reconstruction_loss(predictions, target)
@@ -37,12 +36,8 @@ class ElboLoss(nn.Module):
         :param target: target tensor
         :return: reconstruction loss
         """
-        reconstruction_loss = torch.sum((predictions - target) ** 2) / (2 * self.variance)
-        if len(predictions.shape) > 1:
-            # normalize by batch size
-            vectors_in_batch = np.prod(predictions.shape[0:-1])
-            reconstruction_loss /= vectors_in_batch
-        return reconstruction_loss
+        reconstruction_loss = ((predictions - target) ** 2 / (2 * self.variance)).sum(dim=-1)
+        return reconstruction_loss.mean()
 
     def kl_loss(self, posterior_probs: Tensor) -> Tensor:
         """
@@ -51,9 +46,8 @@ class ElboLoss(nn.Module):
         :param posterior_probs: posterior distribution(s)
         """
         if self.prior is None:
-            prior = uniform_dist(posterior_probs.size(-1)).to(device=posterior_probs.device)
+            entropy = (posterior_probs * torch.log(posterior_probs + self.eps)).sum(dim=-1)
+            return entropy.mean()
         else:
-            prior = self.prior
-
-        kl_div = (posterior_probs * torch.log((posterior_probs + self.eps) / prior)).sum(dim=-1)
-        return kl_div.mean()
+            kl_div = (posterior_probs * torch.log((posterior_probs + self.eps) / self.prior)).sum(dim=-1)
+            return kl_div.mean()

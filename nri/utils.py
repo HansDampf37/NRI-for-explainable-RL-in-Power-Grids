@@ -22,6 +22,21 @@ def fully_connected_edge_index(num_nodes: int, device: str = "cpu", self_loops: 
         edge_index = edge_index[:, edge_index[0] != edge_index[1]]
     return edge_index.to(device=device)
 
+def edge_index_to_adj(num_nodes: int, edge_index: np.ndarray) -> np.ndarray:
+    """
+    Accepts a [2, E] shaped array of edge indices and returns a [V, V] shaped adjacency matrix.
+    :param num_nodes: Number of nodes in the graph.
+    :param edge_index: An array of shape [V, E].
+    :return: An adjacency matrix of shape [V, V].
+    """
+    num_edges = edge_index.shape[1]
+    adj_matrix = torch.zeros(num_nodes, num_nodes)
+    for i in range(num_edges):
+        src, target = edge_index[:, i]
+        adj_matrix[src, target] = 1.0
+
+    return adj_matrix
+
 class Node2Edge(nn.Module):
     """
    Implements the Node to edge message passing by Kipf et al.
@@ -131,10 +146,3 @@ class EdgeNode2Node(nn.Module):
         # index_reduce_ to average messages into receivers rows
         agg.index_reduce_(dim=-2, index=receivers, source=e, reduce="mean")
         return self.phi(torch.cat([agg, x], dim=-1))
-
-def uniform_dist(dimension: int) -> torch.Tensor:
-    """
-    Return a uniform distribution with given dimension.
-    """
-    dist = np.ones((dimension,))
-    return Tensor(dist / np.sum(dist))

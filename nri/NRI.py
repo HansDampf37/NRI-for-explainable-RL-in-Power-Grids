@@ -1,5 +1,6 @@
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 
+import torch
 from torch import nn, Tensor
 from torch.nn import functional as f
 
@@ -21,6 +22,7 @@ class NRIModule(nn.Module):
 
     softmax((logits + g)/tau) where g are samples from Gumbel (0,1)
     """
+
     def __init__(
             self,
             x_dim: int,
@@ -29,6 +31,7 @@ class NRIModule(nn.Module):
             num_edge_types: int = 2,
             pred_steps: int = 3,
             dropout_prob: float = 0.0,
+            skip_first: bool = True
     ):
         """
         Constructs a NRI module.
@@ -52,10 +55,12 @@ class NRIModule(nn.Module):
             num_edge_types=num_edge_types,
             hidden_dim=hidden_dim,
             dropout_prob=dropout_prob,
-            skip_first=True
+            skip_first=skip_first
         )
         self.gumbel_softmax = GumbelSoftmax()
         self.pred_steps = pred_steps
+        self.num_edge_types = num_edge_types
+        self.skip_first = skip_first
 
     def forward(self, x: Tensor, edge_index: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
         """
@@ -78,4 +83,21 @@ class NRIModule(nn.Module):
         predictions = self.decoder(x, p_one_hot, edge_index, self.pred_steps)
         return predictions, p_z_given_x
 
+    def get_latent_edges(self, x: Tensor, edge_index: Optional[Tensor] = None) -> Tensor:
+        """
+        Forward passes x through the encoder to get p(z|x) and sample from it using the hard Gumbel-Softmax.
 
+        :param x: Input tensor of shape [B, T, N, X_dim]
+        :param edge_index: Node adjacency [2, E]
+        :return: Batched edge index of shape [B, 3, E] where dimension 1 includes receiver, sender, and type
+        """
+        B, T, N, X_dim = x.shape
+        edge_index = edge_index if edge_index is not None else fully_connected_edge_index(N, x.device)
+        _, E = edge_index.shape
+
+        encoder_logits: Tensor = self.encoder(x, edge_index)  # [B, E, K]
+        p_one_hot: Tensor = self.gumbel_softmax(encoder_logits, hard=True)  # [B, E, K]
+
+        batched_edge_index = edge_index.unsqueeze(0).expand(B, -1, -1)  # [B, 2, E]
+        edge_types = torch.argmax(p_one_hot, dim=-1)  # [B, E]
+        return torch.concatenate([batched_edge_index, edge_types.view(B, 1, E)], dim=1)
