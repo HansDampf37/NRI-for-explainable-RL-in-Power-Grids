@@ -44,7 +44,7 @@ class NRIModule(nn.Module):
             x_dim=x_dim,
             trajectory_length=trajectory_length,
             hidden_dim=hidden_dim,
-            e_out_dim=num_edge_types,
+            num_edge_types=num_edge_types,
             dropout_prob=dropout_prob
         )
         self.decoder = Decoder(

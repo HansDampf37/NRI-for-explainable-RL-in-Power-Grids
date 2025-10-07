@@ -24,7 +24,7 @@ class TestNRIEncoder(unittest.TestCase):
             x_dim=self.node_dim,
             trajectory_length=self.trajectory_length,
             hidden_dim=self.hidden_dim,
-            e_out_dim=self.e_out_dim,
+            num_edge_types=self.e_out_dim,
             dropout_prob=0.1
         )
 

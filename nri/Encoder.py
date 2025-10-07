@@ -13,13 +13,13 @@ class Encoder(nn.Module):
     Predicts posterior  where x encodes several timesteps of our environment and z is a distribution over edge types
     for each edge of the fully meshed graph.
     """
-    def __init__(self, x_dim: int, trajectory_length: int, hidden_dim: int, e_out_dim: int = 2, dropout_prob=0.):
+    def __init__(self, x_dim: int, trajectory_length: int, hidden_dim: int, num_edge_types: int = 2, dropout_prob=0.):
         """
         Constructor
         :param x_dim: number of input features for nodes
         :param trajectory_length: the number of timesteps in the trajectories
         :param hidden_dim: the dimensionality of hidden layers
-        :param e_out_dim: the number of possible types per edge (defaults to 2 (edge doesn't exist or edge exists))
+        :param num_edge_types: the number of possible types per edge (defaults to 2 (edge doesn't exist or edge exists))
         :param dropout_prob: dropout probability (defaults to 0.)
         """
         super(Encoder, self).__init__()
@@ -55,7 +55,7 @@ class Encoder(nn.Module):
         self.fc_out = MLP(
             input_features=hidden_dim * 2,
             hidden_dim=hidden_dim,
-            output_features=e_out_dim,
+            output_features=num_edge_types,
             dropout_prob=dropout_prob
         )
 
