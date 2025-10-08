@@ -1,3 +1,4 @@
+import math
 from typing import Optional
 
 import numpy as np
@@ -9,6 +10,7 @@ class ElboLoss(nn.Module):
     """
     ELBO objective is defined as:
     L = E_{q_φ(z|x)}[log p_θ(x|z)] − KL[q_φ(z|x)||p_θ(z)]
+
     The encoder q_φ(z|x) returns a factorized distribution of z_ij.
     The decoder reconstructs the input x with p_θ(x|z).
     The prior p_θ(z) is a distribution that the posterior distribution q_φ(z|x) is pushed towards.
@@ -17,37 +19,49 @@ class ElboLoss(nn.Module):
     """
 
     def __init__(self, prior: Optional[np.ndarray] = None, variance: float = 1.0, eps: float = 1e-10):
-        super(ElboLoss, self).__init__()
-        self.variance = variance
+        super().__init__()
         self.eps = eps
-        self.prior: Tensor = Tensor(prior) if prior is not None else None
+        self.variance = variance
+
+        if prior is not None:
+            prior = torch.tensor(prior, dtype=torch.float32)
+            prior = prior / prior.sum()
+            self.register_buffer('prior', prior)
+        else:
+            self.prior = None
 
     def forward(self, predictions: Tensor, target: Tensor, posterior_probs: Tensor) -> Tensor:
-        reconstruction = self.reconstruction_loss(predictions, target)
-        kl_to_prior = self.kl_loss(posterior_probs)
+        nll = self.neg_log_likelihood(predictions, target)
+        kl = self.kl_divergence_to_prior(posterior_probs)
+        return nll + kl
 
-        return reconstruction + kl_to_prior
-
-    def reconstruction_loss(self, predictions: Tensor, target: Tensor) -> Tensor:
+    def neg_log_likelihood(self, predictions: Tensor, target: Tensor) -> Tensor:
         """
-        Computes the reconstruction loss for a batch of predictions and target. The loss is normalized by the amount of
-        samples in the batch.
+        Computes the negative log-likelihood under Gaussian assumption. For gaussian distributions this is equivalent
+        to MSE scaled by variance:
+        log p(x|z) ∝ (x - x_hat)^2 / (2 * variance)
+
         :param predictions: predictions tensor
         :param target: target tensor
-        :return: reconstruction loss
+        :return: Mean NLL over batch.
         """
-        reconstruction_loss = ((predictions - target) ** 2 / (2 * self.variance)).sum(dim=-1)
-        return reconstruction_loss.mean()
+        mse_term = ((predictions - target) ** 2) / (2 * self.variance)
+        D = predictions.shape[-1]
+        constant_term = 0.5 * D * math.log(2 * math.pi * self.variance)
+        return mse_term.sum(dim=-1).mean() + constant_term
 
-    def kl_loss(self, posterior_probs: Tensor) -> Tensor:
+    def kl_divergence_to_prior(self, posterior_probs: Tensor) -> Tensor:
         """
-        Computes the kl divergence of the specified tensor to a uniform distribution. According to wikipedia this
-        is equivalent to the entropy of the distribution.
+        Computes the kl divergence of the specified tensor to a uniform distribution.
         :param posterior_probs: posterior distribution(s)
         """
         if self.prior is None:
-            entropy = (posterior_probs * torch.log(posterior_probs + self.eps)).sum(dim=-1)
-            return entropy.mean()
+            # Negative entropy: -H(q) = sum q * log q
+            neg_entropy = (posterior_probs * torch.log(posterior_probs)).sum(dim=-1)
+            constant_term = math.log(posterior_probs.shape[-1])
+            return neg_entropy.mean() + constant_term
         else:
-            kl_div = (posterior_probs * torch.log((posterior_probs + self.eps) / self.prior)).sum(dim=-1)
-            return kl_div.mean()
+            # KL(q || p): sum q * log(q / p) = sum q * (log(q) - log(p))
+            prior = self.prior.unsqueeze(0)
+            kl = (posterior_probs * (torch.log(posterior_probs + self.eps) - torch.log(prior + self.eps))).sum(dim=-1)
+            return kl.mean()

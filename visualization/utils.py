@@ -60,11 +60,6 @@ def visualize_latent_graph(
         width=edge_weights,
         style=edge_styles,
         arrows=True,
-        #connectionstyle="arc3,rad=0.2"
+        connectionstyle="arc3,rad=0.2"
     )
-    # Legend for edge types
-    unique_types = sorted(set(t for (_, _, t) in edge_counter.keys()))
-    for t in unique_types:
-        plt.plot([], [], color=cmap(t % 10), label=f"Type {t}", linewidth=3)
-    plt.legend(title="Edge Type", loc="best")
     return fig
