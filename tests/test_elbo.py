@@ -30,5 +30,5 @@ class TestElbo(unittest.TestCase):
         )
         x = torch.randn((100, trajectory_length, 6, x_dim))
         predictions, posterior = nri_module.forward(x)
-        loss = ElboLoss().forward(predictions, x, posterior)
+        loss = ElboLoss().forward(predictions, x[:, 1:, :, :], posterior)
         self.assertEqual(loss.shape, torch.Size([]))

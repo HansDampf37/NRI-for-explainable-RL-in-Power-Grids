@@ -44,4 +44,4 @@ class TestNRIModule(unittest.TestCase):
     def test_forward_shape(self):
         with torch.no_grad():
             predictions, latent_edges = self.module.forward(self.x)
-        self.assertEqual(predictions.shape, self.x.shape)
+        self.assertEqual(predictions.shape, (self.batch_size, self.trajectory_length - 1, self.num_nodes, self.x_dim))
