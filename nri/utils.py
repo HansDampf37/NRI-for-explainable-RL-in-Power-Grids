@@ -22,25 +22,12 @@ def fully_connected_edge_index(num_nodes: int, device: str = "cpu", self_loops: 
         edge_index = edge_index[:, edge_index[0] != edge_index[1]]
     return edge_index.to(device=device)
 
-def edge_index_to_adj(num_nodes: int, edge_index: np.ndarray) -> np.ndarray:
-    """
-    Accepts a [2, E] shaped array of edge indices and returns a [V, V] shaped adjacency matrix.
-    :param num_nodes: Number of nodes in the graph.
-    :param edge_index: An array of shape [V, E].
-    :return: An adjacency matrix of shape [V, V].
-    """
-    num_edges = edge_index.shape[1]
-    adj_matrix = torch.zeros(num_nodes, num_nodes)
-    for i in range(num_edges):
-        src, target = edge_index[:, i]
-        adj_matrix[src, target] = 1.0
-
-    return adj_matrix
 
 class Node2Edge(nn.Module):
     """
    Implements the Node to edge message passing by Kipf et al.
    """
+
     def __init__(self, x_dim: int, hidden_dim: int, e_dim: int, dropout_prob=0.):
         # maps 2 node embeddings to one edge embedding
         super(Node2Edge, self).__init__()
@@ -65,10 +52,12 @@ class Node2Edge(nn.Module):
         node_aggr = torch.cat([x_i, x_j], dim=-1)
         return self.psi(node_aggr)
 
+
 class Edge2Node(nn.Module):
     """
     Implements the edge to node message passing by Kipf et al. in their encoder
     """
+
     def __init__(self, e_dim: int, hidden_dim: int, x_dim: int, dropout_prob=0.):
         """
         Constructor.
@@ -104,12 +93,14 @@ class Edge2Node(nn.Module):
         agg.index_reduce_(dim=-2, index=receivers, source=e, reduce="mean")
         return self.phi(agg)
 
+
 class EdgeNode2Node(nn.Module):
     """
     Implements the edge to node message passing by Kipf et al. in their decoder.
     In contrast to the simple Edge2Node module here node features do not only depend on adjacent edge features but
     also on previous node features.
     """
+
     def __init__(self, x_dim: int, e_dim: int, hidden_dim: int, x_out_dim: int, dropout_prob=0.):
         """
         Constructor.

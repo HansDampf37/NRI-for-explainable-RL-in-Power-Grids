@@ -65,15 +65,15 @@ class NRIModule(nn.Module):
     def forward(self, x: Tensor, edge_index: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
         """
         Forward pass of the NRI module.
-        Pushes the input-tensor x of shape [B, T, N, X_dim] through the encoder to get p(z|x).
+        Pushes the input-tensor x of shape [(B), T, N, X_dim] through the encoder to get p(z|x).
         Applies Gumbel-Softmax to create approximately one-hot distributions p_one_hot.
         Pushes x with p_one_hot through the decoder to predict next time steps.
 
-        :param x: Input tensor of shape [B, T, N, X_dim]
+        :param x: Input tensor of shape [(B), T, N, X_dim]
         :param edge_index: node adjacency [2, E]. Only latent edges that are included in this argument are detected. Per default this is fully meshed.
-        :return: Predicted next step feature vector of shape [B, T, N, X_dim] and p(z|x)
+        :return: Predicted next step feature vector of shape [(B), T, N, X_dim] and p(z|x)
         """
-        B, T, N, X_dim = x.shape
+        T, N, X_dim = x.shape[-3:]
         edge_index = edge_index if edge_index is not None else fully_connected_edge_index(N, x.device)
         encoder_logits = self.encoder(x, edge_index)
 
@@ -87,10 +87,15 @@ class NRIModule(nn.Module):
         """
         Forward passes x through the encoder to get p(z|x) and sample from it using the hard Gumbel-Softmax.
 
-        :param x: Input tensor of shape [B, T, N, X_dim]
+        :param x: Input tensor of shape [(B), T, N, X_dim]
         :param edge_index: Node adjacency [2, E]
-        :return: Batched edge index of shape [B, 3, E] where dimension 1 includes receiver, sender, and type
+        :return: Batched edge index of shape [(B), 3, E] where dimension 1 includes receiver, sender, and type
         """
+        added_batch_dim = False
+        if x.dim() == 3:
+            x = x.unsqueeze(0)  # [1, T, N, X_dim]
+            added_batch_dim = True
+
         B, T, N, X_dim = x.shape
         edge_index = edge_index if edge_index is not None else fully_connected_edge_index(N, x.device)
         _, E = edge_index.shape
@@ -100,4 +105,9 @@ class NRIModule(nn.Module):
 
         batched_edge_index = edge_index.unsqueeze(0).expand(B, -1, -1)  # [B, 2, E]
         edge_types = torch.argmax(p_one_hot, dim=-1)  # [B, E]
-        return torch.concatenate([batched_edge_index, edge_types.view(B, 1, E)], dim=1)
+        full_edge_index = torch.concatenate([batched_edge_index, edge_types.view(B, 1, E)], dim=1)
+
+        if added_batch_dim:
+            return full_edge_index.squeeze(0)  # shape: [3, E]
+        else:
+            return full_edge_index  # shape: [B, 3, E]

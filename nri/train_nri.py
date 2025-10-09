@@ -139,7 +139,7 @@ def evaluate_nri_module(
             logger.add_scalar("KL-Divergence to Prior", running_kl_div / len(data_loader), current_epoch)
             logger.add_scalar("MSE", running_mse / len(data_loader), current_epoch)
         else:
-            print(f"Epoch {current_epoch}: Training loss: {running_loss / len(data_loader):.2f} "
+            print(f"Epoch {current_epoch}: Testing loss: {running_loss / len(data_loader):.2f} "
                   f"Neg Log Likelihood: {running_nll / len(data_loader):.2f} "
                   f"KL Divergence: {running_kl_div / len(data_loader):.2f} "
                   f"MSE: {running_mse / len(data_loader):.2f}")

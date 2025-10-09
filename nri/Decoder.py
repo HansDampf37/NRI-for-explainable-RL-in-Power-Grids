@@ -58,26 +58,23 @@ class Decoder(nn.Module):
         edge_index: Optional[Tensor] = None,
     ) -> Tensor:
         """
-        Perform one step of message passing and node update. The input x is of shape [B, T, N, X_dim] where B is the
+        Perform one step of message passing and node update. The input x is of shape [(B), T, N, X_dim] where B is the
         batch size, T is an arbitrary number of timesteps, N is the number of nodes, and X_dim is the node feature dimension.
         Note that timesteps in T do not have to be successive. You can just consider B and T as batch dimensions. This
         function should predict next time steps for every timestep in the first two dimensions.
 
-        :param x: node features [B, T, N, X_dim]
-        :param edge_types: edge type predicted by the encoder # [B, E, edge_types]
+        :param x: node features [(B), T, N, X_dim]
+        :param edge_types: edge type predicted by the encoder # [(B), E, edge_types]
         :param edge_index: edge index used by the encoder [2, E]. Defaults to fully meshed edge index.
-        :return: node features for next time step [B, T, N, X_dim]
+        :return: node features for next time step [(B), T, N, X_dim]
         """
-        B, T, N, X_dim = x.shape
-        _, E, NUM_EDGE_TYPES = edge_types.shape
-
         start_idx = 1 if self.skip_first else 0
-        edge_index = edge_index if edge_index is not None else fully_connected_edge_index(N, x.device)
-        edge_types = edge_types.view(B, 1, E, NUM_EDGE_TYPES)
+        edge_index = edge_index if edge_index is not None else fully_connected_edge_index(x.shape[-2], x.device)
+        edge_types = edge_types.unsqueeze(-3) # [B, 1, E, edge_types]
 
         edge_properties_all = []
         for k in range(start_idx, self.num_edge_types):
-            edge_properties = edge_types[..., k:k+1] * self.node2edge_list[k](x, edge_index)
+            edge_properties = edge_types[..., [k]] * self.node2edge_list[k](x, edge_index)
             edge_properties_all.append(edge_properties)
         e = sum(edge_properties_all)
 
@@ -93,21 +90,21 @@ class Decoder(nn.Module):
     ) -> Tensor:
         """
         Make multistep predictions given the inputs and edge type predictions.
-        The inputs should be a tensor of shape [B, N, T, X_dim], where B is the batch size, N is the number of nodes,
-        T is the number of timesteps, and X_dim is the dimension of the input features. This method will split the T
+        The inputs should be a tensor of shape [(B), T, N, X_dim], where B is the batch size, T is the number of timesteps
+        N is the number of nodes, and X_dim is the dimension of the input features. This method will split the T
         dimension into chunks of size pred_steps. Then for each chunk, the single_step_forward method will predict the
         next time steps of the chunk.
 
-        :param x: node features [B, T, N, X_dim]
-        :param edge_types: edge type predicted by the encoder # [B, E, edge_types]
+        :param x: node features [(B), T, N, X_dim]
+        :param edge_types: edge type predicted by the encoder # [(B), E, edge_types]
         :param edge_index: edge index used by the encoder [2, E]. Defaults to fully meshed edge index.
         :param pred_steps: number of time steps to predict. Defaults to 1.
-        :return: node features for next time step [B, N, pred_steps, X_dim]
+        :return: node features for next time step [(B), N, pred_steps, X_dim]
         """
-        B, T, N, x_dim = x.shape
+        T, N, x_dim = x.shape[-3:]
         edge_index = edge_index if edge_index is not None else fully_connected_edge_index(N, x.device)
         assert pred_steps <= T, "pred_steps exceeds available timesteps"
-        x_t = x[:, 0::pred_steps, :, :]
+        x_t = x[..., 0::pred_steps, :, :]
 
         predictions = []
         for _ in range(pred_steps):
@@ -115,9 +112,11 @@ class Decoder(nn.Module):
             predictions.append(x_t)
 
         # Combine predictions
-        T_plus_modulo_tail = predictions[0].size(1) * pred_steps
-        output = torch.zeros(B, T_plus_modulo_tail, N, x_dim, device=x.device)
-        for i, p in enumerate(predictions):
-            output[:, i::pred_steps, :, :] = p
+        T_plus_modulo_tail = predictions[0].size(-3) * pred_steps
+        output_dimensions = list(x.shape)
+        output_dimensions[-3] = T_plus_modulo_tail
+        output = torch.zeros(*output_dimensions, device=x.device)
+        for i, prediction in enumerate(predictions):
+            output[..., i::pred_steps, :, :] = prediction
 
-        return output[:, :(T-1), :, :]
+        return output[..., :(T-1), :, :]

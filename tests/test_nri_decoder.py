@@ -1,6 +1,7 @@
 import unittest
 import torch
 from nri.Decoder import Decoder
+from nri.utils import fully_connected_edge_index
 
 
 class TestDecoder(unittest.TestCase):
@@ -8,21 +9,19 @@ class TestDecoder(unittest.TestCase):
         # general setup
         self.batch_size = 8
         self.num_nodes = 12
-        self.num_edges = 20
+        self.edge_index = fully_connected_edge_index(self.num_nodes, "cpu", False)
+        self.num_edges = len(self.edge_index[0])
         self.x_dim = 16
         self.hidden_dim = 32
         self.num_edge_types = 2
         self.trajectory_length = 100
         self.prediction_length = self.trajectory_length - 1
 
-        # random edge index [2, E]
-        self.edge_index = torch.randint(0, self.num_nodes, (2, self.num_edges))
-
         # node features: [B, T, N, F]
         self.x = torch.randn(self.batch_size, self.trajectory_length, self.num_nodes, self.x_dim)
 
         # edge type probabilities: [B, E, edge_types]
-        self.edge_types = torch.rand(self.batch_size, self.edge_index.size(1), self.num_edge_types)
+        self.edge_types = torch.rand(self.batch_size, self.num_edges, self.num_edge_types)
         self.edge_types /= self.edge_types.sum(dim=-1, keepdim=True)
 
         # instantiate decoder
@@ -61,5 +60,11 @@ class TestDecoder(unittest.TestCase):
         with torch.no_grad():
             # 100 timesteps cannot be split into chunks of size 7
             out = self.decoder.forward(self.x, self.edge_types, self.edge_index, pred_steps=7)
+        self.assertEqual(out.shape, out_target_shape)
+
+    def test_forward_shape_unbatched(self):
+        out_target_shape = (self.prediction_length, self.num_nodes, self.x_dim)
+        with torch.no_grad():
+            out = self.decoder.forward(self.x[0], self.edge_types[0], self.edge_index, pred_steps=4)
         self.assertEqual(out.shape, out_target_shape)
 

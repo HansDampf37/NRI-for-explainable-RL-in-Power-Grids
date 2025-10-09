@@ -1,6 +1,8 @@
 import unittest
 
-from nri.utils import fully_connected_edge_index
+import torch
+
+from nri.utils import fully_connected_edge_index, Edge2Node, Node2Edge, EdgeNode2Node
 
 
 class TestNRIUtils(unittest.TestCase):
@@ -10,3 +12,100 @@ class TestNRIUtils(unittest.TestCase):
         self.assertEqual(edge_index.shape, (2, num_nodes ** 2 - num_nodes))
         edge_index = fully_connected_edge_index(num_nodes, "cpu", True)
         self.assertEqual(edge_index.shape, (2, num_nodes ** 2))
+
+class TestEdge2Node(unittest.TestCase):
+    def setUp(self):
+        self.num_nodes = 10
+        self.edge_index = fully_connected_edge_index(self.num_nodes, "cpu", False)
+        self.num_edges = len(self.edge_index[0])
+        self.e_dim = 4
+        self.hidden_dim = 8
+        self.x_dim = 6
+        self.edge2node = Edge2Node(self.e_dim, self.hidden_dim, self.x_dim, dropout_prob=0.1)
+        self.e = torch.randn(self.num_edges, self.e_dim)
+
+    def test_forward(self):
+        out_x = self.edge2node(self.e, self.edge_index)
+        self.assertEqual(out_x.shape, (self.num_nodes, self.x_dim))
+
+    def test_batched_forward(self):
+        batch_size = 8
+        batched_e = torch.stack([self.e] * batch_size, dim=0)
+        out_x = self.edge2node(batched_e, self.edge_index)
+        self.assertEqual(out_x.shape, (batch_size, self.num_nodes, self.x_dim))
+
+    def test_differentiable(self):
+        """Check that gradients can flow through the output."""
+        e = self.e.clone().requires_grad_(True)
+        out = self.edge2node.forward(e, self.edge_index)
+        loss = out.sum()
+        loss.backward()
+        self.assertIsNotNone(e.grad)
+        self.assertEqual(e.grad.shape, e.shape)
+
+class TestNode2Edge(unittest.TestCase):
+    def setUp(self):
+        self.num_nodes = 10
+        self.edge_index = fully_connected_edge_index(self.num_nodes, "cpu", False)
+        self.num_edges = len(self.edge_index[0])
+        self.e_dim = 4
+        self.hidden_dim = 8
+        self.x_dim = 6
+        self.node2edge = Node2Edge(self.x_dim, self.hidden_dim, self.e_dim, dropout_prob=0.1)
+        self.x = torch.randn(self.num_nodes, self.x_dim)
+
+    def test_forward(self):
+        out_e = self.node2edge(self.x, self.edge_index)
+        self.assertEqual(out_e.shape, (self.num_edges, self.e_dim))
+
+    def test_batched_forward(self):
+        batch_size = 8
+        batched_x = torch.stack([self.x] * batch_size, dim=0)
+        out_e = self.node2edge(batched_x, self.edge_index)
+        self.assertEqual(out_e.shape, (batch_size, self.num_edges, self.e_dim))
+
+    def test_differentiable(self):
+        """Check that gradients can flow through the output."""
+        x = self.x.clone().requires_grad_(True)
+        out = self.node2edge.forward(x, self.edge_index)
+        loss = out.sum()
+        loss.backward()
+        self.assertIsNotNone(x.grad)
+        self.assertEqual(x.grad.shape, x.shape)
+
+class TestEdgeNode2Node(unittest.TestCase):
+    def setUp(self):
+        self.num_nodes = 10
+        self.edge_index = fully_connected_edge_index(self.num_nodes, "cpu", False)
+        self.num_edges = len(self.edge_index[0])
+        self.e_dim = 4
+        self.hidden_dim = 8
+        self.x_dim = 6
+        self.x_out_dim = 8
+        self.edge2node = EdgeNode2Node(self.x_dim, self.e_dim, self.hidden_dim, self.x_out_dim, dropout_prob=0.1)
+        self.x = torch.randn(self.num_nodes, self.x_dim)
+        self.e = torch.randn(self.num_edges, self.e_dim)
+
+    def test_forward(self):
+        out_x = self.edge2node(self.x, self.e, self.edge_index)
+        self.assertEqual(out_x.shape, (self.num_nodes, self.x_out_dim))
+
+    def test_batched_forward(self):
+        batch_size = 8
+        batched_e = torch.stack([self.e] * batch_size, dim=0)
+        batched_x = torch.stack([self.x] * batch_size, dim=0)
+        out_x = self.edge2node(batched_x, batched_e, self.edge_index)
+        self.assertEqual(out_x.shape, (batch_size, self.num_nodes, self.x_out_dim))
+
+    def test_differentiable(self):
+        """Check that gradients can flow through the output."""
+        x = self.x.clone().requires_grad_(True)
+        e = self.e.clone().requires_grad_(True)
+        out = self.edge2node.forward(x, e, self.edge_index)
+        loss = out.sum()
+        loss.backward()
+        self.assertIsNotNone(e.grad)
+        self.assertIsNotNone(x.grad)
+        self.assertEqual(e.grad.shape, e.shape)
+        self.assertEqual(x.grad.shape, x.shape)
+

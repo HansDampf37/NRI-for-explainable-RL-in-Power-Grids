@@ -62,12 +62,12 @@ class Encoder(nn.Module):
     def forward(self, x: Tensor, edge_index: Optional[Tensor] = None) -> Tensor:
         """
         Predicts edge type for each edge in edge_index.
-        :param x: node features [B, T, N, X_dim]
+        :param x: node features [(B), T, N, X_dim]
         :param edge_index: node adjacency [2, E]. Only latent edges that are included in this argument are detected. Per default this is fully meshed.
         """
-        B, T, N, x_dim = x.shape
-        x = x.transpose(1, 2).contiguous()
-        x = x.view(B, N, T * x_dim)
+        T, N, x_dim = x.shape[-3:]
+        x = x.transpose(-3, -2).contiguous()  # [(B), N, T, X_dim]
+        x = x.view(x.shape[:-2] + (-1,))  # combine last two dimensions to  # [(B), N, T * X_dim]
         edge_index = edge_index if edge_index is not None else fully_connected_edge_index(N, x.device)
 
         # embed each node in lower dimensional space
