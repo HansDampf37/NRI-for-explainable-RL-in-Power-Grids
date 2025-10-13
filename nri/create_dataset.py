@@ -12,13 +12,16 @@ from grid2op.Agent import BaseAgent, RandomAgent, DoNothingAgent, RecoPowerlineA
 from grid2op.Environment import Environment
 from grid2op.Observation import BaseObservation
 from hydra.utils import instantiate
+from lightsim2grid import LightSimBackend
 from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 
 from baselines.train_stable_baseline import build_agent
-from common.graph_structured_observation_space import GraphObservationSpace
+from common.graph_structured_observation_space import GraphObservationSpace, EDGE_INDEX
+from common.rewards import MazeRLReward
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class AgentFailsEarly(Exception):
@@ -36,7 +39,7 @@ class AgentFailsEarly(Exception):
         return f"Agent {self.agent} failed {self.max_tries} times to produce a trajectory of length {self.length}"
 
 
-def sample_trajectory(length: int, agent: BaseAgent, env: Environment, max_retries: int = 4) -> List[BaseObservation]:
+def sample_trajectory(length: int, agent: BaseAgent, env: Environment, max_retries: int = 100) -> List[BaseObservation]:
     """
     Samples a trajectory of observations from a grid2op environment operated by an agent
     :param length: the maximum length of the trajectory. If the agent fails to operate the environment until this number is reached, we try again from scratch until either a trajectory with the required length is found or max_tries is reached.
@@ -46,7 +49,8 @@ def sample_trajectory(length: int, agent: BaseAgent, env: Environment, max_retri
     :raise AgentFailedEarly: if the agent fails to operate the environment until the trajectory reaches its target length
     :return: the trajectory as a list of observations
     """
-    obs, reward = env.reset(), 0
+    obs = env.current_obs
+    reward = 0
     trajectory = [obs]
     retries = 0
 
@@ -55,14 +59,14 @@ def sample_trajectory(length: int, agent: BaseAgent, env: Environment, max_retri
         obs, reward, done, info = env.step(action)
         trajectory.append(obs)
         if done and retries < max_retries:
-            logger.warning(
-                f"Trajectory ended early after {len(trajectory)} timesteps. Restarting environment to find longer trajectory...")
-            obs, reward = env.reset(), 0
+            obs = env.reset()
+            reward = 0
             trajectory = [obs]
             retries += 1
         elif done:
             raise AgentFailsEarly(agent=agent, env=env, length=length, max_tries=retries)
 
+    logger.info(f"Successfully found trajectory of length {length} in chronic {env.chronics_handler.get_name()}")
     return trajectory
 
 
@@ -78,11 +82,14 @@ def generate_dataset(num_sims: int, length: int, agent: BaseAgent, env: Environm
     :return: trajectory data for the observed grid entities
     """
     trajectories = {}
+    env.reset()
 
     for _ in tqdm(range(num_sims), f"Creating {num_sims} trajectories"):
         trajectory: List[BaseObservation] = sample_trajectory(length=length, agent=agent, env=env)
         converted_trajectory: List[Dict[str, np.ndarray]] = [observation_converter.to_gym(obs) for obs in trajectory]
         for grid_entity in observation_converter.spaces_to_keep:
+            if grid_entity == EDGE_INDEX:
+                continue
             if grid_entity not in trajectories:
                 trajectories[grid_entity] = []
 
@@ -95,7 +102,7 @@ def generate_dataset(num_sims: int, length: int, agent: BaseAgent, env: Environm
 def main(cfg: DictConfig):
     print(OmegaConf.to_yaml(cfg))
     # create env + observation space
-    env = grid2op.make(cfg.env.env_name)
+    env = grid2op.make(cfg.env.env_name, backend=LightSimBackend(), reward_class=MazeRLReward)
     observation_converter: GraphObservationSpace = instantiate(
         cfg.nri.obs_space,
         grid2op_observation_space=env.observation_space

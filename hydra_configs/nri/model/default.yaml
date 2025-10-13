@@ -1,0 +1,7 @@
+_target_: nri.NRI.NRIModule
+hidden_dim: 16
+num_edge_types: 2
+pred_steps: 5
+dropout_prob: 0.1
+skip_first: True
+trajectory_length: ${nri.trajectory_length}
