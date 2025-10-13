@@ -1,12 +1,16 @@
 from typing import Optional
 
+import hydra
 import numpy as np
 import torch
+from hydra.utils import instantiate
 from matplotlib import pyplot as plt
+from omegaconf import DictConfig, OmegaConf
 from torch import Tensor
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, TensorDataset
 from torch.utils.tensorboard import SummaryWriter
 
+from common.graph_structured_observation_space import BipartitGraphObservationSpace
 from nri.ElboObjective import ElboLoss
 from nri.NRI import NRIModule
 from visualization.utils import visualize_latent_graph
@@ -147,3 +151,30 @@ def evaluate_nri_module(
                 plt.show()
 
         plt.close(fig)
+
+@hydra.main(config_path="../hydra_configs", config_name="config", version_base="1.3")
+def main(cfg: DictConfig):
+    print(OmegaConf.to_yaml(cfg))
+    logger = SummaryWriter('data/logs/nri')
+    train_data = np.load('data/nri_dataset/train_node_features_l2rpn_case14_sandbox_2025-10-09_16:36_.npy')
+    test_data = np.load('data/nri_dataset/test_node_features_l2rpn_case14_sandbox_2025-10-09_16:36_.npy')
+    train_dataset = TensorDataset(Tensor(train_data))
+    test_dataset = TensorDataset(Tensor(test_data))
+    x_dim = BipartitGraphObservationSpace.NUM_FEATURES_PER_NODE # TODO nicht clean
+    nri_module = instantiate(cfg.nri.model, x_dim=x_dim)
+    train(
+        nri_module=nri_module,
+        training_set=train_dataset,
+        testing_set=test_dataset,
+        prior=np.array(cfg.nri.train.prior),
+        logger=logger,
+        num_epochs=cfg.nri.train.num_epochs,
+        batch_size=cfg.nri.train.batch_size,
+        learning_rate=cfg.nri.train.learning_rate,
+        evaluate_every_k_steps=cfg.nri.train.evaluate_every_k_steps,
+        show_latent_edges_on_eval=True
+    )
+
+
+if __name__ == "__main__":
+    main()
