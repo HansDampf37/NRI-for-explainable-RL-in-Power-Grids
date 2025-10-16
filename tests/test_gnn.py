@@ -1,6 +1,9 @@
 import unittest
 
+import numpy as np
 import torch
+from torch import Tensor
+from torch_geometric.loader import DataLoader
 
 from common.GNN import MessagePassing, GNNFeatureExtractor
 
@@ -11,11 +14,10 @@ class TestMessagePassing(unittest.TestCase):
         self.num_edge_features = 12
         self.num_nodes = 10
         self.num_edges = 20
-        self.batch_size = 4
         self.edge_index = torch.randint(0, self.num_nodes, (2, self.num_edges))
 
-        self.node_features = torch.randn(self.batch_size, self.num_nodes, self.num_node_features)
-        self.edge_features = torch.randn(self.batch_size, self.num_edges, self.num_edge_features)
+        self.node_features = torch.randn(self.num_nodes, self.num_node_features)
+        self.edge_features = torch.randn(self.num_edges, self.num_edge_features)
 
     def test_message_passing(self):
         num_node_features_out = 1
@@ -27,8 +29,8 @@ class TestMessagePassing(unittest.TestCase):
             e_out_dim=num_edge_features_out,
         )
         node_features, edge_features = mp(self.node_features, self.edge_features, self.edge_index)
-        self.assertEqual(node_features.shape, torch.Size([self.batch_size, self.num_nodes, num_node_features_out]))
-        self.assertEqual(edge_features.shape, torch.Size([self.batch_size, self.num_edges, num_edge_features_out]))
+        self.assertEqual(node_features.shape, torch.Size([self.num_nodes, num_node_features_out]))
+        self.assertEqual(edge_features.shape, torch.Size([self.num_edges, num_edge_features_out]))
 
     def test_no_residual(self):
         kwargs = dict(
@@ -58,8 +60,8 @@ class TestGnnFeatureExtractor(unittest.TestCase):
         self.batch_size = 4
         self.edge_index = torch.randint(0, self.num_nodes, (2, self.num_edges))
         self.node_batch = torch.randint(0, self.batch_size, (self.num_nodes,))
-        self.node_features = torch.randn(self.batch_size, self.num_nodes, self.num_node_features)
-        self.edge_features = torch.randn(self.batch_size, self.num_edges, self.num_edge_features)
+        self.node_features = torch.randn(self.num_nodes, self.num_node_features)
+        self.edge_features = torch.randn(self.num_edges, self.num_edge_features)
 
     def test_gnn(self):
         output_size = 2
@@ -74,7 +76,7 @@ class TestGnnFeatureExtractor(unittest.TestCase):
             0.1,
             True
         )
-        output = fe(self.node_features, self.edge_features, self.edge_index)
+        output = fe(self.node_features, self.edge_features, self.edge_index, self.node_batch)
         self.assertEqual(output.shape, torch.Size([self.batch_size, output_size + output_size]))
 
     def test_parameter_count(self):
@@ -101,40 +103,41 @@ class TestGnnFeatureExtractor(unittest.TestCase):
         import torch.nn as nn
         import torch.optim as optim
         from torch_geometric.datasets import KarateClub
-        from torch_geometric.utils import to_undirected
 
         dataset = KarateClub()  # single graph, 34 nodes, labels per node
         data = dataset[0]
-
-        # Prepare inputs
-        x = data.x.float().unsqueeze(0)  # [B, N, node_features]
-        edge_index = to_undirected(data.edge_index)  # [2, E]
-        e = torch.ones(1, edge_index.size(1), 4)  # dummy edge features, dim=4
-
-        # Target = graph label (for test we take the majority of node labels)
-        y = data.y.mode()[0].unsqueeze(0)  # just to have a graph-level label
+        data.e = torch.ones(data.edge_index.size(1), 4)  # dummy edge features, dim=4
+        data.y = Tensor(np.array(2.0))
+        dataloader = DataLoader([data])
 
         model = GNNFeatureExtractor(
-            x_dim=x.size(-1),
-            e_dim=e.size(-1),
+            x_dim=data.x.size(-1),
+            e_dim=data.e.size(-1),
             x_hidden_dim=32,
             e_hidden_dim=32,
-            x_out_dim=4,
-            e_out_dim=0,
+            x_out_dim=1,
+            e_out_dim=1,
             n_layers=3,
         )
 
         opt = optim.Adam(model.parameters(), lr=1e-2)
-        loss_fn = nn.CrossEntropyLoss()
+        loss_fn = nn.MSELoss()
         first_loss = None
         last_loss = None
         for epoch in range(200):
-            opt.zero_grad()
-            logits = model(x, e, edge_index)[:, :dataset.num_classes]  # [1, num_classes]
-            loss = loss_fn(logits, y)
-            first_loss = first_loss or loss.item()
-            last_loss = loss.item()
-            loss.backward()
-            opt.step()
-            print(f"Epoch {epoch:02d} | Loss {loss.item():.4f}")
+            running_loss = 0.0
+            for batch in dataloader:
+                x, edge_index, y, _, e, batch_index, _ = batch
+                logits = model(x[1], e[1], edge_index[1], batch_index[1])[:, :dataset.num_classes]  # [1, num_classes]
+                loss = loss_fn(logits.sum(), y[1])
+                running_loss += loss.item()
+
+                opt.zero_grad()
+                loss.backward()
+                opt.step()
+
+                first_loss = first_loss or loss.item()
+                last_loss = loss.item()
+
+            print(f"Epoch {epoch:02d} | Loss {running_loss:.4f}")
         self.assertTrue(last_loss < first_loss * 0.2)

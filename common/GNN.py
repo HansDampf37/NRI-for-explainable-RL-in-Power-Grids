@@ -1,38 +1,32 @@
-from typing import Tuple, Optional
-
 import numpy as np
 import torch
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from torch import nn, Tensor
+from torch_geometric.data import Data, Batch
+from torch_geometric.nn import MessagePassing
+from torch_geometric.nn import global_mean_pool
 
 from .MLP import MLP
 from .graph_structured_observation_space import GraphObservationSpace, EDGE_INDEX, \
-    EDGES, NODES
+    EDGES, NODES, EDGE_MASK
 
 
-class MessagePassing(nn.Module):
+class MessagePassing(MessagePassing):
     """
-    Implements:
-      e_{j,i}^{(k)} = psi^{(k)}( e_{j,i}^{(k-1)}, x_i^{(k-1)}, x_j^{(k-1)} )
-      x_i^{(k)} = update_node( x_i^{(k-1)}, sum_{j in N(i)} phi^{(k)}( x_i^{(k-1)}, x_j^{(k-1)}, e_{j,i}^{(k)} ) )
-    Inputs:
-      x: [N, x_dim]
-      e: [E, e_dim]
-      edge_index: [2, E] tensor of dtype long. edge_index[0] = senders j, edge_index[1] = receivers i.
-    Returns:
-      x_out: [N, x_dim_out]  (by default same dim)
-      e_out: [E, e_dim_out]
+    PyTorch Geometric style message passing:
+      e_{j,i} = psi(e_{j,i}, x_i, x_j)
+      x_i = x_i + node_update(x_i, sum_j phi(x_i, x_j, e_{j,i}))
     """
 
     def __init__(
-            self,
-            x_dim: int,
-            e_dim: int,
-            x_out_dim: Optional[int] = None,
-            e_out_dim: Optional[int] = None,
-            hidden_dim: int = 64,
-            residual: bool = False,
-            dropout_prob: float = 0.0,
+        self,
+        x_dim: int,
+        e_dim: int,
+        x_out_dim: int = None,
+        e_out_dim: int = None,
+        hidden_dim: int = 64,
+        residual: bool = False,
+        dropout_prob: float = 0.0,
     ):
         """
         Instantiate a message passing layer.
@@ -45,81 +39,75 @@ class MessagePassing(nn.Module):
         :param residual: If True, add x and e to x_out and e_out respectively (default: False). Only works of x_dim = x_out_dim and e_dim = e_out_dim
         :param dropout_prob: the probability to do dropout in the message passing MLPs (default 0)
         """
-        super(MessagePassing, self).__init__()
+        super().__init__(aggr="add")
         self.x_dim = x_dim
         self.e_dim = e_dim
         self.x_out_dim = x_out_dim or x_dim
         self.e_out_dim = e_out_dim or e_dim
         self.residual = residual
-        if residual and (x_dim != x_out_dim or e_dim != e_out_dim):
-            raise ValueError("Cannot use residual connections. x_dim != x_out_dim or e_dim != e_out_dim.")
+        if residual and (x_dim != self.x_out_dim or e_dim != self.e_out_dim):
+            raise ValueError("Cannot use residual when input/output dims differ.")
 
         # psi: update edge embedding from (e, x_i, x_j)
-        psi_in = self.e_dim + self.x_dim + self.x_dim
         self.psi = MLP(
-            input_features=psi_in,
+            input_features=self.e_dim + self.x_dim * 2,
             output_features=self.e_out_dim,
             hidden_dim=hidden_dim,
             dropout_prob=dropout_prob
         )
 
-        # phi: message fn from (x_i, x_j, e_{j,i})
-        phi_in = self.x_dim + self.x_dim + self.e_out_dim
+        # message MLP: phi(x_i, x_j, e_ji)
         self.phi = MLP(
-            input_features=phi_in,
+            input_features=self.x_dim * 2 + self.e_out_dim,
             output_features=self.x_out_dim,
             hidden_dim=hidden_dim,
             dropout_prob=dropout_prob
         )
 
-        # node_update: optionally process concatenated (x_i_old, aggregated_messages)
-        node_update_in = self.x_dim + self.x_out_dim
+        # node update MLP
         self.node_update = MLP(
-            input_features=node_update_in,
+            input_features=self.x_dim + self.x_out_dim,
             output_features=self.x_out_dim,
             hidden_dim=hidden_dim,
             dropout_prob=dropout_prob
         )
 
-    def forward(self, x: Tensor, e: Tensor, edge_index: Tensor) -> Tuple[Tensor, Tensor]:
+    def forward(self, x: Tensor, e: Tensor, edge_index: Tensor) -> tuple[Tensor, Tensor]:
         """
         Forward pass.
 
-        :param x: node features [B, N, node_in_dim]
-        :param e: edge features [B, E, edge_in_dim]
+        :param x: node features [N, node_in_dim]
+        :param e: edge features [E, edge_in_dim]
         :param edge_index: models adjacency [2, E]
-        :return: node features [B, N, node_out_dim] and edge features [B, E, edge_out_dim]
+        :return: node features [N, node_out_dim] and edge features [E, edge_out_dim]
         """
-        senders = edge_index[0]  # j
-        receivers = edge_index[1]  # i
-        # gather x_j and x_i per edge
-        x_j = x[:, senders, :]  # [B, E, x_dim]
-        x_i = x[:, receivers, :]  # [B, E, x_dim]
-
-        # update edges: e_out = psi(e_old, x_i, x_j)
+        # update edges first
+        src, target = edge_index
+        x_i, x_j = x[target], x[src]
         psi_in = torch.cat([e, x_i, x_j], dim=-1)
-        e_out = self.psi(psi_in)  # [E, e_out_dim]
+        e_out = self.psi(psi_in)
 
-        # compute messages m_{j->i} = phi(x_i, x_j, e_{j,i})
-        phi_in = torch.cat([x_i, x_j, e_out], dim=-1)
-        messages = self.phi(phi_in)  # [E, x_out_dim]
-
-        # aggregate (sum) messages into nodes by receiver index
-        batch_size = x.size(0) # B
-        num_nodes = x.size(1) # N
-        agg = x.new_zeros((batch_size, num_nodes, messages.size(-1)))
-        # index_add_ to sum messages into receivers rows
-        agg.index_add_(index=receivers, source=messages, dim=1)
-
-        # node update: combine old x and aggregated messages
-        node_in = torch.cat([x, agg], dim=-1)
+        # message passing
+        x_messages = self.propagate(edge_index=edge_index, x=x, e=e_out)
+        node_in = torch.cat([x, x_messages], dim=-1)
         x_out = self.node_update(node_in)
 
         if self.residual:
-            e_out = e + e_out
             x_out = x + x_out
+            e_out = e + e_out
 
         return x_out, e_out
+
+    def message(self, x_j: Tensor, x_i: Tensor, e: Tensor) -> Tensor:
+        """
+        Compute messages for each edge
+        :param x_j: sender features [E, x_dim]
+        :param x_i: receiver features [E, x_dim]
+        :param e: updated edge features [E, e_out_dim]
+        :return: messages [E, x_out_dim]
+        """
+        phi_in = torch.cat([x_i, x_j, e], dim=-1)
+        return self.phi(phi_in)
 
 
 class GNNFeatureExtractor(nn.Module):
@@ -183,29 +171,34 @@ class GNNFeatureExtractor(nn.Module):
             residual=False,
         )
 
-    def forward(self, x: Tensor, e: Tensor, edge_index: np.ndarray | Tensor) -> Tensor:
+    def forward(self, x: Tensor, e: Tensor, edge_index: np.ndarray | Tensor, batch: np.ndarray | Tensor) -> Tensor:
         """
         Forward pass.
 
-        :param x: node features [B, N, node_in_dim]
-        :param e: edge features [B, E, edge_in_dim]
+        :param x: node features [N, node_in_dim]
+        :param e: edge features [E, edge_in_dim]
         :param edge_index: models adjacency [2, E]
-        :return: output features [B, node_out_dim + edge_out_dim]
+        :param batch: indicates which batch each node belongs to [N]
+        :return: output features [node_out_dim + edge_out_dim]
         """
         x_h = self.node_proj(x)
         e_h = self.edge_proj(e)
 
         for mp in self.layers:
-            x_h, e_h = mp(x_h, e_h, edge_index)
+            x_h, e_h = mp(x=x_h, e=e_h, edge_index=edge_index)
 
-        x_final, e_final = self.final(x_h, e_h, edge_index) # [B, N, node_out_dim], [B, E, edge_out_dim]
+        x_final, e_final = self.final(x_h, e_h, edge_index) # [N, node_out_dim], [E, edge_out_dim]
 
-        node_pool = x_final.mean(axis=1)
-        edge_pool = e_final.mean(axis=1)
+        node_pool = global_mean_pool(x_final, batch)
+        edge_pool = global_mean_pool(e_final, batch[edge_index[0]])
         return torch.cat([node_pool, edge_pool], dim=-1)
 
 
 class SB3GNNWrapper(BaseFeaturesExtractor):
+    """
+    Wraps the GNN to accept input of gym-like dict observations. These observations are then transformed to torch
+    geometric batches before being passed to the model.
+    """
     def __init__(
             self,
             observation_space: GraphObservationSpace,
@@ -230,10 +223,21 @@ class SB3GNNWrapper(BaseFeaturesExtractor):
             residual=residual
         )
 
-    def forward(self, observations: dict[str, Tensor]) -> Tensor:
-        # TODO edge_index batching not clean doesnt work for changing graphs
-        node_features = observations[NODES]  # [B, N, node_in_dim]
-        edge_features = observations[EDGES]  # [B, E, edge_in_dim]
-        edge_index = observations[EDGE_INDEX][0].to(dtype=torch.long)  # [2, E]  (shared across batch)
-        return self.gnn_feature_extractor.forward(node_features, edge_features, edge_index)
+    def forward(self, observations: dict[str, torch.Tensor]) -> torch.Tensor:
+        node_features_batch = observations[NODES]  # [B, N, node_in_dim]
+        edge_features_batch = observations.get(EDGES)  # [B, E, edge_in_dim] or None
+        edge_masks_batch = observations[EDGE_MASK].bool()  # [B, E]
+        edge_index_batch = observations[EDGE_INDEX].long()  # [B, 2, E]
+
+        data_list = []
+        batch_size = node_features_batch.size(0)
+
+        for b in range(batch_size):
+            node_features = node_features_batch[b]
+            edge_features = edge_features_batch[b, edge_masks_batch[b]] if edge_features_batch is not None else None
+            edge_index = edge_index_batch[b, :, edge_masks_batch[b]]
+            data_list.append(Data(x=node_features, edge_index=edge_index, edge_attr=edge_features))
+
+        batch = Batch.from_data_list(data_list)
+        return self.gnn_feature_extractor(batch.x, batch.edge_attr, batch.edge_index, batch.batch)
 
