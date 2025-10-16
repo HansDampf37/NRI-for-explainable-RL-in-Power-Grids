@@ -1,11 +1,11 @@
 defaults:
-    -   obs_space: bipartit_node_features_obs_space # the observations in our dataset will be from this space
+    -   obs_space: bus_connections_features_obs_space # the observations in our dataset will be from this space
     -   model: default
     -   train: default
 
 agent: baseline # which agent is operating the grid
 model_path: data/models/stable-baselines/dqn-gnn_uc3 # if we use baseline we need to provide a path to the weights
-num_train_trajectories: 20_000 # the number of trajectories in the training set
-num_test_trajectories: 500
-num_val_trajectories: 500
-trajectory_length: 50 # the number of observations in one trajectory
+num_train_trajectories: 1_000 # the number of trajectories in the training set
+num_test_trajectories: 100
+num_val_trajectories: 100
+trajectory_length: 100 # the number of observations in one trajectory

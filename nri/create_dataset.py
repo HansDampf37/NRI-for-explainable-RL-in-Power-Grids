@@ -17,7 +17,7 @@ from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 
 from baselines.train_stable_baseline import build_agent
-from common.graph_structured_observation_space import GraphObservationSpace, EDGE_INDEX
+from common.graph_structured_observation_space import EDGE_INDEX, EDGE_MASK, GymnasiumObservationConverter
 from common.rewards import MazeRLReward
 
 logger = logging.getLogger(__name__)
@@ -71,7 +71,7 @@ def sample_trajectory(length: int, agent: BaseAgent, env: Environment, max_retri
 
 
 def generate_dataset(num_sims: int, length: int, agent: BaseAgent, env: Environment,
-                     observation_converter: GraphObservationSpace) -> Dict:
+                     observation_converter: GymnasiumObservationConverter) -> Dict:
     """
     Creates a dataset containing multiple trajectories of the environment being operated by some agent.
     :param num_sims: the amount of trajectories to generate
@@ -81,21 +81,24 @@ def generate_dataset(num_sims: int, length: int, agent: BaseAgent, env: Environm
     :param observation_converter: the graph observation space to use
     :return: trajectory data for the observed grid entities
     """
+    logger.info(f"Running {agent.__class__.__name__} on {env.env_name} to produce {num_sims} trajectories of length {length}")
+    logger.info(f"Using observation converter: {observation_converter.__class__.__name__}")
+
     trajectories = {}
     env.reset()
 
     for _ in tqdm(range(num_sims), f"Creating {num_sims} trajectories"):
         trajectory: List[BaseObservation] = sample_trajectory(length=length, agent=agent, env=env)
         converted_trajectory: List[Dict[str, np.ndarray]] = [observation_converter.to_gym(obs) for obs in trajectory]
-        for grid_entity in observation_converter.spaces_to_keep:
-            if grid_entity == EDGE_INDEX:
+        for grid_entity in converted_trajectory[0].keys():
+            if grid_entity == EDGE_INDEX or grid_entity == EDGE_MASK:
                 continue
             if grid_entity not in trajectories:
                 trajectories[grid_entity] = []
 
             trajectories[grid_entity].append(np.array([obs[grid_entity] for obs in converted_trajectory]))
 
-    return {grid_entity: np.stack(trajectories[grid_entity]) for grid_entity in observation_converter.spaces_to_keep}
+    return {grid_entity: np.stack(trajectories[grid_entity]) for grid_entity in trajectories.keys()}
 
 
 @hydra.main(config_path="../hydra_configs", config_name="config", version_base="1.3")
@@ -103,7 +106,7 @@ def main(cfg: DictConfig):
     print(OmegaConf.to_yaml(cfg))
     # create env + observation space
     env = grid2op.make(cfg.env.env_name, backend=LightSimBackend(), reward_class=MazeRLReward)
-    observation_converter: GraphObservationSpace = instantiate(
+    observation_converter: GymnasiumObservationConverter = instantiate(
         cfg.nri.obs_space,
         grid2op_observation_space=env.observation_space
     )
@@ -125,7 +128,6 @@ def main(cfg: DictConfig):
         raise NotImplementedError(f"Unknown agent '{cfg.nri.agent}'")
 
     total = cfg.nri.num_train_trajectories + cfg.nri.num_val_trajectories + cfg.nri.num_test_trajectories
-    logger.info(f"Running {cfg.nri.agent} on {cfg.env.env_name} to produce {total} trajectories...")
     data = generate_dataset(total, cfg.nri.trajectory_length, agent, env, observation_converter)
 
     timestamp = datetime.now().strftime("%Y-%m-%d_%H:%M")
