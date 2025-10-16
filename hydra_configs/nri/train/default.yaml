@@ -1,5 +1,5 @@
 prior: [0.9, 0.1]
-num_epochs: 100
-batch_size: 128
-learning_rate: 0.01
+num_epochs: 500
+batch_size: 8 # This should be rather small to be memory efficient
+learning_rate: 0.0005
 evaluate_every_k_steps: 10

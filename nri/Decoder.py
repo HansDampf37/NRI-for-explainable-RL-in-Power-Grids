@@ -1,3 +1,4 @@
+from math import ceil
 from typing import Optional
 
 import torch
@@ -72,13 +73,12 @@ class Decoder(nn.Module):
         edge_index = edge_index if edge_index is not None else fully_connected_edge_index(x.shape[-2], x.device)
         edge_types = edge_types.unsqueeze(-3) # [B, 1, E, edge_types]
 
-        edge_properties_all = []
+        e_all = None
         for k in range(start_idx, self.num_edge_types):
-            edge_properties = edge_types[..., [k]] * self.node2edge_list[k](x, edge_index)
-            edge_properties_all.append(edge_properties)
-        e = sum(edge_properties_all)
+            e_k = edge_types[..., [k]] * self.node2edge_list[k](x, edge_index)
+            e_all = e_all + e_k if e_all is not None else e_k
 
-        delta = self.edge_node2node(x, e, edge_index)
+        delta = self.edge_node2node(x, e_all, edge_index)
         return x + delta
 
     def forward(
@@ -112,7 +112,7 @@ class Decoder(nn.Module):
             predictions.append(x_t)
 
         # Combine predictions
-        T_plus_modulo_tail = predictions[0].size(-3) * pred_steps
+        T_plus_modulo_tail = ceil(T / pred_steps) * pred_steps
         output_dimensions = list(x.shape)
         output_dimensions[-3] = T_plus_modulo_tail
         output = torch.zeros(*output_dimensions, device=x.device)

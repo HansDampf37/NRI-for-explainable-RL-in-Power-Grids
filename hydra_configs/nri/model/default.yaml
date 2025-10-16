@@ -1,5 +1,5 @@
 _target_: nri.NRI.NRIModule
-hidden_dim: 16
+hidden_dim: 64
 num_edge_types: 2
 pred_steps: 5
 dropout_prob: 0.1
