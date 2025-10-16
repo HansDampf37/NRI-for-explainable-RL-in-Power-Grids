@@ -32,7 +32,7 @@ def visualize_latent_graph(
     # add ground truth edges if specified
     if ground_truth_edge_index is not None:
         for src, dst in ground_truth_edge_index.transpose(1,0):
-            G.add_edge(int(src), int(dst), color="gray", weight=1, edge_type="Ground Truth", style='..')
+            G.add_edge(int(src), int(dst), color="gray", weight=1, edge_type="Ground Truth", style='dotted')
 
     # count predicted edges
     edge_counter = Counter()

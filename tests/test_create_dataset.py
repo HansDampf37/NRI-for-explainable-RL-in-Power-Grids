@@ -34,7 +34,7 @@ class TestCreateDataset(unittest.TestCase):
         obs_space = GraphObservationSpace(self.env.observation_space, [NODES, EDGES])
         data = generate_dataset(num_traj, traj_len, self.do_nothing_agent, self.env, obs_space)
 
-        self.assertEqual(list(data.keys()), [NODES, EDGES])
+        self.assertSetEqual(set(data.keys()), {NODES, EDGES})
         self.assertEqual(data[NODES].shape, (num_traj, traj_len, obs_space.n_node, Space.NUM_FEATURES_PER_NODE))
         self.assertEqual(data[EDGES].shape, (num_traj, traj_len, obs_space.n_edge, Space.NUM_FEATURES_PER_EDGE))
 
