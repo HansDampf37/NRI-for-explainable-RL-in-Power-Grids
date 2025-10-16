@@ -3,16 +3,16 @@ import unittest
 import grid2op
 from grid2op.gym_compat import GymEnv, DiscreteActSpace
 from stable_baselines3 import DQN
+from torch_geometric.data.data import Data
 
 from common.graph_structured_observation_space import GraphObservationSpace, EDGE_INDEX, \
-    EDGES, NODES, BipartitGraphObservationSpace
+    EDGES, NODES, BipartitGraphObservationSpace, EDGE_MASK, BusConnectionsGraphObsSpace, gym2pytorch_geometric_data
 
 
 class TestGraphStructuredObservationSpace(unittest.TestCase):
     def setUp(self):
         self.env = grid2op.make("l2rpn_case14_sandbox")
         self.gym_env = GymEnv(self.env)
-        self.gym_env.observation_space.close()
         self.gym_env.observation_space = GraphObservationSpace(self.env.observation_space)
         self.obs_space = self.gym_env.observation_space
 
@@ -52,7 +52,6 @@ class TestBipartitGraphStructuredObservationSpace(unittest.TestCase):
     def setUp(self):
         self.env = grid2op.make("l2rpn_case14_sandbox")
         self.gym_env = GymEnv(self.env)
-        self.gym_env.observation_space.close()
         self.gym_env.observation_space = BipartitGraphObservationSpace(self.env.observation_space)
         self.obs_space = self.gym_env.observation_space
 
@@ -75,3 +74,30 @@ class TestBipartitGraphStructuredObservationSpace(unittest.TestCase):
         target_feature_dim = self.obs_space.graph_obs_space.NUM_FEATURES_PER_NODE + self.obs_space.graph_obs_space.NUM_FEATURES_PER_EDGE
         self.assertEqual(d[NODES].shape, (self.obs_space.n_node_bipart, target_feature_dim))
         self.assertEqual(d[EDGE_INDEX].shape, (2, self.obs_space.n_edge_bipart))
+
+class TestBusConnectionsGraphObsSpace(unittest.TestCase):
+    def setUp(self):
+        self.env = grid2op.make("l2rpn_case14_sandbox")
+        self.gym_env = GymEnv(self.env)
+        self.gym_env.observation_space = BusConnectionsGraphObsSpace(self.env.observation_space)
+        self.obs_space = self.gym_env.observation_space
+
+    def test_observation_space(self):
+        obs, _ = self.gym_env.reset()
+        self.assertIn(NODES, obs.keys())
+        self.assertIn(EDGE_INDEX, obs.keys())
+        self.assertIn(EDGE_MASK, obs.keys())
+
+    def test_obs_shape(self):
+        obs, _ = self.gym_env.reset()
+        self.assertEqual(obs[NODES].shape, (self.obs_space.num_node, self.obs_space.NUM_FEATURES_PER_NODE))
+        self.assertEqual(obs[EDGE_INDEX].shape, (2, self.obs_space.max_n_edge))
+        self.assertEqual(obs[EDGE_MASK].shape, (self.obs_space.max_n_edge, ))
+
+    def test_data(self):
+        obs, _ = self.gym_env.reset()
+        data = gym2pytorch_geometric_data(obs)
+        self.assertIsInstance(data, Data)
+        self.assertLessEqual(data.edge_index.shape[1], self.obs_space.max_n_edge)
+        self.assertEqual(data.edge_index.shape[0], 2)
+        print(data)

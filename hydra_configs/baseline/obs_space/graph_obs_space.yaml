@@ -3,3 +3,4 @@ spaces_to_keep:
     - node_features
     - edge_features
     - edge_index
+    - edge_mask
