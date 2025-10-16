@@ -22,7 +22,7 @@ class Grid2OpEnvWrapper(Env):
     def __init__(self,
                  env_name: str = "l2rpn_case14_sandbox",
                  safe_max_rho: float = 0.95,
-                 act_space_creation=lambda env: DiscreteActSpace(env.action_space),
+                 act_space_creation=lambda env: DiscreteActSpace(env.action_space, attr_to_keep=["set_bus"]),
                  obs_space_creation=lambda env: BoxGymObsSpace(grid2op_observation_space=env.observation_space)):
         super().__init__()
         self._g2op_env = grid2op.make(env_name, backend=LightSimBackend(), reward_class=MazeRLReward)

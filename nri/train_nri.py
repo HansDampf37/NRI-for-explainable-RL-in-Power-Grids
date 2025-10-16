@@ -15,7 +15,7 @@ from tqdm import tqdm
 
 from nri.ElboObjective import ElboLoss
 from nri.NRI import NRIModule
-from visualization.utils import visualize_latent_graph, get_node_positions
+from visualization.utils import visualize_powergrid, get_node_positions
 
 logger = logging.getLogger(__name__)
 
@@ -163,7 +163,7 @@ def evaluate_nri_module(
                 sampled_edges = latent_edges
 
         # plot latent graph
-        fig = visualize_latent_graph(
+        fig = visualize_powergrid(
             typed_edge_index=sampled_edges,
             ground_truth_edge_index=edge_index,
             skip_first_edge_type=nri_module.skip_first,

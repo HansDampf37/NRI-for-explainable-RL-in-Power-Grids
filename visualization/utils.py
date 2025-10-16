@@ -11,20 +11,23 @@ from torch import Tensor
 from common.graph_structured_observation_space import GymnasiumObservationConverter, BusConnectionsGraphObsSpace
 
 
-def visualize_latent_graph(
+def visualize_powergrid(
         typed_edge_index: Tensor,
         ground_truth_edge_index: Optional[Tensor] = None,
         skip_first_edge_type: bool = True,
         node_positions: Optional[np.ndarray] = None):
     """
-    Visualize latent edges predicted by the NRI module.
+    Visualize the powergrid including latent edges predicted by the NRI module.
     :param typed_edge_index: Edge indices in shape [3, E] where dimension 1 contains src, target, type
     :param ground_truth_edge_index: Edge index for ground truth edges [2, E]
     :param skip_first_edge_type: Skip first edge type when visualizing (defaults to True)
     :param node_positions: Node positions as numpy array shape [N, 2] where dimension 1 contains x and y. (Optional)
     """
     _, E = typed_edge_index.shape
-    num_nodes = typed_edge_index[0:2, :].max() + 1
+    if ground_truth_edge_index is None:
+        num_nodes = typed_edge_index[0:2, :].max() + 1
+    else:
+        num_nodes = ground_truth_edge_index.max() + 1
 
     G = nx.MultiDiGraph()
     G.add_nodes_from(range(num_nodes))
@@ -32,7 +35,7 @@ def visualize_latent_graph(
     # add ground truth edges if specified
     if ground_truth_edge_index is not None:
         for src, dst in ground_truth_edge_index.transpose(1,0):
-            G.add_edge(int(src), int(dst), color="gray", weight=1, edge_type="Ground Truth", style='dotted')
+            G.add_edge(int(src), int(dst), color="gray", weight=1, edge_type="Ground Truth", style='solid')
 
     # count predicted edges
     edge_counter = Counter()
@@ -51,7 +54,7 @@ def visualize_latent_graph(
         G.add_edge(src, dst, color=color, weight=weight, edge_type=t, style='solid')
 
     # --- Draw graph ---
-    fig = plt.figure(figsize=(8, 8))
+    fig = plt.figure(figsize=(18, 10))
     edge_colors = [d["color"] for (_, _, d) in G.edges(data=True)]
     edge_weights = [d["weight"] for (_, _, d) in G.edges(data=True)]
     edge_styles = [d["style"] for (_, _, d) in G.edges(data=True)]

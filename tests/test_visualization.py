@@ -5,7 +5,7 @@ import torch
 from matplotlib import pyplot as plt
 
 from common.graph_structured_observation_space import BusConnectionsGraphObsSpace, EDGE_INDEX
-from visualization.utils import get_node_positions, visualize_latent_graph
+from visualization.utils import get_node_positions, visualize_powergrid
 
 
 class TestVisualization(unittest.TestCase):
@@ -38,7 +38,7 @@ class TestVisualization(unittest.TestCase):
         predicted_edge_index = torch.randint(low=0, high=obs_space.num_node, size=(2, num_edges))
         predicted_edge_types = torch.randint(low=0, high=num_types, size=(1, num_edges))
         typed_edge_index = torch.concatenate([predicted_edge_index, predicted_edge_types], dim=0)
-        fig = visualize_latent_graph(typed_edge_index, edge_index, True, get_node_positions(env, obs_space.__class__))
+        fig = visualize_powergrid(typed_edge_index, edge_index, True, get_node_positions(env, obs_space.__class__))
         plt.show()
         plt.close(fig)
 
