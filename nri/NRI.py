@@ -61,6 +61,7 @@ class NRIModule(nn.Module):
         self.pred_steps = pred_steps
         self.num_edge_types = num_edge_types
         self.skip_first = skip_first
+        torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=10.0)
 
     def forward(self, x: Tensor, edge_index: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
         """
