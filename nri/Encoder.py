@@ -64,6 +64,7 @@ class Encoder(nn.Module):
         Predicts edge type for each edge in edge_index.
         :param x: node features [(B), T, N, X_dim]
         :param edge_index: node adjacency [2, E]. Only latent edges that are included in this argument are detected. Per default this is fully meshed.
+        :return: edge type prediction [(B), E, num_edge_types]
         """
         T, N, x_dim = x.shape[-3:]
         x = x.transpose(-3, -2).contiguous()  # [(B), N, T, X_dim]
@@ -74,14 +75,14 @@ class Encoder(nn.Module):
         x = self.f_emb(x)  # 2-layer ELU net per node
 
         # v -> e
-        e = self.node2edge_1(x, edge_index)
+        e = self.node2edge_1.forward(x, edge_index)
         e_skip = e
 
         # e -> v
-        x = self.edge2node(e, edge_index)
+        x = self.edge2node.forward(e, edge_index)
 
         # v -> e
-        e = self.node2edge_2(x, edge_index)
+        e = self.node2edge_2.forward(x, edge_index)
         e = torch.cat([e, e_skip], dim=-1)
 
         return self.fc_out(e)

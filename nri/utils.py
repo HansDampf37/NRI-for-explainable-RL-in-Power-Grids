@@ -41,8 +41,9 @@ class Node2Edge(nn.Module):
     def forward(self, x: Tensor, edge_index: Union[np.array, Tensor]) -> Tensor:
         """
         Aggregates node features into edge features.
-        :param x: node features [B, T, N, X_dim]
+        :param x: node features [... N, X_dim]
         :param edge_index: adjacency information [2, E]
+        :return: edge features [..., E, E_dim]
         """
         senders = edge_index[0]  # j
         receivers = edge_index[1]  # i
@@ -77,7 +78,7 @@ class Edge2Node(nn.Module):
 
     def forward(self, e: Tensor, edge_index: Union[np.array, Tensor]) -> Tensor:
         """
-        Aggregates edge features into node features. The input can have multiple batch dimensions.
+        Aggregates edge features into node features.
 
         :param e: edge features [..., E, E_dim]
         :param edge_index: adjacency information [2, E]
@@ -121,7 +122,7 @@ class EdgeNode2Node(nn.Module):
 
     def forward(self, x: Tensor, e: Tensor, edge_index: Union[np.array, Tensor]) -> Tensor:
         """
-        Aggregates node + edge features into node features. The input can have multiple batch dimensions.
+        Aggregates node + edge features into node features.
 
         :param x: node features [..., N, X_dim]
         :param e: edge features [..., E, E_dim]

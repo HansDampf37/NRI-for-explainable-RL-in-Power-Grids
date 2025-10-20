@@ -1,5 +1,5 @@
 from math import ceil
-from typing import Optional
+from typing import Optional, List
 
 import torch
 from torch import nn, Tensor
@@ -34,7 +34,7 @@ class Decoder(nn.Module):
         self.num_edge_types = num_edge_types
         self.skip_first = skip_first
 
-        self.node2edge_list = nn.ModuleList([
+        self.node2edge_list: List[Node2Edge] = nn.ModuleList([
             Node2Edge(
                 x_dim=x_dim,
                 hidden_dim=hidden_dim,
@@ -71,14 +71,14 @@ class Decoder(nn.Module):
         """
         start_idx = 1 if self.skip_first else 0
         edge_index = edge_index if edge_index is not None else fully_connected_edge_index(x.shape[-2], x.device)
-        edge_types = edge_types.unsqueeze(-3) # [B, 1, E, edge_types]
+        edge_types = edge_types.unsqueeze(-3) # [(B), 1, E, edge_types]
 
         e_all = None
         for k in range(start_idx, self.num_edge_types):
-            e_k = edge_types[..., [k]] * self.node2edge_list[k](x, edge_index)
+            e_k = edge_types[..., [k]] * self.node2edge_list[k].forward(x, edge_index)
             e_all = e_all + e_k if e_all is not None else e_k
 
-        delta = self.edge_node2node(x, e_all, edge_index)
+        delta = self.edge_node2node.forward(x, e_all, edge_index)
         return x + delta
 
     def forward(

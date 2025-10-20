@@ -71,16 +71,16 @@ class NRIModule(nn.Module):
 
         :param x: Input tensor of shape [(B), T, N, X_dim]
         :param edge_index: node adjacency [2, E]. Only latent edges that are included in this argument are detected. Per default this is fully meshed.
-        :return: Predicted next step feature vector of shape [(B), T, N, X_dim] and p(z|x)
+        :return: Predicted next step feature vector of shape [(B), T, N, X_dim] and p(z|x) of shape [(B), E, num_edge_types]
         """
         T, N, X_dim = x.shape[-3:]
         edge_index = edge_index if edge_index is not None else fully_connected_edge_index(N, x.device)
-        encoder_logits = self.encoder(x, edge_index)
+        encoder_logits = self.encoder.forward(x, edge_index)
 
         p_z_given_x = f.softmax(encoder_logits, dim=-1)
         p_one_hot = self.gumbel_softmax(encoder_logits)
 
-        predictions = self.decoder(x, p_one_hot, edge_index, self.pred_steps)
+        predictions = self.decoder.forward(x, p_one_hot, edge_index, self.pred_steps)
         return predictions, p_z_given_x
 
     def get_latent_edges(self, x: Tensor, edge_index: Optional[Tensor] = None) -> Tensor:
