@@ -1,4 +1,3 @@
-from collections import Counter
 from typing import Optional
 
 import networkx as nx
@@ -11,26 +10,24 @@ from matplotlib import pyplot as plt
 from torch import Tensor
 
 from common.graph_structured_observation_space import GymnasiumObservationConverter, BusConnectionsGraphObsSpace
+from nri.utils import fully_connected_edge_index
 
 
 def visualize_graph(
-        typed_edge_index: Tensor,
+        num_nodes: int,
+        accumulated_edge_probs: Tensor,
         ground_truth_edge_index: Optional[Tensor] = None,
         skip_first_edge_type: bool = True,
         node_positions: Optional[np.ndarray] = None):
     """
     Visualize the graph including latent edges predicted by the NRI module.
-    :param typed_edge_index: Edge indices in shape [3, E] where dimension 1 contains src, target, type
+    :param num_nodes: The number of nodes in the graph.
+    :param accumulated_edge_probs: latent edge type probabilities in shape [N*(N-1), num_edge_types]
     :param ground_truth_edge_index: Edge index for ground truth edges [2, E]
     :param skip_first_edge_type: Skip first edge type when visualizing (defaults to True)
     :param node_positions: Node positions as numpy array shape [N, 2] where dimension 1 contains x and y. (Optional)
     """
-    _, E = typed_edge_index.shape
-    if ground_truth_edge_index is None:
-        num_nodes = typed_edge_index[0:2, :].max() + 1
-    else:
-        num_nodes = ground_truth_edge_index.max() + 1
-
+    assert num_nodes * (num_nodes - 1) == accumulated_edge_probs.shape[0]
     G = nx.MultiDiGraph()
     G.add_nodes_from(range(num_nodes))
 
@@ -39,21 +36,17 @@ def visualize_graph(
         for src, dst in ground_truth_edge_index.transpose(1, 0):
             G.add_edge(int(src), int(dst), color="gray", weight=1, edge_type="Ground Truth", style='solid')
 
-    # count predicted edges
-    edge_counter = Counter()
-    for edge in range(E):
-        src, dst, edge_type = typed_edge_index[:, edge]
-        edge_counter[(int(src), int(dst), int(edge_type))] += 1
-
     # add predicted edges
     cmap = plt.get_cmap("Pastel1")
-    max_count = max(edge_counter.values()) if len(edge_counter) > 0 else 1
-    for (src, dst, t), count in edge_counter.items():
-        if skip_first_edge_type and t == 0:
-            continue
-        color = cmap(t)
-        weight = 3 * (count / max_count) ** 2
-        G.add_edge(src, dst, color=color, weight=weight, edge_type=t, style='solid')
+    edge_index_fully_connected = fully_connected_edge_index(num_nodes=num_nodes)
+    for edge_index, _ in enumerate(accumulated_edge_probs):
+        for edge_type, _ in enumerate(accumulated_edge_probs[edge_index]):
+            if skip_first_edge_type and edge_type == 0:
+                continue
+            src, dst = edge_index_fully_connected[:, edge_index]
+            weight = 5 * accumulated_edge_probs[edge_index, edge_type] ** 2
+            if weight > 1:
+                G.add_edge(int(src), int(dst), color=cmap(edge_type), weight=weight, edge_type=edge_type, style='solid')
 
     # Draw graph
     fig = plt.figure(figsize=(18, 10))
@@ -70,41 +63,34 @@ def visualize_graph(
         edge_color=edge_colors,
         width=edge_weights,
         style=edge_styles,
-        arrows=True,
+        arrows=False,
     )
     return fig
 
 
 def latent_edge_hist(
-        typed_edge_index: Tensor,
+        accumulated_edge_probabilities: Tensor,
         skip_first_edge_type: bool = True):
     """
-    Visualize a histogram showcasing how often a latent edge is contained in the typed_edge_index.
+    Visualize a histogram showcasing the probability masses for different edges for any edge type except the first.
 
-    :param typed_edge_index: Edge indices of shape [3, E] where each column is [src, dst, type]
+    :param accumulated_edge_probabilities: Edge probabilities of shape [E, num_edge_types] with probabilities for each edge - edge_type combination
     :param skip_first_edge_type: Whether to skip edges with type 0 (default: True)
     :return: Reference to the Seaborn-styled matplotlib figure
     """
-    _, E = typed_edge_index.shape
-
-    # Count predicted edges in df
-    edge_counter = Counter()
-    for edge in range(E):
-        src, dst, edge_type = typed_edge_index[:, edge]
-        if not skip_first_edge_type or edge_type != 0:
-            edge_counter[(int(src), int(dst), int(edge_type))] += 1
-
-    counts = list(edge_counter.values())
-    df = pd.DataFrame({'Edge Frequency': counts})
+    if skip_first_edge_type:
+        df = pd.DataFrame({'Edge probability': accumulated_edge_probabilities[:, 1:].sum(dim=-1).tolist()})
+    else:
+        df = pd.DataFrame({'Edge probability': accumulated_edge_probabilities.sum(dim=-1).tolist()})
 
     # Plot
     sns.set_theme(style="whitegrid")
     fig, ax = plt.subplots(figsize=(16, 8))
-    sns.histplot(df, x='Edge Frequency', bins=50, kde=True, color='skyblue', edgecolor='black', ax=ax)
+    sns.histplot(df, x='Edge probability', bins=50, kde=True, color='skyblue', edgecolor='black', ax=ax)
 
-    ax.set_title("Histogram of Latent Edge Prediction Frequencies", fontsize=18)
-    ax.set_xlabel("Number of Times Edge Was Predicted", fontsize=14)
-    ax.set_ylabel("Number of Unique Edges", fontsize=14)
+    ax.set_title("Histogram of Latent Edge Probabilities", fontsize=18)
+    ax.set_xlabel("Edge Probability", fontsize=14)
+    ax.set_ylabel("Number of Edges", fontsize=14)
     ax.tick_params(axis='both', labelsize=12)
 
     return fig

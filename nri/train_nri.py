@@ -23,7 +23,7 @@ def train(
         nri_module: NRIModule,
         training_set: Dataset,
         testing_set: Optional[Dataset] = None,
-        loss: Optional[ElboLoss] = None,
+        criterion: Optional[ElboLoss] = None,
         edge_index: Optional[Tensor] = None,
         tensorboard_logger: Optional[SummaryWriter] = None,
         num_epochs: int = 100,
@@ -40,7 +40,7 @@ def train(
     :param nri_module: NRI module to train
     :param training_set: Dataset to train on
     :param testing_set: Dataset to test on (optional, if no dataset is provided, there won't be evaluation)
-    :param loss: The loss function to use (defaults to ELBO with uniform prior and alpha, beta = 0.02, 1.0
+    :param criterion: The loss function to use (defaults to ELBO with uniform prior)
     :param edge_index: Edge indices to use for the NRI module (defaults to fully meshed)
     :param tensorboard_logger: Logging object to use (defaults to None)
     :param num_epochs: Number of epochs to train (defaults to 100)
@@ -56,7 +56,7 @@ def train(
     nri_module.to(device=device, dtype=torch.float32)
 
     dataloader_train = DataLoader(training_set, batch_size=batch_size, shuffle=True)
-    criterion = loss if loss is not None else ElboLoss()
+    criterion = criterion if criterion is not None else ElboLoss()
     optimizer = torch.optim.Adam(nri_module.parameters(), lr=learning_rate)
     num_epochs = num_epochs
     for epoch in range(num_epochs):
@@ -64,7 +64,7 @@ def train(
             evaluate_nri_module(
                 nri_module=nri_module,
                 testing_set=testing_set,
-                prior=prior,
+                criterion=criterion,
                 edge_index=edge_index,
                 tensorboard_logger=tensorboard_logger,
                 current_epoch=epoch,
@@ -118,7 +118,7 @@ def train(
     evaluate_nri_module(
         nri_module=nri_module,
         testing_set=testing_set,
-        prior=prior,
+        criterion=criterion,
         edge_index=edge_index,
         tensorboard_logger=tensorboard_logger,
         current_epoch=num_epochs - 1,
@@ -132,7 +132,7 @@ def train(
 def evaluate_nri_module(
         nri_module: NRIModule,
         testing_set: Dataset,
-        prior: Optional[np.ndarray] = None,
+        criterion: Optional[ElboLoss] = None,
         edge_index: Optional[Tensor] = None,
         tensorboard_logger: Optional[SummaryWriter] = None,
         current_epoch: Optional[int] = None,
@@ -143,7 +143,7 @@ def evaluate_nri_module(
 
     :param nri_module: NRI module to evaluate
     :param testing_set: Dataset to evaluate on
-    :param prior: Prior assumption for edge type distributions (defaults to uniform distributions)
+    :param criterion: The loss function to use (defaults to ELBO with uniform prior)
     :param edge_index: Edge indices to use for the NRI module
     :param tensorboard_logger: Logging object to use (defaults to None)
     :param current_epoch: Current epoch (if this is invoked during training - if not None)
@@ -154,7 +154,7 @@ def evaluate_nri_module(
     nri_module.to(device=device, dtype=torch.float32)
 
     with torch.no_grad():
-        criterion = ElboLoss(prior)
+        criterion = criterion if criterion is not None else ElboLoss()
         data_loader = DataLoader(testing_set, batch_size=batch_size, shuffle=True)
         nri_module.eval()
         running_loss = 0.0
@@ -162,7 +162,7 @@ def evaluate_nri_module(
         running_kl_div = 0.0
         running_mse = 0.0
         running_entropy = 0.0
-        sampled_edges = None
+        running_latent_edge_probs = 0.0
 
         for batch_ in tqdm(data_loader, "Testing"):
             batch: Tensor = batch_[0].to(device=device, dtype=torch.float32)
@@ -175,23 +175,19 @@ def evaluate_nri_module(
             running_kl_div += criterion.kl_divergence_to_prior(edge_type_distributions)
             running_mse += ((predictions - target) ** 2).sum(dim=-1).mean()
             running_entropy += -(edge_type_distributions * (edge_type_distributions + 1e-10).log()).sum(dim=-1).mean()
+            running_latent_edge_probs += edge_type_distributions.mean(dim=0) # mean over batch of edge type probs
 
-            latent_edges = nri_module.get_latent_edges(batch, edge_index) # shape [B, 3, E]
-            latent_edges = latent_edges.permute(1, 0, 2).reshape(3, -1) # shape [3, B * E]
-            if sampled_edges is not None:
-                sampled_edges = torch.cat((sampled_edges, latent_edges), dim=-1)
-            else:
-                sampled_edges = latent_edges
 
         if tensorboard_logger is not None:
             # create figures
             latent_edges_fig = visualize_graph(
-                typed_edge_index=sampled_edges,
+                num_nodes=testing_set[0].shape[-2], # TODO hacky
+                accumulated_edge_probs=running_latent_edge_probs / len(data_loader),
                 ground_truth_edge_index=edge_index,
                 skip_first_edge_type=nri_module.skip_first,
                 node_positions=node_positions
             )
-            latent_edges_hist = latent_edge_hist(sampled_edges)
+            latent_edges_hist = latent_edge_hist(running_latent_edge_probs / len(data_loader))
             avg_probs = edge_type_distributions.mean(dim=tuple(range(edge_type_distributions.ndim - 1)))
 
             tensorboard_logger.add_figure("Predicted latent Graph/testing", latent_edges_fig, current_epoch)
@@ -223,13 +219,16 @@ def main(cfg: DictConfig):
     train_dataset = TensorDataset(torch.from_numpy(train_data))
     test_dataset = TensorDataset(torch.from_numpy(test_data))
     nri_module = instantiate(cfg.nri.model, x_dim=train_data.shape[-1])
+    criterion = ElboLoss(
+        prior=np.array(cfg.nri.train.prior),
+        alpha=cfg.nri.train.alpha,
+        beta=cfg.nri.train.beta,
+    )
     train(
         nri_module=nri_module,
         training_set=train_dataset,
         testing_set=test_dataset,
-        prior=np.array(cfg.nri.train.prior),
-        alpha=cfg.nri.train.alpha,
-        beta=cfg.nri.train.beta,
+        criterion=criterion,
         tensorboard_logger=tensorboard_logger,
         num_epochs=cfg.nri.train.num_epochs,
         batch_size=cfg.nri.train.batch_size,

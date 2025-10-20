@@ -26,32 +26,39 @@ class TestVisualization(unittest.TestCase):
         plt.title("Node Positions")
         plt.axis('equal')  # keeps aspect ratio square
         plt.grid(True)
-        # plt.show()
+        plt.show()
         plt.close()
 
     def test_visualize_latent_graph(self):
         env = grid2op.make("l2rpn_case14_sandbox")
         obs_space = BusConnectionsGraphObsSpace(env.observation_space)
         obs = env.reset()
-        edge_index = obs_space.to_gym(obs)[EDGE_INDEX]
-        num_edges = 10
-        num_types = 4
-        predicted_edge_index = torch.randint(low=0, high=obs_space.num_node, size=(2, num_edges))
-        predicted_edge_types = torch.randint(low=0, high=num_types, size=(1, num_edges))
-        typed_edge_index = torch.concatenate([predicted_edge_index, predicted_edge_types], dim=0)
-        fig = visualize_graph(typed_edge_index, edge_index, True, get_node_positions(env, obs_space.__class__))
-        # plt.show()
+
+        num_edge_types = 3
+        num_edges_fully_connected = obs_space.num_node * (obs_space.num_node - 1)
+
+        edge_type_probs = torch.rand((num_edges_fully_connected, num_edge_types)) + 0.0001
+        edge_type_probs /= edge_type_probs.sum(dim=-1, keepdim=True)
+        fig = visualize_graph(
+            obs_space.num_node,
+            edge_type_probs,
+            ground_truth_edge_index=obs_space.to_gym(obs)[EDGE_INDEX],
+            skip_first_edge_type=True,
+            node_positions=get_node_positions(env, obs_space.__class__)
+        )
+        plt.show()
         plt.close(fig)
 
     def test_visualize_edge_hist(self):
-        num_nodes = 10
-        num_edges = 100
-        num_types = 2
-        predicted_edge_index = torch.randint(low=0, high=num_nodes, size=(2, num_edges))
-        predicted_edge_types = torch.randint(low=0, high=num_types, size=(1, num_edges))
-        typed_edge_index = torch.concatenate([predicted_edge_index, predicted_edge_types], dim=0)
-        fig = latent_edge_hist(typed_edge_index)
-        # plt.show()
+        num_nodes = 57
+        num_edge_types = 3
+        num_edges_fully_connected = num_nodes * (num_nodes - 1)
+
+        edge_type_probs = torch.rand((num_edges_fully_connected, num_edge_types)) + 0.0001
+        edge_type_probs /= edge_type_probs.sum(dim=-1, keepdim=True)
+
+        fig = latent_edge_hist(edge_type_probs)
+        plt.show()
         plt.close(fig)
 
 
