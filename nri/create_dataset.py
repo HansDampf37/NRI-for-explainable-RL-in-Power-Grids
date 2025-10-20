@@ -105,21 +105,23 @@ def generate_dataset(num_sims: int, length: int, agent: BaseAgent, env: Environm
 def main(cfg: DictConfig):
     print(OmegaConf.to_yaml(cfg))
     # create env + observation space
-    env = grid2op.make(cfg.env.env_name, backend=LightSimBackend(), reward_class=MazeRLReward)
+    env_train = grid2op.make(cfg.env.env_name + "_train", backend=LightSimBackend(), reward_class=MazeRLReward)
+    env_test = grid2op.make(cfg.env.env_name + "_test", backend=LightSimBackend(), reward_class=MazeRLReward)
+    env_val = grid2op.make(cfg.env.env_name + "_val", backend=LightSimBackend(), reward_class=MazeRLReward)
     observation_converter: GymnasiumObservationConverter = instantiate(
         cfg.nri.obs_space,
-        grid2op_observation_space=env.observation_space
+        grid2op_observation_space=env_train.observation_space
     )
 
     # create agent
     if cfg.nri.agent == 'random':
-        agent = RandomAgent(env.action_space)
+        agent = RandomAgent(env_train.action_space)
     elif cfg.nri.agent == 'do_nothing':
-        agent = DoNothingAgent(env.action_space)
+        agent = DoNothingAgent(env_train.action_space)
     elif cfg.nri.agent == 'reconnect':
-        agent = RecoPowerlineAgent(env.action_space)
+        agent = RecoPowerlineAgent(env_train.action_space)
     elif cfg.nri.agent == 'topology_greedy':
-        agent = TopologyGreedy(env.action_space)
+        agent = TopologyGreedy(env_train.action_space)
         logger.warning("You have configured the topology greedy agent that will simulate every topology action. "
                        "This is only feasible for small environments.")
     elif cfg.nri.agent == 'baseline':
@@ -127,17 +129,15 @@ def main(cfg: DictConfig):
     else:
         raise NotImplementedError(f"Unknown agent '{cfg.nri.agent}'")
 
-    total = cfg.nri.num_train_trajectories + cfg.nri.num_val_trajectories + cfg.nri.num_test_trajectories
-    data = generate_dataset(total, cfg.nri.trajectory_length, agent, env, observation_converter)
+    train_data = generate_dataset(cfg.nri.num_train_trajectories, cfg.nri.trajectory_length, agent, env_train, observation_converter)
+    test_data = generate_dataset(cfg.nri.num_test_trajectories, cfg.nri.trajectory_length, agent, env_test, observation_converter)
+    val_data = generate_dataset(cfg.nri.num_val_trajectories, cfg.nri.trajectory_length, agent, env_val, observation_converter)
 
     timestamp = datetime.now().strftime("%Y-%m-%d_%H:%M")
-    for grid_entity in data:
-        train_data = data[grid_entity][:cfg.nri.num_train_trajectories]
-        test_data = data[grid_entity][cfg.nri.num_train_trajectories:cfg.nri.num_train_trajectories + cfg.nri.num_test_trajectories]
-        val_data = data[grid_entity][-cfg.nri.num_val_trajectories:]
-        np.save(f'data/nri_dataset/train_{grid_entity}_{cfg.env.env_name}_{timestamp}_.npy', train_data)
-        np.save(f'data/nri_dataset/test_{grid_entity}_{cfg.env.env_name}_{timestamp}_.npy', test_data)
-        np.save(f'data/nri_dataset/val_{grid_entity}_{cfg.env.env_name}_{timestamp}_.npy', val_data)
+    for grid_entity in train_data:
+        np.save(f'data/nri_dataset/train_{grid_entity}_{cfg.env.env_name}_{timestamp}_.npy', train_data[grid_entity])
+        np.save(f'data/nri_dataset/test_{grid_entity}_{cfg.env.env_name}_{timestamp}_.npy', test_data[grid_entity])
+        np.save(f'data/nri_dataset/val_{grid_entity}_{cfg.env.env_name}_{timestamp}_.npy', val_data[grid_entity])
 
 
 if __name__ == '__main__':
