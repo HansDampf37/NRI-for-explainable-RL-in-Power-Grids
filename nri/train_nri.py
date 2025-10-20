@@ -6,7 +6,6 @@ import hydra
 import numpy as np
 import torch
 from hydra.utils import instantiate
-from matplotlib import pyplot as plt
 from omegaconf import DictConfig, OmegaConf
 from torch import Tensor
 from torch.utils.data import Dataset, DataLoader, TensorDataset
@@ -15,7 +14,7 @@ from tqdm import tqdm
 
 from nri.ElboObjective import ElboLoss
 from nri.NRI import NRIModule
-from visualization.utils import visualize_powergrid, get_node_positions
+from visualization.utils import visualize_graph, get_node_positions, latent_edge_hist
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +29,6 @@ def train(
         batch_size: int = 64,
         learning_rate: int = 0.01,
         evaluate_every_k_steps: int = 10,
-        show_latent_edges_on_eval: bool = False,
         node_positions: Optional[np.ndarray] = None) -> NRIModule:
     """
     This function trains a given NRI model on a training set. During training, it is iteratively evaluate on the test set.
@@ -48,7 +46,6 @@ def train(
     :param batch_size: Batch size (defaults to 64)
     :param learning_rate: Learning rate (defaults to 0.01)
     :param evaluate_every_k_steps: Evaluate model every k training steps (defaults to 10) (evaluation needs test set)
-    :param show_latent_edges_on_eval: If set to true this method will display the latent edges even without logger (defaults to False)
     :param node_positions: custom node positions to use when displaying the latent graph (defaults to None)
     """
     num_params = sum(p.numel() for p in nri_module.parameters() if p.requires_grad)
@@ -70,7 +67,6 @@ def train(
                 edge_index=edge_index,
                 tensorboard_logger=tensorboard_logger,
                 current_epoch=epoch,
-                show_latent_edges=show_latent_edges_on_eval,
                 batch_size=batch_size,
                 node_positions=node_positions
             )
@@ -95,16 +91,19 @@ def train(
             running_kl_div += criterion.kl_divergence_to_prior(edge_type_distributions)
             running_mse += ((predictions - target) ** 2).sum(dim=-1).mean()
 
+        grad_norm = sum(p.grad.norm().item() ** 2 for p in nri_module.parameters() if p.grad is not None) ** 0.5
         if tensorboard_logger is not None:
-            tensorboard_logger.add_scalar("Loss/training set", running_loss / len(dataloader_train), epoch)
-            tensorboard_logger.add_scalar("Negative Log Likelihood/training set", running_nll / len(dataloader_train), epoch)
-            tensorboard_logger.add_scalar("KL-Divergence to Prior/training set", running_kl_div / len(dataloader_train), epoch)
-            tensorboard_logger.add_scalar("MSE/training set", running_mse / len(dataloader_train), epoch)
+            tensorboard_logger.add_scalar("Loss/training", running_loss / len(dataloader_train), epoch)
+            tensorboard_logger.add_scalar("Negative Log Likelihood/training", running_nll / len(dataloader_train), epoch)
+            tensorboard_logger.add_scalar("KL-Divergence to Prior/training", running_kl_div / len(dataloader_train), epoch)
+            tensorboard_logger.add_scalar("MSE/training", running_mse / len(dataloader_train), epoch)
+            tensorboard_logger.add_scalar("Gradient Norm/training", grad_norm, epoch)
         else:
-            print(f"Epoch {epoch}: Training loss: {running_loss / len(dataloader_train):.2f} "
+            logger.info(f"Epoch {epoch}: Training loss: {running_loss / len(dataloader_train):.2f} "
                   f"Neg Log Likelihood: {running_nll / len(dataloader_train):.2f} "
                   f"KL Divergence: {running_kl_div / len(dataloader_train):.2f} "
-                  f"MSE: {running_mse / len(dataloader_train):.2f}")
+                  f"MSE: {running_mse / len(dataloader_train):.2f} "
+                  f"Gradient Norm: {grad_norm:.2f}")
 
     return nri_module
 
@@ -116,7 +115,6 @@ def evaluate_nri_module(
         edge_index: Optional[Tensor] = None,
         tensorboard_logger: Optional[SummaryWriter] = None,
         current_epoch: Optional[int] = None,
-        show_latent_edges: bool = False,
         batch_size: int = 64,
         node_positions: Optional[np.ndarray] = None):
     """
@@ -127,7 +125,6 @@ def evaluate_nri_module(
     :param edge_index: Edge indices to use for the NRI module
     :param tensorboard_logger: Logging object to use (defaults to None)
     :param current_epoch: Current epoch (if this is invoked during training - if not None)
-    :param show_latent_edges: If set to true this method will display the latent edges even without logger
     :param batch_size: Batch size (defaults to 64)
     :param node_positions: custom node positions to use when displaying the latent graph (defaults to None)
     """
@@ -162,33 +159,36 @@ def evaluate_nri_module(
             else:
                 sampled_edges = latent_edges
 
-        # plot latent graph
-        fig = visualize_powergrid(
-            typed_edge_index=sampled_edges,
-            ground_truth_edge_index=edge_index,
-            skip_first_edge_type=nri_module.skip_first,
-            node_positions=node_positions
-        )
-
         if tensorboard_logger is not None:
-            tensorboard_logger.add_figure("Predicted latent Graph/test set", fig, global_step=current_epoch)
-            tensorboard_logger.add_scalar("Loss/test set", running_loss / len(data_loader), current_epoch)
-            tensorboard_logger.add_scalar("Negative Log Likelihood/test set", running_nll / len(data_loader), current_epoch)
-            tensorboard_logger.add_scalar("KL-Divergence to Prior/test set", running_kl_div / len(data_loader), current_epoch)
-            tensorboard_logger.add_scalar("MSE/test set", running_mse / len(data_loader), current_epoch)
+            # create figures
+            latent_edges_fig = visualize_graph(
+                typed_edge_index=sampled_edges,
+                ground_truth_edge_index=edge_index,
+                skip_first_edge_type=nri_module.skip_first,
+                node_positions=node_positions
+            )
+            latent_edges_hist = latent_edge_hist(sampled_edges)
+            avg_probs = edge_type_distributions.mean(dim=tuple(range(edge_type_distributions.ndim - 1)))
+            avg_probs = avg_probs.detach().cpu().numpy()
+
+            tensorboard_logger.add_figure("Predicted latent Graph/testing", latent_edges_fig, current_epoch)
+            tensorboard_logger.add_figure("Histogram of predicted latent edges/testing", latent_edges_hist, current_epoch)
+            tensorboard_logger.add_scalar("Loss/testing", running_loss / len(data_loader), current_epoch)
+            tensorboard_logger.add_scalar("Negative Log Likelihood/testing", running_nll / len(data_loader), current_epoch)
+            tensorboard_logger.add_scalar("KL-Divergence to Prior/testing", running_kl_div / len(data_loader), current_epoch)
+            tensorboard_logger.add_scalar("MSE/testing", running_mse / len(data_loader), current_epoch)
+            for k in range(avg_probs.shape[0]):
+                tensorboard_logger.add_scalar(f"Average occurrence of edge type/{k}", avg_probs[k], current_epoch)
         else:
-            print(f"Epoch {current_epoch}: Testing loss: {running_loss / len(data_loader):.2f} "
+            logger.info(f"Epoch {current_epoch}: Testing loss: {running_loss / len(data_loader):.2f} "
                   f"Neg Log Likelihood: {running_nll / len(data_loader):.2f} "
                   f"KL Divergence: {running_kl_div / len(data_loader):.2f} "
                   f"MSE: {running_mse / len(data_loader):.2f}")
-            if show_latent_edges:
-                plt.show()
 
-        plt.close(fig)
 
 @hydra.main(config_path="../hydra_configs", config_name="config", version_base="1.3")
 def main(cfg: DictConfig):
-    print(OmegaConf.to_yaml(cfg))
+    logger.info(OmegaConf.to_yaml(cfg))
     env = grid2op.make(cfg.env.env_name)
     observation_space = instantiate(cfg.nri.obs_space, grid2op_observation_space=env.observation_space)
     node_positions = get_node_positions(env, observation_space.__class__)
@@ -208,7 +208,6 @@ def main(cfg: DictConfig):
         batch_size=cfg.nri.train.batch_size,
         learning_rate=cfg.nri.train.learning_rate,
         evaluate_every_k_steps=cfg.nri.train.evaluate_every_k_steps,
-        show_latent_edges_on_eval=True,
         node_positions=node_positions
     )
 

@@ -3,6 +3,8 @@ from typing import Optional
 
 import networkx as nx
 import numpy as np
+import pandas as pd
+import seaborn as sns
 from grid2op.Environment import Environment
 from grid2op.PlotGrid import PlotMatplot
 from matplotlib import pyplot as plt
@@ -11,13 +13,13 @@ from torch import Tensor
 from common.graph_structured_observation_space import GymnasiumObservationConverter, BusConnectionsGraphObsSpace
 
 
-def visualize_powergrid(
+def visualize_graph(
         typed_edge_index: Tensor,
         ground_truth_edge_index: Optional[Tensor] = None,
         skip_first_edge_type: bool = True,
         node_positions: Optional[np.ndarray] = None):
     """
-    Visualize the powergrid including latent edges predicted by the NRI module.
+    Visualize the graph including latent edges predicted by the NRI module.
     :param typed_edge_index: Edge indices in shape [3, E] where dimension 1 contains src, target, type
     :param ground_truth_edge_index: Edge index for ground truth edges [2, E]
     :param skip_first_edge_type: Skip first edge type when visualizing (defaults to True)
@@ -34,7 +36,7 @@ def visualize_powergrid(
 
     # add ground truth edges if specified
     if ground_truth_edge_index is not None:
-        for src, dst in ground_truth_edge_index.transpose(1,0):
+        for src, dst in ground_truth_edge_index.transpose(1, 0):
             G.add_edge(int(src), int(dst), color="gray", weight=1, edge_type="Ground Truth", style='solid')
 
     # count predicted edges
@@ -53,7 +55,7 @@ def visualize_powergrid(
         weight = 3 * (count / max_count) ** 2
         G.add_edge(src, dst, color=color, weight=weight, edge_type=t, style='solid')
 
-    # --- Draw graph ---
+    # Draw graph
     fig = plt.figure(figsize=(18, 10))
     edge_colors = [d["color"] for (_, _, d) in G.edges(data=True)]
     edge_weights = [d["weight"] for (_, _, d) in G.edges(data=True)]
@@ -71,6 +73,42 @@ def visualize_powergrid(
         arrows=True,
     )
     return fig
+
+
+def latent_edge_hist(
+        typed_edge_index: Tensor,
+        skip_first_edge_type: bool = True):
+    """
+    Visualize a histogram showcasing how often a latent edge is contained in the typed_edge_index.
+
+    :param typed_edge_index: Edge indices of shape [3, E] where each column is [src, dst, type]
+    :param skip_first_edge_type: Whether to skip edges with type 0 (default: True)
+    :return: Reference to the Seaborn-styled matplotlib figure
+    """
+    _, E = typed_edge_index.shape
+
+    # Count predicted edges in df
+    edge_counter = Counter()
+    for edge in range(E):
+        src, dst, edge_type = typed_edge_index[:, edge]
+        if not skip_first_edge_type or edge_type != 0:
+            edge_counter[(int(src), int(dst), int(edge_type))] += 1
+
+    counts = list(edge_counter.values())
+    df = pd.DataFrame({'Edge Frequency': counts})
+
+    # Plot
+    sns.set_theme(style="whitegrid")
+    fig, ax = plt.subplots(figsize=(16, 8))
+    sns.histplot(df, x='Edge Frequency', bins=50, kde=True, color='skyblue', edgecolor='black', ax=ax)
+
+    ax.set_title("Histogram of Latent Edge Prediction Frequencies", fontsize=18)
+    ax.set_xlabel("Number of Times Edge Was Predicted", fontsize=14)
+    ax.set_ylabel("Number of Unique Edges", fontsize=14)
+    ax.tick_params(axis='both', labelsize=12)
+
+    return fig
+
 
 def get_node_positions(env: Environment, observation_space: type[GymnasiumObservationConverter]):
     """
