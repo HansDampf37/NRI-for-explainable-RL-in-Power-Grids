@@ -3,7 +3,7 @@ defaults:
     -   model: default
     -   train: default
 
-agent: topology_greedy # which agent is operating the grid
+agent: baseline # which agent is operating the grid
 model_path: data/models/stable-baselines/dqn-gnn_uc3 # if we use baseline we need to provide a path to the weights
 num_train_trajectories: 16_000 # the number of trajectories in the training set
 num_test_trajectories: 800
