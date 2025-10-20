@@ -75,6 +75,7 @@ def train(
         running_nll = 0.0
         running_kl_div = 0.0
         running_mse = 0.0
+        running_entropy = 0.0
 
         nri_module.train()
         for batch_ in tqdm(dataloader_train, f"Epoch {epoch} training"):
@@ -86,10 +87,14 @@ def train(
             loss.backward()
             optimizer.step()
 
-            running_loss += loss.item()
-            running_nll += criterion.neg_log_likelihood(predictions, target)
-            running_kl_div += criterion.kl_divergence_to_prior(edge_type_distributions)
-            running_mse += ((predictions - target) ** 2).sum(dim=-1).mean()
+            with torch.no_grad():
+                running_loss += loss.item()
+                running_nll += criterion.neg_log_likelihood(predictions, target)
+                running_kl_div += criterion.kl_divergence_to_prior(edge_type_distributions)
+                running_mse += ((predictions - target) ** 2).sum(dim=-1).mean()
+                eps = 1e-10
+                entropy = -(edge_type_distributions * (edge_type_distributions + eps).log()).sum(dim=-1).mean()
+                running_entropy += entropy
 
         grad_norm = sum(p.grad.norm().item() ** 2 for p in nri_module.parameters() if p.grad is not None) ** 0.5
         if tensorboard_logger is not None:
@@ -98,12 +103,14 @@ def train(
             tensorboard_logger.add_scalar("KL-Divergence to Prior/training", running_kl_div / len(dataloader_train), epoch)
             tensorboard_logger.add_scalar("MSE/training", running_mse / len(dataloader_train), epoch)
             tensorboard_logger.add_scalar("Gradient Norm/training", grad_norm, epoch)
+            tensorboard_logger.add_scalar("Entropy of edge type predictions/training", running_entropy/len(dataloader_train), epoch)
         else:
             logger.info(f"Epoch {epoch}: Training loss: {running_loss / len(dataloader_train):.2f} "
                   f"Neg Log Likelihood: {running_nll / len(dataloader_train):.2f} "
                   f"KL Divergence: {running_kl_div / len(dataloader_train):.2f} "
                   f"MSE: {running_mse / len(dataloader_train):.2f} "
-                  f"Gradient Norm: {grad_norm:.2f}")
+                  f"Gradient Norm: {grad_norm:.2f} "
+                  f"Entropy of edge type predictions: {running_entropy / len(dataloader_train):.2f}")
 
     # evaluate for one last time
     evaluate_nri_module(
@@ -152,6 +159,7 @@ def evaluate_nri_module(
         running_nll = 0.0
         running_kl_div = 0.0
         running_mse = 0.0
+        running_entropy = 0.0
         sampled_edges = None
 
         for batch_ in tqdm(data_loader, "Testing"):
@@ -164,6 +172,9 @@ def evaluate_nri_module(
             running_nll += criterion.neg_log_likelihood(predictions, target)
             running_kl_div += criterion.kl_divergence_to_prior(edge_type_distributions)
             running_mse += ((predictions - target) ** 2).sum(dim=-1).mean()
+            eps = 1e-10
+            entropy = -(edge_type_distributions * (edge_type_distributions + eps).log()).sum(dim=-1).mean()
+            running_entropy += entropy
 
             latent_edges = nri_module.get_latent_edges(batch, edge_index) # shape [B, 3, E]
             latent_edges = latent_edges.permute(1, 0, 2).reshape(3, -1) # shape [3, B * E]
@@ -190,13 +201,15 @@ def evaluate_nri_module(
             tensorboard_logger.add_scalar("Negative Log Likelihood/testing", running_nll / len(data_loader), current_epoch)
             tensorboard_logger.add_scalar("KL-Divergence to Prior/testing", running_kl_div / len(data_loader), current_epoch)
             tensorboard_logger.add_scalar("MSE/testing", running_mse / len(data_loader), current_epoch)
+            tensorboard_logger.add_scalar("Entropy of edge type predictions/testing", running_entropy / len(data_loader), current_epoch)
             for k in range(avg_probs.shape[0]):
                 tensorboard_logger.add_scalar(f"Average occurrence of edge type/{k}", avg_probs[k], current_epoch)
         else:
             logger.info(f"Epoch {current_epoch}: Testing loss: {running_loss / len(data_loader):.2f} "
                   f"Neg Log Likelihood: {running_nll / len(data_loader):.2f} "
                   f"KL Divergence: {running_kl_div / len(data_loader):.2f} "
-                  f"MSE: {running_mse / len(data_loader):.2f}")
+                  f"MSE: {running_mse / len(data_loader):.2f} "
+                  f"Entropy of edge type predictions: {running_entropy / len(data_loader):.2f}")
 
 
 @hydra.main(config_path="../hydra_configs", config_name="config", version_base="1.3")
