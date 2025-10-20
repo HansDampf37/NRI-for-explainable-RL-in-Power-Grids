@@ -23,7 +23,7 @@ def train(
         nri_module: NRIModule,
         training_set: Dataset,
         testing_set: Optional[Dataset] = None,
-        prior: Optional[np.ndarray] = None,
+        loss: Optional[ElboLoss] = None,
         edge_index: Optional[Tensor] = None,
         tensorboard_logger: Optional[SummaryWriter] = None,
         num_epochs: int = 100,
@@ -40,7 +40,7 @@ def train(
     :param nri_module: NRI module to train
     :param training_set: Dataset to train on
     :param testing_set: Dataset to test on (optional, if no dataset is provided, there won't be evaluation)
-    :param prior: Prior distribution to use for the ELBO objective (defaults to uniform distributions)
+    :param loss: The loss function to use (defaults to ELBO with uniform prior and alpha, beta = 0.02, 1.0
     :param edge_index: Edge indices to use for the NRI module (defaults to fully meshed)
     :param tensorboard_logger: Logging object to use (defaults to None)
     :param num_epochs: Number of epochs to train (defaults to 100)
@@ -56,7 +56,7 @@ def train(
     nri_module.to(device=device, dtype=torch.float32)
 
     dataloader_train = DataLoader(training_set, batch_size=batch_size, shuffle=True)
-    criterion = ElboLoss(prior)
+    criterion = loss if loss is not None else ElboLoss()
     optimizer = torch.optim.Adam(nri_module.parameters(), lr=learning_rate)
     num_epochs = num_epochs
     for epoch in range(num_epochs):
@@ -93,9 +93,8 @@ def train(
                 running_nll += criterion.neg_log_likelihood(predictions, target)
                 running_kl_div += criterion.kl_divergence_to_prior(edge_type_distributions)
                 running_mse += ((predictions - target) ** 2).sum(dim=-1).mean()
-                eps = 1e-10
-                entropy = -(edge_type_distributions * (edge_type_distributions + eps).log()).sum(dim=-1).mean()
-                running_entropy += entropy
+                running_entropy += -(edge_type_distributions * (edge_type_distributions + 1e-10).log()).sum(dim=-1).mean()
+                avg_probs = edge_type_distributions.mean(dim=tuple(range(edge_type_distributions.ndim - 1)))
 
         grad_norm = sum(p.grad.norm().item() ** 2 for p in nri_module.parameters() if p.grad is not None) ** 0.5
         if tensorboard_logger is not None:
@@ -105,6 +104,8 @@ def train(
             tensorboard_logger.add_scalar("MSE/training", running_mse / len(dataloader_train), epoch)
             tensorboard_logger.add_scalar("Gradient Norm/training", grad_norm, epoch)
             tensorboard_logger.add_scalar("Entropy of edge type predictions/training", running_entropy/len(dataloader_train), epoch)
+            for k in range(avg_probs.shape[0]):
+                tensorboard_logger.add_scalar(f"Average occurrence of edge type/{k} (training)", avg_probs[k], epoch)
         else:
             logger.info(f"Epoch {epoch}: Training loss: {running_loss / len(dataloader_train):.2f} "
                   f"Neg Log Likelihood: {running_nll / len(dataloader_train):.2f} "
@@ -173,9 +174,7 @@ def evaluate_nri_module(
             running_nll += criterion.neg_log_likelihood(predictions, target)
             running_kl_div += criterion.kl_divergence_to_prior(edge_type_distributions)
             running_mse += ((predictions - target) ** 2).sum(dim=-1).mean()
-            eps = 1e-10
-            entropy = -(edge_type_distributions * (edge_type_distributions + eps).log()).sum(dim=-1).mean()
-            running_entropy += entropy
+            running_entropy += -(edge_type_distributions * (edge_type_distributions + 1e-10).log()).sum(dim=-1).mean()
 
             latent_edges = nri_module.get_latent_edges(batch, edge_index) # shape [B, 3, E]
             latent_edges = latent_edges.permute(1, 0, 2).reshape(3, -1) # shape [3, B * E]
@@ -194,7 +193,6 @@ def evaluate_nri_module(
             )
             latent_edges_hist = latent_edge_hist(sampled_edges)
             avg_probs = edge_type_distributions.mean(dim=tuple(range(edge_type_distributions.ndim - 1)))
-            avg_probs = avg_probs.detach().cpu().numpy()
 
             tensorboard_logger.add_figure("Predicted latent Graph/testing", latent_edges_fig, current_epoch)
             tensorboard_logger.add_figure("Histogram of predicted latent edges/testing", latent_edges_hist, current_epoch)
@@ -204,7 +202,7 @@ def evaluate_nri_module(
             tensorboard_logger.add_scalar("MSE/testing", running_mse / len(data_loader), current_epoch)
             tensorboard_logger.add_scalar("Entropy of edge type predictions/testing", running_entropy / len(data_loader), current_epoch)
             for k in range(avg_probs.shape[0]):
-                tensorboard_logger.add_scalar(f"Average occurrence of edge type/{k}", avg_probs[k], current_epoch)
+                tensorboard_logger.add_scalar(f"Average occurrence of edge type/{k} (testing)", avg_probs[k], current_epoch)
         else:
             logger.info(f"Epoch {current_epoch}: Testing loss: {running_loss / len(data_loader):.2f} "
                   f"Neg Log Likelihood: {running_nll / len(data_loader):.2f} "
@@ -230,6 +228,8 @@ def main(cfg: DictConfig):
         training_set=train_dataset,
         testing_set=test_dataset,
         prior=np.array(cfg.nri.train.prior),
+        alpha=cfg.nri.train.alpha,
+        beta=cfg.nri.train.beta,
         tensorboard_logger=tensorboard_logger,
         num_epochs=cfg.nri.train.num_epochs,
         batch_size=cfg.nri.train.batch_size,
