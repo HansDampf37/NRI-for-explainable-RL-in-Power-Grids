@@ -26,7 +26,8 @@ class TestVisualization(unittest.TestCase):
         plt.title("Node Positions")
         plt.axis('equal')  # keeps aspect ratio square
         plt.grid(True)
-        plt.show()
+        # plt.show()
+        plt.close()
 
     def test_visualize_latent_graph(self):
         env = grid2op.make("l2rpn_case14_sandbox")
@@ -39,7 +40,7 @@ class TestVisualization(unittest.TestCase):
         predicted_edge_types = torch.randint(low=0, high=num_types, size=(1, num_edges))
         typed_edge_index = torch.concatenate([predicted_edge_index, predicted_edge_types], dim=0)
         fig = visualize_graph(typed_edge_index, edge_index, True, get_node_positions(env, obs_space.__class__))
-        plt.show()
+        # plt.show()
         plt.close(fig)
 
     def test_visualize_edge_hist(self):
@@ -50,7 +51,7 @@ class TestVisualization(unittest.TestCase):
         predicted_edge_types = torch.randint(low=0, high=num_types, size=(1, num_edges))
         typed_edge_index = torch.concatenate([predicted_edge_index, predicted_edge_types], dim=0)
         fig = latent_edge_hist(typed_edge_index)
-        plt.show()
+        # plt.show()
         plt.close(fig)
 
 
