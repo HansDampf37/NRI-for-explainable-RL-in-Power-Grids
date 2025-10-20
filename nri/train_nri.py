@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 from typing import Optional
 
 import grid2op
@@ -236,6 +237,10 @@ def main(cfg: DictConfig):
         evaluate_every_k_epochs=cfg.nri.train.evaluate_every_k_epochs,
         node_positions=node_positions
     )
+
+    timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M')
+    model_path = f"data/models/nri/NRI_{timestamp}.pt"
+    torch.save(nri_module.state_dict(), model_path)
 
 if __name__ == "__main__":
     main()
