@@ -28,7 +28,7 @@ def train(
         num_epochs: int = 100,
         batch_size: int = 64,
         learning_rate: int = 0.01,
-        evaluate_every_k_steps: int = 10,
+        evaluate_every_k_epochs: int = 10,
         node_positions: Optional[np.ndarray] = None) -> NRIModule:
     """
     This function trains a given NRI model on a training set. During training, it is iteratively evaluate on the test set.
@@ -45,7 +45,7 @@ def train(
     :param num_epochs: Number of epochs to train (defaults to 100)
     :param batch_size: Batch size (defaults to 64)
     :param learning_rate: Learning rate (defaults to 0.01)
-    :param evaluate_every_k_steps: Evaluate model every k training steps (defaults to 10) (evaluation needs test set)
+    :param evaluate_every_k_epochs: Evaluate model every k training steps (defaults to 10) (evaluation needs test set)
     :param node_positions: custom node positions to use when displaying the latent graph (defaults to None)
     """
     num_params = sum(p.numel() for p in nri_module.parameters() if p.requires_grad)
@@ -59,7 +59,7 @@ def train(
     optimizer = torch.optim.Adam(nri_module.parameters(), lr=learning_rate)
     num_epochs = num_epochs
     for epoch in range(num_epochs):
-        if epoch % evaluate_every_k_steps == 0 and testing_set is not None:
+        if epoch % evaluate_every_k_epochs == 0 and testing_set is not None:
             evaluate_nri_module(
                 nri_module=nri_module,
                 testing_set=testing_set,
@@ -105,6 +105,18 @@ def train(
                   f"MSE: {running_mse / len(dataloader_train):.2f} "
                   f"Gradient Norm: {grad_norm:.2f}")
 
+    # evaluate for one last time
+    evaluate_nri_module(
+        nri_module=nri_module,
+        testing_set=testing_set,
+        prior=prior,
+        edge_index=edge_index,
+        tensorboard_logger=tensorboard_logger,
+        current_epoch=num_epochs - 1,
+        batch_size=batch_size,
+        node_positions=node_positions
+    )
+
     return nri_module
 
 
@@ -118,7 +130,8 @@ def evaluate_nri_module(
         batch_size: int = 64,
         node_positions: Optional[np.ndarray] = None):
     """
-    Examines the latent edges discovered by the encoder.
+    Evaluates the NRI module on a test set.
+
     :param nri_module: NRI module to evaluate
     :param testing_set: Dataset to evaluate on
     :param prior: Prior assumption for edge type distributions (defaults to uniform distributions)
@@ -207,7 +220,7 @@ def main(cfg: DictConfig):
         num_epochs=cfg.nri.train.num_epochs,
         batch_size=cfg.nri.train.batch_size,
         learning_rate=cfg.nri.train.learning_rate,
-        evaluate_every_k_steps=cfg.nri.train.evaluate_every_k_steps,
+        evaluate_every_k_epochs=cfg.nri.train.evaluate_every_k_epochs,
         node_positions=node_positions
     )
 
