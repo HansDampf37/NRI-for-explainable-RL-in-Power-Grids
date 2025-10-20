@@ -24,7 +24,7 @@ class ElboLoss(nn.Module):
         self.variance = variance
 
         if prior is not None:
-            prior = torch.tensor(prior, dtype=torch.float32)
+            prior = torch.tensor(prior, dtype=torch.float32, device="cuda" if torch.cuda.is_available() else "cpu")
             prior = prior / prior.sum()
             self.register_buffer('prior', prior)
         else:
