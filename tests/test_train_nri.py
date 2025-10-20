@@ -4,6 +4,7 @@ import numpy as np
 import torch
 from torch.utils.data import TensorDataset
 
+from nri.ElboObjective import ElboLoss
 from nri.NRI import NRIModule
 from nri.train_nri import train
 
@@ -58,4 +59,5 @@ class TestTrainNRI(unittest.TestCase):
         ds_train = self._create_dataset(self.training_set_size)
         ds_test = self._create_dataset(10)
         prior = np.array([0.01, 0.99]) # encourage to use every edge of the edge index since they are all used by the system
-        train(self.module, ds_train, ds_test, prior, self.edge_index, None, 10) # doesn't fail
+        criterion = ElboLoss(prior=prior)
+        train(self.module, ds_train, ds_test, criterion, self.edge_index, None, 10) # doesn't fail

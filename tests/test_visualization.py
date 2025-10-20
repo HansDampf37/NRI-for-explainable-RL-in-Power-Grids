@@ -26,7 +26,7 @@ class TestVisualization(unittest.TestCase):
         plt.title("Node Positions")
         plt.axis('equal')  # keeps aspect ratio square
         plt.grid(True)
-        plt.show()
+        # plt.show()
         plt.close()
 
     def test_visualize_latent_graph(self):
@@ -46,7 +46,7 @@ class TestVisualization(unittest.TestCase):
             skip_first_edge_type=True,
             node_positions=get_node_positions(env, obs_space.__class__)
         )
-        plt.show()
+        # plt.show()
         plt.close(fig)
 
     def test_visualize_edge_hist(self):
@@ -58,7 +58,7 @@ class TestVisualization(unittest.TestCase):
         edge_type_probs /= edge_type_probs.sum(dim=-1, keepdim=True)
 
         fig = latent_edge_hist(edge_type_probs)
-        plt.show()
+        # plt.show()
         plt.close(fig)
 
 
