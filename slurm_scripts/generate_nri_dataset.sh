@@ -6,7 +6,7 @@ sbatch <<'EOF'
 #SBATCH --error=out/error_gen_nri_dataset.%j.log                               # Error file
 #SBATCH --ntasks=1                                                             # Number of tasks
 #SBATCH --gres=gpu:1                                                           # Request 1 GPU
-#SBATCH --time=30:00:00                                                         # Max wall time (HH:MM:SS)
+#SBATCH --time=03:00:00                                                        # Max wall time (HH:MM:SS)
 #SBATCH --mem=32G                                                              # Memory requirement
 #SBATCH --partition=gpu_h100,gpu_a100_il,gpu_h100_il #,gpu_mi300               # Specify the GPU partition
 
