@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Union, List
 
 import networkx as nx
 import numpy as np
@@ -7,6 +7,7 @@ import seaborn as sns
 from grid2op.Environment import Environment
 from grid2op.PlotGrid import PlotMatplot
 from matplotlib import pyplot as plt
+from matplotlib.figure import Figure
 from torch import Tensor
 
 from common.graph_structured_observation_space import GymnasiumObservationConverter, BusConnectionsGraphObsSpace
@@ -14,7 +15,8 @@ from nri.utils import fully_connected_edge_index
 
 
 def visualize_graph(num_nodes: int, edge_index: Optional[Tensor] = None, latent_edge_probs: Optional[Tensor] = None,
-                    skip_first_edge_type: bool = True, node_positions: Optional[np.ndarray] = None):
+                    skip_first_edge_type: bool = True, node_positions: Optional[np.ndarray] = None,
+                    edge_weight: float = 5.0) -> Figure:
     """
     Visualize the graph including latent edges predicted by the NRI module.
     :param num_nodes: The number of nodes in the graph.
@@ -22,6 +24,8 @@ def visualize_graph(num_nodes: int, edge_index: Optional[Tensor] = None, latent_
     :param latent_edge_probs: latent edge type probabilities in shape [N*(N-1), num_edge_types] or None
     :param skip_first_edge_type: Skip first edge type when visualizing latent edges (defaults to True)
     :param node_positions: Node positions as numpy array shape [N, 2] where dimension 1 contains x and y. (Optional)
+    :param edge_weight: The weight of latent edge with probability 1.0
+    :return
     """
     assert latent_edge_probs is None or num_nodes * (num_nodes - 1) == latent_edge_probs.shape[0]
     G = nx.MultiDiGraph()
@@ -40,7 +44,7 @@ def visualize_graph(num_nodes: int, edge_index: Optional[Tensor] = None, latent_
             for edge_type, _ in enumerate(latent_edge_probs[edge_index]):
                 if skip_first_edge_type and edge_type == 0:
                     continue
-                weight = 5 * latent_edge_probs[edge_index, edge_type] ** 2
+                weight = edge_weight * latent_edge_probs[edge_index, edge_type]
                 if weight > 1:
                     color = cmap(edge_type)
                     src, dst = edge_index_fully_connected[:, edge_index]
