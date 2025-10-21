@@ -81,7 +81,7 @@ class TopoPolicyStablePPO(TopologyPolicy):
         # Get action probs for each action
         with torch.no_grad():
             action_probs = self.ppo.policy.get_distribution(obs_batch).distribution.probs
-            action_probs = action_probs.squeeze()
+            action_probs = action_probs.squeeze().cpu().numpy()
         # Get the indices of the top k actions based on their Q-values
         top_k_indices = np.argsort(action_probs)[-k:]  # Sort in descending order
         top_k_actions = [self.ppo.action_space.from_gym(idx) for idx in top_k_indices]
