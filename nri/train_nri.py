@@ -180,13 +180,10 @@ def evaluate_nri_module(
 
         if tensorboard_logger is not None:
             # create figures
-            latent_edges_fig = visualize_graph(
-                num_nodes=testing_set[0].shape[-2], # TODO hacky
-                accumulated_edge_probs=running_latent_edge_probs / len(data_loader),
-                ground_truth_edge_index=edge_index,
-                skip_first_edge_type=nri_module.skip_first,
-                node_positions=node_positions
-            )
+            latent_edges_fig = visualize_graph(num_nodes=testing_set[0].shape[-2], edge_index=edge_index,
+                                               latent_edge_probs=running_latent_edge_probs / len(data_loader),
+                                               skip_first_edge_type=nri_module.skip_first,
+                                               node_positions=node_positions)
             latent_edges_hist = latent_edge_hist(running_latent_edge_probs / len(data_loader))
             avg_probs = edge_type_distributions.mean(dim=tuple(range(edge_type_distributions.ndim - 1)))
 

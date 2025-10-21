@@ -39,13 +39,9 @@ class TestVisualization(unittest.TestCase):
 
         edge_type_probs = torch.rand((num_edges_fully_connected, num_edge_types)) + 0.0001
         edge_type_probs /= edge_type_probs.sum(dim=-1, keepdim=True)
-        fig = visualize_graph(
-            obs_space.num_node,
-            edge_type_probs,
-            ground_truth_edge_index=obs_space.to_gym(obs)[EDGE_INDEX],
-            skip_first_edge_type=True,
-            node_positions=get_node_positions(env, obs_space.__class__)
-        )
+        fig = visualize_graph(obs_space.num_node, edge_index=obs_space.to_gym(obs)[EDGE_INDEX],
+                              latent_edge_probs=edge_type_probs, skip_first_edge_type=True,
+                              node_positions=get_node_positions(env, obs_space.__class__))
         # plt.show()
         plt.close(fig)
 

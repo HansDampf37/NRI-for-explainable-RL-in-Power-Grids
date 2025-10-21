@@ -13,40 +13,38 @@ from common.graph_structured_observation_space import GymnasiumObservationConver
 from nri.utils import fully_connected_edge_index
 
 
-def visualize_graph(
-        num_nodes: int,
-        accumulated_edge_probs: Tensor,
-        ground_truth_edge_index: Optional[Tensor] = None,
-        skip_first_edge_type: bool = True,
-        node_positions: Optional[np.ndarray] = None):
+def visualize_graph(num_nodes: int, edge_index: Optional[Tensor] = None, latent_edge_probs: Optional[Tensor] = None,
+                    skip_first_edge_type: bool = True, node_positions: Optional[np.ndarray] = None):
     """
     Visualize the graph including latent edges predicted by the NRI module.
     :param num_nodes: The number of nodes in the graph.
-    :param accumulated_edge_probs: latent edge type probabilities in shape [N*(N-1), num_edge_types]
-    :param ground_truth_edge_index: Edge index for ground truth edges [2, E]
-    :param skip_first_edge_type: Skip first edge type when visualizing (defaults to True)
+    :param edge_index: Edge index for existing edges [2, E]
+    :param latent_edge_probs: latent edge type probabilities in shape [N*(N-1), num_edge_types] or None
+    :param skip_first_edge_type: Skip first edge type when visualizing latent edges (defaults to True)
     :param node_positions: Node positions as numpy array shape [N, 2] where dimension 1 contains x and y. (Optional)
     """
-    assert num_nodes * (num_nodes - 1) == accumulated_edge_probs.shape[0]
+    assert latent_edge_probs is None or num_nodes * (num_nodes - 1) == latent_edge_probs.shape[0]
     G = nx.MultiDiGraph()
     G.add_nodes_from(range(num_nodes))
 
     # add ground truth edges if specified
-    if ground_truth_edge_index is not None:
-        for src, dst in ground_truth_edge_index.transpose(1, 0):
+    if edge_index is not None:
+        for src, dst in edge_index.transpose(1, 0):
             G.add_edge(int(src), int(dst), color="gray", weight=1, edge_type="Ground Truth", style='solid')
 
     # add predicted edges
-    cmap = plt.get_cmap("Pastel1")
-    edge_index_fully_connected = fully_connected_edge_index(num_nodes=num_nodes)
-    for edge_index, _ in enumerate(accumulated_edge_probs):
-        for edge_type, _ in enumerate(accumulated_edge_probs[edge_index]):
-            if skip_first_edge_type and edge_type == 0:
-                continue
-            src, dst = edge_index_fully_connected[:, edge_index]
-            weight = 5 * accumulated_edge_probs[edge_index, edge_type] ** 2
-            if weight > 1:
-                G.add_edge(int(src), int(dst), color=cmap(edge_type), weight=weight, edge_type=edge_type, style='solid')
+    if latent_edge_probs is not None:
+        cmap = plt.get_cmap("Pastel1")
+        edge_index_fully_connected = fully_connected_edge_index(num_nodes=num_nodes)
+        for edge_index, _ in enumerate(latent_edge_probs):
+            for edge_type, _ in enumerate(latent_edge_probs[edge_index]):
+                if skip_first_edge_type and edge_type == 0:
+                    continue
+                weight = 5 * latent_edge_probs[edge_index, edge_type] ** 2
+                if weight > 1:
+                    color = cmap(edge_type)
+                    src, dst = edge_index_fully_connected[:, edge_index]
+                    G.add_edge(int(src), int(dst), color=color, weight=weight, edge_type=edge_type, style='solid')
 
     # Draw graph
     fig = plt.figure(figsize=(18, 10))
