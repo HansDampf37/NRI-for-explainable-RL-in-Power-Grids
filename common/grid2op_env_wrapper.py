@@ -26,7 +26,7 @@ class Grid2OpEnvWrapper(Env):
                  obs_space_creation=lambda env: BoxGymObsSpace(grid2op_observation_space=env.observation_space)):
         super().__init__()
         self._g2op_env = grid2op.make(env_name, backend=LightSimBackend(), reward_class=MazeRLReward)
-        self._gym_env = GymEnvWithRecoWithDN(self._g2op_env, safe_max_rho=safe_max_rho)
+        self._gym_env = GymEnvWithRecoWithDN(self._g2op_env, safe_max_rho=safe_max_rho, with_forecast=True)
 
         self._gym_env.observation_space.close()
         self._gym_env.observation_space = obs_space_creation(self._g2op_env)

@@ -78,7 +78,7 @@ class TestBipartitGraphStructuredObservationSpace(unittest.TestCase):
 class TestBusConnectionsGraphObsSpace(unittest.TestCase):
     def setUp(self):
         self.env = grid2op.make("l2rpn_case14_sandbox")
-        self.gym_env = GymEnv(self.env)
+        self.gym_env = GymEnv(self.env, with_forecast=True)
         self.gym_env.observation_space = BusConnectionsGraphObsSpace(self.env.observation_space)
         self.obs_space = self.gym_env.observation_space
 

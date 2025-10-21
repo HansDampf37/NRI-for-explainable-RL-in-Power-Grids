@@ -270,7 +270,7 @@ class BusConnectionsGraphObsSpace(Dict, GymnasiumObservationConverter):
     - voltage, voltage angle
     - current
     """
-    NUM_FEATURES_PER_NODE = 6
+    NUM_FEATURES_PER_NODE = 8
 
     def __init__(self, grid2op_observation_space: ObservationSpace):
         self.obs_space = grid2op_observation_space
@@ -348,15 +348,26 @@ class BusConnectionsGraphObsSpace(Dict, GymnasiumObservationConverter):
         V_phasor = V_mag * (np.cos(theta_rad) + 1j * np.sin(theta_rad))
         I_phasor = np.conj(S) / (np.sqrt(3) * V_phasor)
         I_mag = np.abs(I_phasor)
-        # TODO include predictions for gen and load and predict only remaining values?
-        # Concatenate features for all nodes: gen + load + line ends
+        # Concatenate features for all nodes: line ends + generators + loads
+        load_p, load_q, prod_p, prod_q, _ = g2op_obs.get_forecast_arrays()
+        active_power_forecast = np.concatenate([np.zeros((2 * g2op_obs.n_line,)), prod_p[1], -load_p[1]])
+        reactive_power_forecast = np.concatenate([np.zeros((2 * g2op_obs.n_line,)), prod_q[1], -load_q[1]])
+        active_power = np.concatenate([g2op_obs.p_or, g2op_obs.p_ex, g2op_obs.gen_p, -g2op_obs.load_p])
+        reactive_power = np.concatenate([g2op_obs.q_or, g2op_obs.q_ex, g2op_obs.gen_q, -g2op_obs.load_q])
+        voltage = np.concatenate([g2op_obs.v_or, g2op_obs.v_ex, g2op_obs.gen_v, g2op_obs.load_v])
+        voltage_angle = np.concatenate([g2op_obs.theta_or, g2op_obs.theta_ex, g2op_obs.gen_theta, g2op_obs.load_theta])
+        current = np.concatenate([g2op_obs.a_or, g2op_obs.a_ex, I_mag])
+        rho = np.concatenate([g2op_obs.rho, g2op_obs.rho, np.zeros((g2op_obs.n_gen + g2op_obs.n_load,))])
+
         features = np.array([
-            np.concatenate([g2op_obs.p_or, g2op_obs.p_ex, g2op_obs.gen_p, -g2op_obs.load_p]), # active power
-            np.concatenate([g2op_obs.q_or, g2op_obs.q_ex, g2op_obs.gen_q, -g2op_obs.load_q]), # reactive power
-            np.concatenate([g2op_obs.v_or, g2op_obs.v_ex, g2op_obs.gen_v, g2op_obs.load_v]), # voltage
-            np.concatenate([g2op_obs.theta_or, g2op_obs.theta_ex, g2op_obs.gen_theta, g2op_obs.load_theta]), # voltage angle
-            np.concatenate([g2op_obs.a_or, g2op_obs.a_ex, I_mag]), # current
-            np.concatenate([g2op_obs.rho, g2op_obs.rho, np.zeros((g2op_obs.n_gen + g2op_obs.n_load, ))]) # rho
+            active_power_forecast,
+            reactive_power_forecast,
+            active_power,
+            reactive_power,
+            voltage,
+            voltage_angle,
+            current,
+            rho
         ]).transpose()
 
         return features
