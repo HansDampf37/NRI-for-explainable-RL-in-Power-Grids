@@ -2,5 +2,5 @@ defaults:
     -   model: gnn_ppo
     -   train: default
     -   eval: default
-    -   obs_space: graph_obs_space
+    -   obs_space: bus_connections_graph_obs_space
     -   act_space: discrete_set_bus
