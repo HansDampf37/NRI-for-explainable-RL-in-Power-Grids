@@ -98,6 +98,7 @@ def train(
             target = batch[:, 1:, :, :]
             loss = criterion(predictions, target, edge_type_distributions)
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(nri_module.parameters(), max_norm=10.0)
             optimizer.step()
 
             with torch.no_grad():
@@ -206,7 +207,7 @@ def evaluate_nri_module(
                 tensorboard_logger.add_figure("Predicted latent Graph/testing", latent_edges_fig, current_epoch)
             else:
                 steps = np.linspace(0, 1, 100)
-                weights = plotting_args.edge_weight * 100 ** (steps * 2 - 1) / (1 + 100 ** (steps * 2 - 1))
+                weights: List[float] = plotting_args.edge_weight * 100 ** (steps * 2 - 1) / (1 + 100 ** (steps * 2 - 1)).tolist()
                 for i, weight in enumerate(weights):
                     latent_edges_fig = visualize_graph(
                         num_nodes=plotting_args.num_nodes,
