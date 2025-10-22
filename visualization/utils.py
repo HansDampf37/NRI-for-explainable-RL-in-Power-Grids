@@ -101,9 +101,9 @@ def latent_edge_hist(
 def get_node_positions(env: Environment, observation_space: type[GymnasiumObservationConverter]):
     """
     For a given environment and observation space class, return a list of node positions.
-    @param env: the environment
-    @param observation_space: the class of the observation space that dictates which entities are nodes
-    @return: a list of node positions similar to the ones used by the grid2op plots
+    :param env: the environment
+    :param observation_space: the class of the observation space that dictates which entities are nodes
+    :return: a list of node positions similar to the ones used by the grid2op plots
     """
     if observation_space == BusConnectionsGraphObsSpace:
         plot_helper = PlotMatplot(env.observation_space)

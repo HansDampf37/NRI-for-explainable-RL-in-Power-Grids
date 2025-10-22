@@ -22,10 +22,10 @@ class ElboLoss(nn.Module):
         """
         Constructor
 
-        @param prior: The prior assumption about the distribution
-        @param variance: Fixed variance of the output distribution that are used to sample the decoders output
-        @param alpha: weight for the negative log-likelihood loss
-        @param beta: weight for the KL-Divergence
+        :param prior: The prior assumption about the distribution
+        :param variance: Fixed variance of the output distribution that are used to sample the decoders output
+        :param alpha: weight for the negative log-likelihood loss
+        :param beta: weight for the KL-Divergence
         """
         super().__init__()
         self.eps = 1e-10  # for numerical stability
@@ -45,10 +45,10 @@ class ElboLoss(nn.Module):
         Compute the ELBO loss (- ELBO objective) for the inputs. Predictions should be close to target and posterior_probs
         should be close to the prior.
 
-        @param predictions: the VAEs output
-        @param target: the VAEs target (input)
-        @param posterior_probs: the distributions predicted by the encoder
-        @return: the ELBO loss
+        :param predictions: the VAEs output
+        :param target: the VAEs target (input)
+        :param posterior_probs: the distributions predicted by the encoder
+        :return: the ELBO loss
         """
         nll = self.neg_log_likelihood(predictions, target)
         kl = self.kl_divergence_to_prior(posterior_probs)
