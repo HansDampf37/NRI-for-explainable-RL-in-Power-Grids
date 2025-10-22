@@ -5,7 +5,7 @@ import torch
 from torch import Tensor
 from torch_geometric.loader import DataLoader
 
-from common.GNN import MessagePassing, GNNFeatureExtractor
+from common.GNN import NodeEdgeMP, GNNFeatureExtractor
 
 
 class TestMessagePassing(unittest.TestCase):
@@ -22,7 +22,7 @@ class TestMessagePassing(unittest.TestCase):
     def test_message_passing(self):
         num_node_features_out = 1
         num_edge_features_out = 2
-        mp = MessagePassing(
+        mp = NodeEdgeMP(
             x_dim=self.num_node_features,
             e_dim=self.num_edge_features,
             x_out_dim=num_node_features_out,
@@ -40,10 +40,10 @@ class TestMessagePassing(unittest.TestCase):
             e_out_dim=self.num_edge_features + 1,
             residual=True,
         )
-        self.assertRaises(ValueError, MessagePassing, **kwargs)
+        self.assertRaises(ValueError, NodeEdgeMP, **kwargs)
 
     def test_residual(self):
-        MessagePassing(
+        NodeEdgeMP(
             x_dim=self.num_node_features,
             e_dim=self.num_edge_features,
             x_out_dim=self.num_node_features,

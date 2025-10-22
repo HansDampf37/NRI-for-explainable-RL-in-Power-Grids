@@ -33,16 +33,57 @@ EDGE_INDEX = "edge_index"
 EDGE_MASK = "edge_mask"
 GLOBAL = "global_features"
 
-class GymnasiumObservationConverter(ABC):
+
+class GNNObservationSpace(ABC, Dict):
+    """
+    Superclass for any Graph observation space. Implements a dict observation space with the following spaces:
+    - NODES node features shaped [num_nodes, x_dim]
+    - EDGE_INDEX node adjacency with a fix amount of edges shaped [2, max_n_edge]
+    - EDGE_MASK encodes the edges within EDGE_INDEX that are non-padding shaped [num_edges]
+    - EDGES (optional) edge features shaped [max_n_edge, e_dim]
+    - GLOBAL (optional) global features [...]
+    """
     @abstractmethod
     def to_gym(self, g2op_obs: BaseObservation) -> dict[str, np.ndarray]:
-        pass
+        """
+        Transforms a grid2op observation into an observation of this space.
+        :param g2op_obs: The grid2op observation.
+        :return: a gym-like dict observation.
+        """
 
     def close(self):
-        pass # this is just dictated by grid2op - of course without interface...
+        pass  # this is just dictated by grid2op - of course without interface...
+
+    @property
+    def num_nodes(self) -> int:
+        """
+        @return: the number of nodes in the observation space
+        """
+        return self.spaces[NODES].shape[0]
+
+    @property
+    def max_num_edges(self) -> int:
+        """
+        @return: the maximum number of edges in the observation space
+        """
+        return self.spaces[EDGE_INDEX].shape[1]
+
+    @property
+    def x_dim(self) -> int:
+        """
+        @return: the node feature dimensionality
+        """
+        return self.spaces[NODES].shape[1]
+
+    @property
+    def e_dim(self) -> Optional[int]:
+        """
+        @return: edge feature dimensionality if this observation space contains the EDGE space else None.
+        """
+        return self.spaces[EDGES].shape[1] if EDGES in self.spaces.keys() else None
 
 
-class GraphObservationSpace(Dict, GymnasiumObservationConverter):
+class GraphObservationSpace(GNNObservationSpace):
     """
     This Observation space implements the Dict action space from gymnasium. It returns a dict features for the following
     elements of the grid2op observation object:
@@ -68,22 +109,11 @@ class GraphObservationSpace(Dict, GymnasiumObservationConverter):
         :param spaces_to_keep: which spaces to keep (global_features, node_features, edge_features, edge_index, generator_features, load_features, line_features)
         """
         self.spaces_to_keep = spaces_to_keep or [NODES, EDGES, EDGE_INDEX, EDGE_MASK]
-        self.n_gen = grid2op_observation_space.n_gen
-        self.n_load = grid2op_observation_space.n_load
-        self.n_line = grid2op_observation_space.n_line
-        self.n_sub = grid2op_observation_space.n_sub
-        self.n_node = self.n_load + self.n_sub + self.n_gen
-        self.n_edge = self.n_line + self.n_load + self.n_gen
-        self.edge_index = self._generate_edge_index(grid2op_observation_space)
+        super().__init__(self._dict_description_from_inputs(grid2op_observation_space, self.spaces_to_keep))
+        self.edge_index = self.generate_edge_index(grid2op_observation_space)
         self.edge_mask = np.ones(self.edge_index.shape[1], dtype=np.bool)
-        super().__init__(self._dict_description_from_inputs(self.spaces_to_keep))
 
     def to_gym(self, g2op_obs: BaseObservation) -> dict[str, np.ndarray]:
-        """
-        Transforms a grid2op observation into an observation of this space.
-        :param g2op_obs: The grid2op observation.
-        :return: a gym-like dict observation.
-        """
         result: dict[str, np.ndarray] = {}
         if GLOBAL in self.spaces_to_keep:
             result[GLOBAL] = self.global_features_from_observation(g2op_obs)
@@ -176,7 +206,7 @@ class GraphObservationSpace(Dict, GymnasiumObservationConverter):
         return np.concatenate([line_features, lines_connecting_generators, lines_connecting_loads], axis=0)
 
     @staticmethod
-    def _generate_edge_index(g2op_obs_space: ObservationSpace) -> np.ndarray:
+    def generate_edge_index(g2op_obs_space: ObservationSpace) -> np.ndarray:
         """
         Generate the edge index. The edge index models which nodes are connected by edges. It is of shape [2, E]
         containing source and target node indices for each edge.
@@ -196,24 +226,28 @@ class GraphObservationSpace(Dict, GymnasiumObservationConverter):
             np.concatenate([powerline_target_idx, generator_target_idx, load_idx])
         ])
 
-    def _dict_description_from_inputs(self, spaces_to_keep: List[str]) -> dict:
+    def _dict_description_from_inputs(self, grid2op_observation_space: ObservationSpace, spaces_to_keep: List[str]) -> dict:
         """
         Helper function to describe the final dict space
         """
+        n_node = grid2op_observation_space.n_gen + grid2op_observation_space.n_load + grid2op_observation_space.n_sub
+        n_edge = grid2op_observation_space.n_line + grid2op_observation_space.n_load + grid2op_observation_space.n_gen
         result = dict()
         if GLOBAL in spaces_to_keep:
             result[GLOBAL] = Box(low=-np.inf, high=np.inf, shape=(self.NUM_GLOBAL_FEATURES,))
         if NODES in spaces_to_keep:
-            result[NODES] = Box(low=-np.inf, high=np.inf, shape=(self.n_node, self.NUM_FEATURES_PER_NODE))
+            result[NODES] = Box(low=-np.inf, high=np.inf, shape=(n_node, self.NUM_FEATURES_PER_NODE))
         if EDGES in spaces_to_keep:
-            result[EDGES] = Box(low=-np.inf, high=np.inf, shape=(self.n_edge, self.NUM_FEATURES_PER_EDGE))
+            result[EDGES] = Box(low=-np.inf, high=np.inf, shape=(n_edge, self.NUM_FEATURES_PER_EDGE))
         if EDGE_INDEX in spaces_to_keep:
-            result[EDGE_INDEX] = Box(low=0, high=1, shape=(2, self.n_edge), dtype=np.long)
+            result[EDGE_INDEX] = Box(low=0, high=1, shape=(2, n_edge), dtype=np.long)
+        if EDGE_MASK in spaces_to_keep:
+            result[EDGE_MASK] = Box(low=0, high=1, shape=(n_edge, ), dtype=np.long)
 
         return result
 
 
-class BipartitGraphObservationSpace(Dict, GymnasiumObservationConverter):
+class BipartitGraphObservationSpace(GNNObservationSpace):
     """
     This Observation space structures observation data similar to GraphObservationSpace in a graph-like structure.
     In contrast to GraphObservationSpace this class creates a bipartit meta-graph G=(V+E, E').
@@ -225,14 +259,23 @@ class BipartitGraphObservationSpace(Dict, GymnasiumObservationConverter):
 
     def __init__(self, grid2op_observation_space: ObservationSpace):
         self.graph_obs_space = GraphObservationSpace(grid2op_observation_space, [NODES, EDGES, EDGE_INDEX])
-        self.n_node_bipart = self.graph_obs_space.n_node + self.graph_obs_space.n_edge
-        self.n_edge_bipart = 2 * self.graph_obs_space.n_edge
         self.spaces_to_keep = [NODES, EDGE_INDEX]
+        n_node_bipart = self.graph_obs_space.num_nodes + self.graph_obs_space.max_num_edges
+        n_edge_bipart = 2 * self.graph_obs_space.max_num_edges
 
         super().__init__({
-            NODES: Box(low=-np.inf, high=np.inf, shape=(self.n_node_bipart, self.NUM_FEATURES_PER_NODE)),
-            EDGE_INDEX: Box(low=0, high=1, shape=(2, self.n_edge_bipart), dtype=np.long)
+            NODES: Box(low=-np.inf, high=np.inf, shape=(n_node_bipart, self.NUM_FEATURES_PER_NODE)),
+            EDGE_INDEX: Box(low=0, high=1, shape=(2, n_edge_bipart), dtype=np.long),
+            EDGE_MASK: Box(low=0, high=1, shape=(n_edge_bipart, ), dtype=np.long)
         })
+
+        edge_index = self.graph_obs_space.generate_edge_index(grid2op_observation_space)
+        edge_indices = np.arange(self.graph_obs_space.max_num_edges) + self.graph_obs_space.num_nodes
+
+        bipartit_edge_index_source = np.stack([edge_index[0], edge_indices])
+        bipartit_edge_index_target = np.stack([edge_indices, edge_index[1]])
+        self.bipartit_edge_index = np.concatenate([bipartit_edge_index_source, bipartit_edge_index_target], axis=1)
+        self.edge_mask = np.ones((self.max_num_edges, ), dtype=np.bool)
 
     def to_gym(self, g2op_obs: BaseObservation) -> dict[str, np.ndarray]:
         d = self.graph_obs_space.to_gym(g2op_obs)
@@ -244,23 +287,16 @@ class BipartitGraphObservationSpace(Dict, GymnasiumObservationConverter):
         padding_2 = np.zeros(shape=(number_nodes, number_edge_features))  # [N, E_dim]
         padded_node_features = np.concatenate([node_features, padding_1], axis=0)  # [N + E, N_dim]
         padded_edge_features = np.concatenate([padding_2, edge_features], axis=0)  # [N + E, E_dim]
-        bipartit_node_features = np.concatenate([padded_node_features, padded_edge_features],
-                                                axis=1)  # [N + E, N_dim + E_dim]
-
-        edge_index = d[EDGE_INDEX]
-        edge_indices = np.arange(number_edges) + number_nodes
-
-        bipartit_edge_index_source = np.stack([edge_index[0], edge_indices])
-        bipartit_edge_index_target = np.stack([edge_indices, edge_index[1]])
-        bipartit_edge_index = np.concatenate([bipartit_edge_index_source, bipartit_edge_index_target], axis=1)
+        bipartit_node_features = np.concatenate([padded_node_features, padded_edge_features], axis=1)  # [N + E, N_dim + E_dim]
 
         return {
             NODES: bipartit_node_features,
-            EDGE_INDEX: bipartit_edge_index,
+            EDGE_INDEX: self.bipartit_edge_index,
+            EDGE_MASK: self.edge_mask,
         }
 
 
-class BusConnectionsGraphObsSpace(Dict, GymnasiumObservationConverter):
+class BusConnectionsGraphObsSpace(GNNObservationSpace):
     """
     This observation space outputs a graph structured as follows:
     - loads, generators and powerline-bus-connections are modelled as nodes
@@ -273,16 +309,16 @@ class BusConnectionsGraphObsSpace(Dict, GymnasiumObservationConverter):
     NUM_FEATURES_PER_NODE = 8
 
     def __init__(self, grid2op_observation_space: ObservationSpace):
-        self.obs_space = grid2op_observation_space
-        self.num_node = self.obs_space.n_gen + self.obs_space.n_load + 2 * self.obs_space.n_line
-        self.num_connections = grid2op_observation_space.sub_info
-        self.num_line = grid2op_observation_space.n_line
-        self.max_n_edge = (self.num_connections * (self.num_connections - 1)).sum() + 2 * self.num_line
+        obs_space = grid2op_observation_space
+        num_node = obs_space.n_gen + obs_space.n_load + 2 * obs_space.n_line
+        num_connections = obs_space.sub_info
+        num_line = obs_space.n_line
+        max_n_edge = (num_connections * (num_connections - 1)).sum() + num_line
 
         super().__init__({
-            NODES: Box(low=-np.inf, high=np.inf, shape=(self.num_node, self.NUM_FEATURES_PER_NODE)),
-            EDGE_INDEX: Box(low=0, high=1, shape=(2, self.max_n_edge), dtype=np.int64),
-            EDGE_MASK: Box(low=0, high=1, shape=(self.max_n_edge,), dtype=np.bool)
+            NODES: Box(low=-np.inf, high=np.inf, shape=(num_node, self.NUM_FEATURES_PER_NODE)),
+            EDGE_INDEX: Box(low=0, high=1, shape=(2, max_n_edge), dtype=np.int64),
+            EDGE_MASK: Box(low=0, high=1, shape=(max_n_edge,), dtype=np.bool)
         })
 
     def to_gym(self, g2op_obs: BaseObservation) -> dict[str, np.ndarray]:
@@ -293,10 +329,10 @@ class BusConnectionsGraphObsSpace(Dict, GymnasiumObservationConverter):
         edge_index = self.get_edge_index(g2op_obs)
         # pad edge index
         num_edges = edge_index.shape[1]
-        edge_index_padded = np.zeros((2, self.max_n_edge), dtype=int)
+        edge_index_padded = np.zeros((2, self.max_num_edges), dtype=int)
         edge_index_padded[:, :num_edges] = edge_index
         # add edge_mask
-        edge_mask = np.zeros(self.max_n_edge, dtype=bool)
+        edge_mask = np.zeros(self.max_num_edges, dtype=bool)
         edge_mask[:num_edges] = True
 
         return {
@@ -315,17 +351,15 @@ class BusConnectionsGraphObsSpace(Dict, GymnasiumObservationConverter):
         connected_to_bus = np.concatenate([g2op_obs.line_or_bus, g2op_obs.line_ex_bus, g2op_obs.gen_bus, g2op_obs.load_bus])
 
         edge_index = []
-        for i in range(self.num_node):
-            for j in range(i + 1, self.num_node):
+        for i in range(self.num_nodes):
+            for j in range(i + 1, self.num_nodes):
                 if connected_to_bus[i] == connected_to_bus[j] and connected_to_sub[i] == connected_to_sub[j]:
                     # nodes share substation and bus -> edge
                     edge_index.append([i, j])
-                    edge_index.append([j, i])
 
-        for i in range(self.num_line):
+        for i in range(g2op_obs.n_line):
             # node i and i + n_line are endpoints of the same powerline and should be connected
-            edge_index.append([i, i + self.num_line])
-            edge_index.append([i + self.num_line, i])
+            edge_index.append([i, i + g2op_obs.n_line])
 
         return np.array(edge_index).transpose()
 

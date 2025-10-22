@@ -17,7 +17,7 @@ from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 
 from baselines.train_stable_baseline import build_agent
-from common.graph_structured_observation_space import EDGE_INDEX, EDGE_MASK, GymnasiumObservationConverter
+from common.graph_structured_observation_space import EDGE_INDEX, EDGE_MASK, GNNObservationSpace
 from common.rewards import MazeRLReward
 
 logger = logging.getLogger(__name__)
@@ -70,8 +70,7 @@ def sample_trajectory(length: int, agent: BaseAgent, env: Environment, max_retri
     return trajectory
 
 
-def generate_dataset(num_sims: int, length: int, agent: BaseAgent, env: Environment,
-                     observation_converter: GymnasiumObservationConverter) -> Dict:
+def generate_dataset(num_sims: int, length: int, agent: BaseAgent, env: Environment, observation_converter: GNNObservationSpace) -> Dict:
     """
     Creates a dataset containing multiple trajectories of the environment being operated by some agent.
     :param num_sims: the amount of trajectories to generate
@@ -108,7 +107,7 @@ def main(cfg: DictConfig):
     env_train = grid2op.make(cfg.env.env_name + "_train", backend=LightSimBackend(), reward_class=MazeRLReward)
     env_test = grid2op.make(cfg.env.env_name + "_test", backend=LightSimBackend(), reward_class=MazeRLReward)
     env_val = grid2op.make(cfg.env.env_name + "_val", backend=LightSimBackend(), reward_class=MazeRLReward)
-    observation_converter: GymnasiumObservationConverter = instantiate(
+    observation_converter: GNNObservationSpace = instantiate(
         cfg.nri.obs_space,
         grid2op_observation_space=env_train.observation_space
     )

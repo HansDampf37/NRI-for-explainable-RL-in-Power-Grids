@@ -92,6 +92,7 @@ class NRIModule(nn.Module):
         :param edge_index: Node adjacency [2, E]
         :return: Batched edge index of shape [(B), 3, E] where dimension 1 includes receiver, sender, and type
         """
+        # Add batch dimension if not present
         added_batch_dim = False
         if x.dim() == 3:
             x = x.unsqueeze(0)  # [1, T, N, X_dim]
@@ -106,7 +107,7 @@ class NRIModule(nn.Module):
 
         batched_edge_index = edge_index.unsqueeze(0).expand(B, -1, -1)  # [B, 2, E]
         edge_types = torch.argmax(p_one_hot, dim=-1)  # [B, E]
-        full_edge_index = torch.concatenate([batched_edge_index, edge_types.view(B, 1, E)], dim=1)
+        full_edge_index = torch.cat([batched_edge_index, edge_types.view(B, 1, E)], dim=1)
 
         if added_batch_dim:
             return full_edge_index.squeeze(0)  # shape: [3, E]

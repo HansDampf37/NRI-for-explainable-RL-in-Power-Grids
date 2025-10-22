@@ -7,7 +7,7 @@ class GumbelSoftmax(nn.Module):
     """
     Differentiable sampling from a categorical distribution using the Gumbel-Softmax trick.
     """
-    def __init__(self, tau: float=1.0, eps: float = 1e-10):
+    def __init__(self, tau: float = 1.0, eps: float = 1e-10):
         """
         Creates a gumbel-softmax module
         :param tau: non-negative scalar temperature
@@ -20,9 +20,12 @@ class GumbelSoftmax(nn.Module):
     def sample_gumbel(self, shape: torch.Size) -> Tensor:
         """
         Sample Gumbel noise from Gumbel(0, 1)
+
+        G = -log(-log(U + eps) + eps) where U is sampled uniformly.
+        :param shape: shape of Gumbel noise
         """
         uniform_samples = torch.rand(shape).float()
-        return -torch.log(self.eps - torch.log(uniform_samples + self.eps))
+        return -torch.log(-torch.log(uniform_samples + self.eps) + self.eps)
 
     def forward(self, x: Tensor, hard: bool = False) -> Tensor:
         """

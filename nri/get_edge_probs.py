@@ -1,7 +1,6 @@
-# python
 """
-Dieses Script kann verwendet werden, um die durchschnittlichen Edge-Probabilities
-für ein gegebenes Dataset und ein NRI-Modul zu berechnen und zu speichern.
+This script can be used to retrieve and save edge type probabilities by running a NRI module on a specified dataset.
+The final edge type probabilities are averaged for each edge-type combination across all samples in the dataset.
 """
 import logging
 import os

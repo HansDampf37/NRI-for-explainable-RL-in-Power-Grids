@@ -10,7 +10,7 @@ from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 from torch import Tensor
 
-from common.graph_structured_observation_space import GymnasiumObservationConverter, BusConnectionsGraphObsSpace
+from common.graph_structured_observation_space import GNNObservationSpace, BusConnectionsGraphObsSpace
 from nri.utils import fully_connected_edge_index
 
 
@@ -98,7 +98,7 @@ def latent_edge_hist(
     return fig
 
 
-def get_node_positions(env: Environment, observation_space: type[GymnasiumObservationConverter]):
+def get_node_positions(env: Environment, observation_space: type[GNNObservationSpace]):
     """
     For a given environment and observation space class, return a list of node positions.
     :param env: the environment

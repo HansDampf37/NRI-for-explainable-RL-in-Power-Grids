@@ -4,9 +4,9 @@ import grid2op
 from grid2op.Agent import DoNothingAgent, RandomAgent
 from grid2op.Observation import BaseObservation
 
-from common import GraphObservationSpace
-from common.graph_structured_observation_space import GraphObservationSpace as Space, NODES, EDGES
+from common import NODES, EDGE_INDEX, EDGE_MASK, BusConnectionsGraphObsSpace
 from nri.create_dataset import sample_trajectory, AgentFailsEarly, generate_dataset
+
 
 class TestCreateDataset(unittest.TestCase):
     def setUp(self):
@@ -24,17 +24,17 @@ class TestCreateDataset(unittest.TestCase):
         self.assertIsInstance(trajectory[0], BaseObservation)
 
     def test_sample_trajectories_agent_fails(self):
-        length = 3000 # to long to reach
-        max_retries = 0 # no retries
+        length = 3000  # to long to reach
+        max_retries = 0  # no retries
         self.assertRaises(AgentFailsEarly, sample_trajectory, length, self.random_agent, self.env, max_retries)
 
     def test_generate_dataset(self):
         num_traj = 10
         traj_len = 10
-        obs_space = GraphObservationSpace(self.env.observation_space, [NODES, EDGES])
+        obs_space = BusConnectionsGraphObsSpace(self.env.observation_space)
         data = generate_dataset(num_traj, traj_len, self.do_nothing_agent, self.env, obs_space)
 
-        self.assertSetEqual(set(data.keys()), {NODES, EDGES})
-        self.assertEqual(data[NODES].shape, (num_traj, traj_len, obs_space.n_node, Space.NUM_FEATURES_PER_NODE))
-        self.assertEqual(data[EDGES].shape, (num_traj, traj_len, obs_space.n_edge, Space.NUM_FEATURES_PER_EDGE))
-
+        # edge mask and edge index are not added to the dataset
+        spaces = {k for k in obs_space.spaces.keys() if k not in [EDGE_MASK, EDGE_INDEX]}
+        self.assertSetEqual(set(data.keys()), spaces)
+        self.assertEqual(data[NODES].shape, (num_traj, traj_len, obs_space.num_nodes, obs_space.x_dim))

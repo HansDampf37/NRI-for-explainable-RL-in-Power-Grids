@@ -7,11 +7,10 @@ from torch_geometric.nn import MessagePassing
 from torch_geometric.nn import global_mean_pool
 
 from .MLP import MLP
-from .graph_structured_observation_space import GraphObservationSpace, EDGE_INDEX, \
-    EDGES, NODES, EDGE_MASK
+from .graph_structured_observation_space import EDGE_INDEX, EDGES, NODES, EDGE_MASK, GNNObservationSpace
 
 
-class MessagePassing(MessagePassing):
+class NodeEdgeMP(MessagePassing):
     """
     PyTorch Geometric style message passing:
       e_{j,i} = psi(e_{j,i}, x_i, x_j)
@@ -150,7 +149,7 @@ class GNNFeatureExtractor(nn.Module):
 
         # build message passing layers
         self.layers = nn.ModuleList([
-            MessagePassing(
+            NodeEdgeMP(
                 x_dim=x_hidden_dim,
                 e_dim=e_hidden_dim,
                 x_out_dim=x_hidden_dim,
@@ -161,7 +160,7 @@ class GNNFeatureExtractor(nn.Module):
             ) for _ in range(n_layers - 1)
         ])
 
-        self.final = MessagePassing(
+        self.final = NodeEdgeMP(
             x_dim=x_hidden_dim,
             e_dim=e_hidden_dim,
             x_out_dim=x_out_dim,
@@ -201,7 +200,7 @@ class SB3GNNWrapper(BaseFeaturesExtractor):
     """
     def __init__(
             self,
-            observation_space: GraphObservationSpace,
+            observation_space: GNNObservationSpace,
             x_hidden_dim: int,
             e_hidden_dim: int,
             x_out_dim: int,
@@ -212,8 +211,8 @@ class SB3GNNWrapper(BaseFeaturesExtractor):
     ):
         BaseFeaturesExtractor.__init__(self, observation_space, features_dim=x_out_dim + e_out_dim)
         self.gnn_feature_extractor = GNNFeatureExtractor(
-            x_dim=observation_space.spaces[NODES].shape[1],
-            e_dim=observation_space.spaces[EDGES].shape[1],
+            x_dim=observation_space.x_dim,
+            e_dim=observation_space.e_dim if observation_space.e_dim is not None else 0,
             x_hidden_dim=x_hidden_dim,
             e_hidden_dim=e_hidden_dim,
             x_out_dim=x_out_dim,
@@ -238,6 +237,6 @@ class SB3GNNWrapper(BaseFeaturesExtractor):
             edge_index = edge_index_batch[b, :, edge_masks_batch[b]]
             data_list.append(Data(x=node_features, edge_index=edge_index, edge_attr=edge_features))
 
-        batch = Batch.from_data_list(data_list)
+        batch: Batch = Batch.from_data_list(data_list)
         return self.gnn_feature_extractor(batch.x, batch.edge_attr, batch.edge_index, batch.batch)
 

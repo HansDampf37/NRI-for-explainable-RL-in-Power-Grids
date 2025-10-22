@@ -14,7 +14,7 @@ from torch.utils.data import Dataset, DataLoader, TensorDataset
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
-from common.graph_structured_observation_space import EDGE_INDEX, GymnasiumObservationConverter
+from common.graph_structured_observation_space import EDGE_INDEX, GNNObservationSpace
 from nri.ElboObjective import ElboLoss
 from nri.NRI import NRIModule
 from visualization.utils import visualize_graph, get_node_positions, latent_edge_hist
@@ -255,7 +255,7 @@ def main(cfg: DictConfig):
 
     # prepare plotting args
     env = grid2op.make(cfg.env.env_name)
-    observation_space: GymnasiumObservationConverter = instantiate(cfg.nri.obs_space, grid2op_observation_space=env.observation_space)
+    observation_space: GNNObservationSpace = instantiate(cfg.nri.obs_space, grid2op_observation_space=env.observation_space)
     node_positions = get_node_positions(env, observation_space.__class__)
     edge_index = observation_space.to_gym(env.reset())[EDGE_INDEX]
     plotting_args = PlottingArgs(

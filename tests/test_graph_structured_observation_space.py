@@ -18,14 +18,15 @@ class TestGraphStructuredObservationSpace(unittest.TestCase):
 
     def test_observation_space(self):
         obs, _ = self.gym_env.reset()
-        self.assertIn(NODES, obs.keys())
-        self.assertIn(EDGES, obs.keys())
-        self.assertIn(EDGE_INDEX, obs.keys())
+        self.assertSetEqual({NODES, EDGES, EDGE_INDEX, EDGE_MASK}, set(obs.keys()))
+        self.assertEqual(obs[NODES].shape, (self.obs_space.num_nodes, self.obs_space.x_dim))
+        self.assertEqual(obs[EDGES].shape, (self.obs_space.max_num_edges, self.obs_space.e_dim))
+        self.assertEqual(obs[EDGE_INDEX].shape, (2, self.obs_space.max_num_edges))
+        self.assertEqual(obs[EDGE_MASK].shape, (self.obs_space.max_num_edges, ))
 
     def test_stable_baselines_compatibility(self):
         self.gym_env.action_space.close()
-        self.gym_env.observation_space = GraphObservationSpace(self.env.observation_space,
-                                                               spaces_to_keep=[NODES])
+        self.gym_env.observation_space = GraphObservationSpace(self.env.observation_space, spaces_to_keep=[NODES])
         self.gym_env.action_space = DiscreteActSpace(self.env.action_space, attr_to_keep=["set_bus"])
         dqn = DQN("MultiInputPolicy", env=self.gym_env)
         dqn.learn(total_timesteps=100)
@@ -39,13 +40,13 @@ class TestGraphStructuredObservationSpace(unittest.TestCase):
         obs = self.env.reset()
         num_nodes = self.env.n_gen + self.env.n_load + self.env.n_sub
         node_features = self.obs_space.node_features_from_observation(obs)
-        self.assertEqual(node_features.shape, (num_nodes, self.obs_space.NUM_FEATURES_PER_NODE))
+        self.assertEqual(node_features.shape, (num_nodes, self.obs_space.x_dim))
 
     def test_edge_features_from_obs(self):
         obs = self.env.reset()
         num_edges = self.env.n_line + self.env.n_gen + self.env.n_load
         edge_features = self.obs_space.edge_features_from_observation(obs)
-        self.assertEqual(edge_features.shape, (num_edges, self.obs_space.NUM_FEATURES_PER_EDGE))
+        self.assertEqual(edge_features.shape, (num_edges, self.obs_space.e_dim))
 
 
 class TestBipartitGraphStructuredObservationSpace(unittest.TestCase):
@@ -53,13 +54,14 @@ class TestBipartitGraphStructuredObservationSpace(unittest.TestCase):
         self.env = grid2op.make("l2rpn_case14_sandbox")
         self.gym_env = GymEnv(self.env)
         self.gym_env.observation_space = BipartitGraphObservationSpace(self.env.observation_space)
-        self.obs_space = self.gym_env.observation_space
+        self.obs_space: BipartitGraphObservationSpace = self.gym_env.observation_space
 
     def test_observation_space(self):
         obs, _ = self.gym_env.reset()
-        self.assertIn(NODES, obs.keys())
-        self.assertIn(EDGE_INDEX, obs.keys())
-        self.assertNotIn(EDGES, obs.keys())
+        self.assertSetEqual({NODES, EDGE_INDEX, EDGE_MASK}, set(obs.keys()))
+        self.assertEqual(obs[NODES].shape, (self.obs_space.num_nodes, self.obs_space.x_dim))
+        self.assertEqual(obs[EDGE_INDEX].shape, (2, self.obs_space.max_num_edges))
+        self.assertEqual(obs[EDGE_MASK].shape, (self.obs_space.max_num_edges,))
 
     def test_stable_baselines_compatibility(self):
         self.gym_env.action_space.close()
@@ -70,10 +72,10 @@ class TestBipartitGraphStructuredObservationSpace(unittest.TestCase):
 
     def test_obs_shape(self):
         obs = self.env.reset()
-        d = self.obs_space.to_gym(obs)
-        target_feature_dim = self.obs_space.graph_obs_space.NUM_FEATURES_PER_NODE + self.obs_space.graph_obs_space.NUM_FEATURES_PER_EDGE
-        self.assertEqual(d[NODES].shape, (self.obs_space.n_node_bipart, target_feature_dim))
-        self.assertEqual(d[EDGE_INDEX].shape, (2, self.obs_space.n_edge_bipart))
+        gym_obs = self.obs_space.to_gym(obs)
+        target_feature_dim = self.obs_space.graph_obs_space.x_dim + self.obs_space.graph_obs_space.e_dim
+        self.assertEqual(gym_obs[NODES].shape, (self.obs_space.num_nodes, target_feature_dim))
+        self.assertEqual(gym_obs[EDGE_INDEX].shape, (2, self.obs_space.max_num_edges))
 
 class TestBusConnectionsGraphObsSpace(unittest.TestCase):
     def setUp(self):
@@ -84,20 +86,21 @@ class TestBusConnectionsGraphObsSpace(unittest.TestCase):
 
     def test_observation_space(self):
         obs, _ = self.gym_env.reset()
-        self.assertIn(NODES, obs.keys())
-        self.assertIn(EDGE_INDEX, obs.keys())
-        self.assertIn(EDGE_MASK, obs.keys())
+        self.assertSetEqual({NODES, EDGE_INDEX, EDGE_MASK}, set(obs.keys()))
+        self.assertEqual(obs[NODES].shape, (self.obs_space.num_nodes, self.obs_space.x_dim))
+        self.assertEqual(obs[EDGE_INDEX].shape, (2, self.obs_space.max_num_edges))
+        self.assertEqual(obs[EDGE_MASK].shape, (self.obs_space.max_num_edges,))
 
     def test_obs_shape(self):
         obs, _ = self.gym_env.reset()
-        self.assertEqual(obs[NODES].shape, (self.obs_space.num_node, self.obs_space.NUM_FEATURES_PER_NODE))
-        self.assertEqual(obs[EDGE_INDEX].shape, (2, self.obs_space.max_n_edge))
-        self.assertEqual(obs[EDGE_MASK].shape, (self.obs_space.max_n_edge, ))
+        self.assertEqual(obs[NODES].shape, (self.obs_space.num_nodes, self.obs_space.NUM_FEATURES_PER_NODE))
+        self.assertEqual(obs[EDGE_INDEX].shape, (2, self.obs_space.max_num_edges))
+        self.assertEqual(obs[EDGE_MASK].shape, (self.obs_space.max_num_edges, ))
 
     def test_data(self):
         obs, _ = self.gym_env.reset()
         data = gym2pytorch_geometric_data(obs)
         self.assertIsInstance(data, Data)
-        self.assertLessEqual(data.edge_index.shape[1], self.obs_space.max_n_edge)
+        self.assertLessEqual(data.edge_index.shape[1], self.obs_space.max_num_edges)
         self.assertEqual(data.edge_index.shape[0], 2)
         print(data)

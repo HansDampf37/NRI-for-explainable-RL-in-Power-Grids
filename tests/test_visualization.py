@@ -35,11 +35,11 @@ class TestVisualization(unittest.TestCase):
         obs = env.reset()
 
         num_edge_types = 3
-        num_edges_fully_connected = obs_space.num_node * (obs_space.num_node - 1)
+        num_edges_fully_connected = obs_space.num_nodes * (obs_space.num_nodes - 1)
 
         edge_type_probs = torch.rand((num_edges_fully_connected, num_edge_types)) + 0.0001
         edge_type_probs /= edge_type_probs.sum(dim=-1, keepdim=True)
-        fig = visualize_graph(obs_space.num_node, edge_index=obs_space.to_gym(obs)[EDGE_INDEX],
+        fig = visualize_graph(obs_space.num_nodes, edge_index=obs_space.to_gym(obs)[EDGE_INDEX],
                               latent_edge_probs=edge_type_probs, skip_first_edge_type=True,
                               node_positions=get_node_positions(env, obs_space.__class__))
         # plt.show()
