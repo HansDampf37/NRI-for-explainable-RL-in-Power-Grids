@@ -82,6 +82,11 @@ class GNNObservationSpace(ABC, Dict):
         """
         return self.spaces[EDGES].shape[1] if EDGES in self.spaces.keys() else None
 
+    @property
+    @abstractmethod
+    def node_feature_names(self):
+        pass
+
 
 class GraphObservationSpace(GNNObservationSpace):
     """
@@ -246,6 +251,10 @@ class GraphObservationSpace(GNNObservationSpace):
 
         return result
 
+    @property
+    def node_feature_names(self):
+        raise NotImplemented("This class is deprecated and should be removed as soon as agents don't use it anymore") # TODO
+
 
 class BipartitGraphObservationSpace(GNNObservationSpace):
     """
@@ -295,6 +304,10 @@ class BipartitGraphObservationSpace(GNNObservationSpace):
             EDGE_MASK: self.edge_mask,
         }
 
+    @property
+    def node_feature_names(self):
+        raise NotImplemented("This class is deprecated and should be removed as soon as agents don't use it anymore")  # TODO
+
 
 class BusConnectionsGraphObsSpace(GNNObservationSpace):
     """
@@ -313,7 +326,7 @@ class BusConnectionsGraphObsSpace(GNNObservationSpace):
         num_node = obs_space.n_gen + obs_space.n_load + 2 * obs_space.n_line
         num_connections = obs_space.sub_info
         num_line = obs_space.n_line
-        max_n_edge = (num_connections * (num_connections - 1)).sum() + num_line
+        max_n_edge = (num_connections * (num_connections - 1) // 2).sum() + num_line
 
         super().__init__({
             NODES: Box(low=-np.inf, high=np.inf, shape=(num_node, self.NUM_FEATURES_PER_NODE)),
@@ -405,6 +418,19 @@ class BusConnectionsGraphObsSpace(GNNObservationSpace):
         ]).transpose()
 
         return features
+
+    @property
+    def node_feature_names(self):
+        return [
+            "active_power_forecast",
+            "reactive_power_forecast",
+            "active_power",
+            "reactive_power",
+            "voltage",
+            "voltage_angle",
+            "current",
+            "rho"
+        ]
 
 
 def gym2pytorch_geometric_data(observation: dict[str, np.ndarray]) -> Data:

@@ -1,7 +1,6 @@
 import logging
-from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional, Union, List
+from typing import Optional, List
 
 import grid2op
 import hydra
@@ -16,18 +15,13 @@ from tqdm import tqdm
 
 from common.graph_structured_observation_space import EDGE_INDEX, GNNObservationSpace
 from nri.ElboObjective import ElboLoss
+from nri.FeatureMaskBuilder import FeatureMaskBuilder
 from nri.NRI import NRIModule
-from visualization.utils import visualize_graph, get_node_positions, latent_edge_hist
+from nri.get_edge_probs import save_edge_probs
+from visualization.utils import visualize_graph, get_node_styles, latent_edge_hist, PlottingArgs
 
 logger = logging.getLogger(__name__)
-
-@dataclass
-class PlottingArgs:
-    num_nodes: int
-    powerline_edge_index: Optional[Union[np.ndarray, Tensor]] = None
-    node_positions: Optional[np.ndarray] = None
-    edge_weight: float = 5.0
-    do_weight_sweep: bool = False
+max_loss_without_warning = 200
 
 
 def train(
@@ -35,6 +29,7 @@ def train(
         training_set: Dataset,
         testing_set: Optional[Dataset] = None,
         criterion: Optional[ElboLoss] = None,
+        feature_mask: Optional[Tensor] = None,
         edge_index: Optional[Tensor] = None,
         tensorboard_logger: Optional[SummaryWriter] = None,
         num_epochs: int = 100,
@@ -51,6 +46,7 @@ def train(
     :param training_set: Dataset to train on
     :param testing_set: Dataset to test on (optional, if no dataset is provided, there won't be evaluation)
     :param criterion: The loss function to use (defaults to ELBO with uniform prior)
+    :param feature_mask: Optional mask to select features' predictions are included in the loss (defaults to all)
     :param edge_index: Edge indices to use for the NRI module (defaults to fully meshed)
     :param tensorboard_logger: Logging object to use (defaults to None)
     :param num_epochs: Number of epochs to train (defaults to 100)
@@ -71,18 +67,6 @@ def train(
     optimizer = torch.optim.Adam(nri_module.parameters(), lr=learning_rate)
     num_epochs = num_epochs
     for epoch in range(num_epochs):
-        if epoch % evaluate_every_k_epochs == 0 and testing_set is not None:
-            evaluate_nri_module(
-                nri_module=nri_module,
-                testing_set=testing_set,
-                criterion=criterion,
-                edge_index=edge_index,
-                tensorboard_logger=tensorboard_logger,
-                current_epoch=epoch,
-                batch_size=batch_size,
-                plotting_args=plotting_args
-            )
-
         running_loss = 0.0
         running_nll = 0.0
         running_kl_div = 0.0
@@ -96,6 +80,10 @@ def train(
             optimizer.zero_grad()
             predictions, edge_type_distributions = nri_module.forward(batch, edge_index)
             target = batch[:, 1:, :, :]
+            if feature_mask is not None:
+                target = target[..., feature_mask]
+                predictions = predictions[..., feature_mask]
+
             loss = criterion(predictions, target, edge_type_distributions)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(nri_module.parameters(), max_norm=10.0)
@@ -128,19 +116,23 @@ def train(
                         f"Gradient Norm: {grad_norm:.2f} "
                         f"Entropy of edge type predictions: {running_entropy / len(dataloader_train):.2f}")
 
-    # evaluate for one last time with weight sweep
-    if testing_set is not None:
-        plotting_args.do_weight_sweep = True
-        evaluate_nri_module(
-            nri_module=nri_module,
-            testing_set=testing_set,
-            criterion=criterion,
-            edge_index=edge_index,
-            tensorboard_logger=tensorboard_logger,
-            current_epoch=num_epochs - 1,
-            batch_size=batch_size,
-            plotting_args=plotting_args
-        )
+        if epoch % evaluate_every_k_epochs == 0 and testing_set is not None:
+            # evaluate
+            if (epoch // evaluate_every_k_epochs + 1) * evaluate_every_k_epochs > num_epochs:
+                # this will be the last evaluation
+                plotting_args.do_weight_sweep = True
+
+            evaluate_nri_module(
+                nri_module=nri_module,
+                testing_set=testing_set,
+                criterion=criterion,
+                feature_mask=feature_mask,
+                edge_index=edge_index,
+                tensorboard_logger=tensorboard_logger,
+                current_epoch=epoch,
+                batch_size=batch_size,
+                plotting_args=plotting_args
+            )
 
     return nri_module
 
@@ -149,6 +141,7 @@ def evaluate_nri_module(
         nri_module: NRIModule,
         testing_set: Dataset,
         criterion: Optional[ElboLoss] = None,
+        feature_mask: Optional[Tensor] = None,
         edge_index: Optional[Tensor] = None,
         tensorboard_logger: Optional[SummaryWriter] = None,
         current_epoch: Optional[int] = None,
@@ -160,6 +153,7 @@ def evaluate_nri_module(
     :param nri_module: NRI module to evaluate
     :param testing_set: Dataset to evaluate on
     :param criterion: The loss function to use (defaults to ELBO with uniform prior)
+    :param feature_mask: Optional mask to select features' predictions are included in the loss (defaults to all)
     :param edge_index: Edge indices to use for the NRI module
     :param tensorboard_logger: Logging object to use (defaults to None)
     :param current_epoch: Current epoch (if this is invoked during training - if not None)
@@ -186,7 +180,14 @@ def evaluate_nri_module(
             batch: Tensor = batch_[0].to(device=device, dtype=torch.float32)
             predictions, edge_type_distributions = nri_module.forward(batch, edge_index)
             target = batch[:, 1:, :, :]
+            if feature_mask is not None:
+                target = target[..., feature_mask]
+                predictions = predictions[..., feature_mask]
+
             loss = criterion(predictions, target, edge_type_distributions)
+
+            if loss.item() > max_loss_without_warning: # TODO temporary only to check large losses
+                logger.warning(f"Large Testing loss ({loss.item()}) for prediction:\n{predictions}\nTarget:\n{target}")
 
             running_loss += loss.item()
             running_nll += criterion.neg_log_likelihood(predictions, target)
@@ -199,28 +200,16 @@ def evaluate_nri_module(
         running_latent_edge_probs = running_latent_edge_probs.cpu() / len(data_loader)
         if tensorboard_logger is not None:
             # create figures
+            plotting_args.latent_edge_probs = running_latent_edge_probs.numpy()
             if plotting_args.do_weight_sweep:
                 steps = np.linspace(0, 1, 100)
-                weights: List[float] = plotting_args.edge_weight * 100 ** (steps * 2 - 1) / (1 + 100 ** (steps * 2 - 1)).tolist()
+                weights: List[float] = plotting_args.latent_edge_weight * 100 ** (steps * 2 - 1) / (1 + 100 ** (steps * 2 - 1)).tolist()
                 for i, weight in enumerate(weights):
-                    latent_edges_fig = visualize_graph(
-                        num_nodes=plotting_args.num_nodes,
-                        edge_index=plotting_args.powerline_edge_index,
-                        latent_edge_probs=running_latent_edge_probs,
-                        skip_first_edge_type=nri_module.skip_first,
-                        node_positions=plotting_args.node_positions,
-                        edge_weight=weight,
-                    )
+                    plotting_args.latent_edge_weight = weight
+                    latent_edges_fig = visualize_graph(plotting_args)
                     tensorboard_logger.add_figure("Predicted latent Graph sweep/testing", latent_edges_fig, i)
             else:
-                latent_edges_fig = visualize_graph(
-                    num_nodes=plotting_args.num_nodes,
-                    edge_index=plotting_args.powerline_edge_index,
-                    latent_edge_probs=running_latent_edge_probs,
-                    skip_first_edge_type=nri_module.skip_first,
-                    node_positions=plotting_args.node_positions,
-                    edge_weight=plotting_args.edge_weight,
-                )
+                latent_edges_fig = visualize_graph(plotting_args)
                 tensorboard_logger.add_figure("Predicted latent Graph/testing", latent_edges_fig, current_epoch)
 
             latent_edges_hist = latent_edge_hist(running_latent_edge_probs)
@@ -256,16 +245,20 @@ def main(cfg: DictConfig):
     # prepare plotting args
     env = grid2op.make(cfg.env.env_name)
     observation_space: GNNObservationSpace = instantiate(cfg.nri.obs_space, grid2op_observation_space=env.observation_space)
-    node_positions = get_node_positions(env, observation_space.__class__)
     edge_index = observation_space.to_gym(env.reset())[EDGE_INDEX]
     plotting_args = PlottingArgs(
         num_nodes=train_data.shape[-2],
-        node_positions=node_positions,
-        powerline_edge_index=edge_index
+        node_styles=get_node_styles(env, observation_space.__class__),
+        powerline_edge_index=edge_index,
+        latent_edge_weight=5.0,
+        skip_first_edge_type=cfg.nri.model.skip_first_edge_type,
     )
 
+    # Prepare feature mask
+    feature_mask: Tensor = FeatureMaskBuilder(observation_space).build_mask(cfg.nri.obs_space.features_to_predict)
+
     # prepare model
-    nri_module = instantiate(cfg.nri.model, x_dim=train_data.shape[-1])
+    nri_module: NRIModule = instantiate(cfg.nri.model, x_dim=train_data.shape[-1])
     criterion = ElboLoss(
         prior=np.array(cfg.nri.train.prior),
         alpha=cfg.nri.train.alpha,
@@ -277,6 +270,7 @@ def main(cfg: DictConfig):
         training_set=train_dataset,
         testing_set=test_dataset,
         criterion=criterion,
+        feature_mask=feature_mask,
         tensorboard_logger=tensorboard_logger,
         num_epochs=cfg.nri.train.num_epochs,
         batch_size=cfg.nri.train.batch_size,
@@ -287,6 +281,9 @@ def main(cfg: DictConfig):
 
     model_path = f"data/models/nri/NRI_{timestamp}.pt"
     torch.save(nri_module.state_dict(), model_path)
+
+    save_edge_probs(nri_module, train_dataset, "nri_edges_training", cfg.nri.train.batch_size)
+    save_edge_probs(nri_module, test_dataset, "nri_edges_testing", cfg.nri.train.batch_size)
 
 
 if __name__ == "__main__":

@@ -60,4 +60,10 @@ class TestTrainNRI(unittest.TestCase):
         ds_test = self._create_dataset(10)
         prior = np.array([0.01, 0.99]) # encourage to use every edge of the edge index since they are all used by the system
         criterion = ElboLoss(prior=prior)
-        train(self.module, ds_train, ds_test, criterion, self.edge_index, None, 10) # doesn't fail
+        train(
+            nri_module=self.module,
+            training_set=ds_train,
+            testing_set=ds_test,
+            criterion=criterion,
+            edge_index=self.edge_index
+        ) # doesn't fail

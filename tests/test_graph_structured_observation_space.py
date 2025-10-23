@@ -1,6 +1,7 @@
 import unittest
 
 import grid2op
+import numpy as np
 from grid2op.gym_compat import GymEnv, DiscreteActSpace
 from stable_baselines3 import DQN
 from torch_geometric.data.data import Data
@@ -104,3 +105,9 @@ class TestBusConnectionsGraphObsSpace(unittest.TestCase):
         self.assertLessEqual(data.edge_index.shape[1], self.obs_space.max_num_edges)
         self.assertEqual(data.edge_index.shape[0], 2)
         print(data)
+
+    def test_edge_mask(self):
+        obs, _ = self.gym_env.reset()
+        true_edges = np.unique(obs[EDGE_MASK], return_counts=True)[1]
+        # all edges should be present -> only one edge label with all counts
+        self.assertEqual(self.obs_space.max_num_edges, true_edges[0])
