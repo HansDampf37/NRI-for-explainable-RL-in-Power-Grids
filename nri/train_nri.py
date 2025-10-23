@@ -1,5 +1,4 @@
 import logging
-from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional, List
 
@@ -17,7 +16,7 @@ from tqdm import tqdm
 from common.graph_structured_observation_space import EDGE_INDEX, GNNObservationSpace
 from nri.ElboObjective import ElboLoss
 from nri.NRI import NRIModule
-from visualization.utils import visualize_graph, get_node_styles, latent_edge_hist, NodeStyle, PlottingArgs
+from visualization.utils import visualize_graph, get_node_styles, latent_edge_hist, PlottingArgs
 
 logger = logging.getLogger(__name__)
 
