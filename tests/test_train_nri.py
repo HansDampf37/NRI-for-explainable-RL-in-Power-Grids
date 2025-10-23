@@ -65,5 +65,6 @@ class TestTrainNRI(unittest.TestCase):
             training_set=ds_train,
             testing_set=ds_test,
             criterion=criterion,
-            edge_index=self.edge_index
+            edge_index=self.edge_index,
+            num_epochs=100
         ) # doesn't fail
