@@ -106,7 +106,7 @@ def main(cfg: DictConfig):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     nri_module: NRIModule = instantiate(cfg.nri.model, x_dim=train_data.shape[-1])
     nri_module.to(device)
-    checkpoint_path = to_absolute_path('../data/models/NRI_2025-10-21_23-22_500_steps_with_forecast.pt')
+    checkpoint_path = to_absolute_path('data/models/nri/NRI_2025-10-21_23-22_500_steps_with_forecast.pt')
     nri_weights = torch.load(checkpoint_path, map_location=device)
     nri_module.load_state_dict(nri_weights)
 
