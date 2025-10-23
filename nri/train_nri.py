@@ -1,7 +1,7 @@
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional, Union, List
+from typing import Optional, List
 
 import grid2op
 import hydra
@@ -17,17 +17,9 @@ from tqdm import tqdm
 from common.graph_structured_observation_space import EDGE_INDEX, GNNObservationSpace
 from nri.ElboObjective import ElboLoss
 from nri.NRI import NRIModule
-from visualization.utils import visualize_graph, get_node_positions, latent_edge_hist
+from visualization.utils import visualize_graph, get_node_styles, latent_edge_hist, NodeStyle, PlottingArgs
 
 logger = logging.getLogger(__name__)
-
-@dataclass
-class PlottingArgs:
-    num_nodes: int
-    powerline_edge_index: Optional[Union[np.ndarray, Tensor]] = None
-    node_positions: Optional[np.ndarray] = None
-    edge_weight: float = 5.0
-    do_weight_sweep: bool = False
 
 
 def train(
@@ -71,18 +63,6 @@ def train(
     optimizer = torch.optim.Adam(nri_module.parameters(), lr=learning_rate)
     num_epochs = num_epochs
     for epoch in range(num_epochs):
-        if epoch % evaluate_every_k_epochs == 0 and testing_set is not None:
-            evaluate_nri_module(
-                nri_module=nri_module,
-                testing_set=testing_set,
-                criterion=criterion,
-                edge_index=edge_index,
-                tensorboard_logger=tensorboard_logger,
-                current_epoch=epoch,
-                batch_size=batch_size,
-                plotting_args=plotting_args
-            )
-
         running_loss = 0.0
         running_nll = 0.0
         running_kl_div = 0.0
@@ -128,19 +108,22 @@ def train(
                         f"Gradient Norm: {grad_norm:.2f} "
                         f"Entropy of edge type predictions: {running_entropy / len(dataloader_train):.2f}")
 
-    # evaluate for one last time with weight sweep
-    if testing_set is not None:
-        plotting_args.do_weight_sweep = True
-        evaluate_nri_module(
-            nri_module=nri_module,
-            testing_set=testing_set,
-            criterion=criterion,
-            edge_index=edge_index,
-            tensorboard_logger=tensorboard_logger,
-            current_epoch=num_epochs - 1,
-            batch_size=batch_size,
-            plotting_args=plotting_args
-        )
+        if epoch % evaluate_every_k_epochs == 0 and testing_set is not None:
+            # evaluate
+            if (epoch // evaluate_every_k_epochs + 1) * evaluate_every_k_epochs > num_epochs:
+                # this will be the last evaluation
+                plotting_args.do_weight_sweep = True
+
+            evaluate_nri_module(
+                nri_module=nri_module,
+                testing_set=testing_set,
+                criterion=criterion,
+                edge_index=edge_index,
+                tensorboard_logger=tensorboard_logger,
+                current_epoch=epoch,
+                batch_size=batch_size,
+                plotting_args=plotting_args
+            )
 
     return nri_module
 
@@ -199,28 +182,16 @@ def evaluate_nri_module(
         running_latent_edge_probs = running_latent_edge_probs.cpu() / len(data_loader)
         if tensorboard_logger is not None:
             # create figures
+            plotting_args.latent_edge_probs = running_latent_edge_probs.numpy()
             if plotting_args.do_weight_sweep:
                 steps = np.linspace(0, 1, 100)
-                weights: List[float] = plotting_args.edge_weight * 100 ** (steps * 2 - 1) / (1 + 100 ** (steps * 2 - 1)).tolist()
+                weights: List[float] = plotting_args.latent_edge_weight * 100 ** (steps * 2 - 1) / (1 + 100 ** (steps * 2 - 1)).tolist()
                 for i, weight in enumerate(weights):
-                    latent_edges_fig = visualize_graph(
-                        num_nodes=plotting_args.num_nodes,
-                        edge_index=plotting_args.powerline_edge_index,
-                        latent_edge_probs=running_latent_edge_probs,
-                        skip_first_edge_type=nri_module.skip_first,
-                        node_positions=plotting_args.node_positions,
-                        edge_weight=weight,
-                    )
+                    plotting_args.latent_edge_weight = weight
+                    latent_edges_fig = visualize_graph(plotting_args)
                     tensorboard_logger.add_figure("Predicted latent Graph sweep/testing", latent_edges_fig, i)
             else:
-                latent_edges_fig = visualize_graph(
-                    num_nodes=plotting_args.num_nodes,
-                    edge_index=plotting_args.powerline_edge_index,
-                    latent_edge_probs=running_latent_edge_probs,
-                    skip_first_edge_type=nri_module.skip_first,
-                    node_positions=plotting_args.node_positions,
-                    edge_weight=plotting_args.edge_weight,
-                )
+                latent_edges_fig = visualize_graph(plotting_args)
                 tensorboard_logger.add_figure("Predicted latent Graph/testing", latent_edges_fig, current_epoch)
 
             latent_edges_hist = latent_edge_hist(running_latent_edge_probs)
@@ -256,16 +227,17 @@ def main(cfg: DictConfig):
     # prepare plotting args
     env = grid2op.make(cfg.env.env_name)
     observation_space: GNNObservationSpace = instantiate(cfg.nri.obs_space, grid2op_observation_space=env.observation_space)
-    node_positions = get_node_positions(env, observation_space.__class__)
     edge_index = observation_space.to_gym(env.reset())[EDGE_INDEX]
     plotting_args = PlottingArgs(
         num_nodes=train_data.shape[-2],
-        node_positions=node_positions,
-        powerline_edge_index=edge_index
+        node_styles=get_node_styles(env, observation_space.__class__),
+        powerline_edge_index=edge_index,
+        latent_edge_weight=5.0,
+        skip_first_edge_type=cfg.nri.model.skip_first_edge_type,
     )
 
     # prepare model
-    nri_module = instantiate(cfg.nri.model, x_dim=train_data.shape[-1])
+    nri_module: NRIModule = instantiate(cfg.nri.model, x_dim=train_data.shape[-1])
     criterion = ElboLoss(
         prior=np.array(cfg.nri.train.prior),
         alpha=cfg.nri.train.alpha,
