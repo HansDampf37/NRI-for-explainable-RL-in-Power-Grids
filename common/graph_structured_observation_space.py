@@ -313,7 +313,7 @@ class BusConnectionsGraphObsSpace(GNNObservationSpace):
         num_node = obs_space.n_gen + obs_space.n_load + 2 * obs_space.n_line
         num_connections = obs_space.sub_info
         num_line = obs_space.n_line
-        max_n_edge = (num_connections * (num_connections - 1)).sum() + num_line
+        max_n_edge = (num_connections * (num_connections - 1) // 2).sum() + num_line
 
         super().__init__({
             NODES: Box(low=-np.inf, high=np.inf, shape=(num_node, self.NUM_FEATURES_PER_NODE)),
