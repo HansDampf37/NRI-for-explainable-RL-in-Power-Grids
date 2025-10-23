@@ -16,7 +16,7 @@ from torch import Tensor
 from torch.utils.data import DataLoader, TensorDataset, Dataset
 from tqdm import tqdm
 
-from NRI import NRIModule
+from .NRI import NRIModule
 
 logger = logging.getLogger(__name__)
 
