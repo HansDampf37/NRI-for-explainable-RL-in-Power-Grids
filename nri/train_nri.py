@@ -15,10 +15,13 @@ from tqdm import tqdm
 
 from common.graph_structured_observation_space import EDGE_INDEX, GNNObservationSpace
 from nri.ElboObjective import ElboLoss
+from nri.FeatureMaskBuilder import FeatureMaskBuilder
 from nri.NRI import NRIModule
+from nri.get_edge_probs import save_edge_probs
 from visualization.utils import visualize_graph, get_node_styles, latent_edge_hist, PlottingArgs
 
 logger = logging.getLogger(__name__)
+max_loss_without_warning = 200
 
 
 def train(
@@ -26,6 +29,7 @@ def train(
         training_set: Dataset,
         testing_set: Optional[Dataset] = None,
         criterion: Optional[ElboLoss] = None,
+        feature_mask: Optional[Tensor] = None,
         edge_index: Optional[Tensor] = None,
         tensorboard_logger: Optional[SummaryWriter] = None,
         num_epochs: int = 100,
@@ -42,6 +46,7 @@ def train(
     :param training_set: Dataset to train on
     :param testing_set: Dataset to test on (optional, if no dataset is provided, there won't be evaluation)
     :param criterion: The loss function to use (defaults to ELBO with uniform prior)
+    :param feature_mask: Optional mask to select features' predictions are included in the loss (defaults to all)
     :param edge_index: Edge indices to use for the NRI module (defaults to fully meshed)
     :param tensorboard_logger: Logging object to use (defaults to None)
     :param num_epochs: Number of epochs to train (defaults to 100)
@@ -75,6 +80,10 @@ def train(
             optimizer.zero_grad()
             predictions, edge_type_distributions = nri_module.forward(batch, edge_index)
             target = batch[:, 1:, :, :]
+            if feature_mask is not None:
+                target = target[..., feature_mask]
+                predictions = predictions[..., feature_mask]
+
             loss = criterion(predictions, target, edge_type_distributions)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(nri_module.parameters(), max_norm=10.0)
@@ -117,6 +126,7 @@ def train(
                 nri_module=nri_module,
                 testing_set=testing_set,
                 criterion=criterion,
+                feature_mask=feature_mask,
                 edge_index=edge_index,
                 tensorboard_logger=tensorboard_logger,
                 current_epoch=epoch,
@@ -131,6 +141,7 @@ def evaluate_nri_module(
         nri_module: NRIModule,
         testing_set: Dataset,
         criterion: Optional[ElboLoss] = None,
+        feature_mask: Optional[Tensor] = None,
         edge_index: Optional[Tensor] = None,
         tensorboard_logger: Optional[SummaryWriter] = None,
         current_epoch: Optional[int] = None,
@@ -142,6 +153,7 @@ def evaluate_nri_module(
     :param nri_module: NRI module to evaluate
     :param testing_set: Dataset to evaluate on
     :param criterion: The loss function to use (defaults to ELBO with uniform prior)
+    :param feature_mask: Optional mask to select features' predictions are included in the loss (defaults to all)
     :param edge_index: Edge indices to use for the NRI module
     :param tensorboard_logger: Logging object to use (defaults to None)
     :param current_epoch: Current epoch (if this is invoked during training - if not None)
@@ -168,7 +180,14 @@ def evaluate_nri_module(
             batch: Tensor = batch_[0].to(device=device, dtype=torch.float32)
             predictions, edge_type_distributions = nri_module.forward(batch, edge_index)
             target = batch[:, 1:, :, :]
+            if feature_mask is not None:
+                target = target[..., feature_mask]
+                predictions = predictions[..., feature_mask]
+
             loss = criterion(predictions, target, edge_type_distributions)
+
+            if loss.item() > max_loss_without_warning: # TODO temporary only to check large losses
+                logger.warning(f"Large Testing loss ({loss.item()}) for prediction:\n{predictions}\nTarget:\n{target}")
 
             running_loss += loss.item()
             running_nll += criterion.neg_log_likelihood(predictions, target)
@@ -235,6 +254,9 @@ def main(cfg: DictConfig):
         skip_first_edge_type=cfg.nri.model.skip_first_edge_type,
     )
 
+    # Prepare feature mask
+    feature_mask: Tensor = FeatureMaskBuilder(observation_space).build_mask(cfg.nri.obs_space.features_to_predict)
+
     # prepare model
     nri_module: NRIModule = instantiate(cfg.nri.model, x_dim=train_data.shape[-1])
     criterion = ElboLoss(
@@ -248,6 +270,7 @@ def main(cfg: DictConfig):
         training_set=train_dataset,
         testing_set=test_dataset,
         criterion=criterion,
+        feature_mask=feature_mask,
         tensorboard_logger=tensorboard_logger,
         num_epochs=cfg.nri.train.num_epochs,
         batch_size=cfg.nri.train.batch_size,
@@ -258,6 +281,9 @@ def main(cfg: DictConfig):
 
     model_path = f"data/models/nri/NRI_{timestamp}.pt"
     torch.save(nri_module.state_dict(), model_path)
+
+    save_edge_probs(nri_module, train_dataset, "nri_edges_training", cfg.nri.train.batch_size)
+    save_edge_probs(nri_module, test_dataset, "nri_edges_testing", cfg.nri.train.batch_size)
 
 
 if __name__ == "__main__":

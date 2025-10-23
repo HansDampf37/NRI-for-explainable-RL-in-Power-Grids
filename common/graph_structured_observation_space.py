@@ -82,6 +82,11 @@ class GNNObservationSpace(ABC, Dict):
         """
         return self.spaces[EDGES].shape[1] if EDGES in self.spaces.keys() else None
 
+    @property
+    @abstractmethod
+    def node_feature_names(self):
+        pass
+
 
 class GraphObservationSpace(GNNObservationSpace):
     """
@@ -246,6 +251,10 @@ class GraphObservationSpace(GNNObservationSpace):
 
         return result
 
+    @property
+    def node_feature_names(self):
+        raise NotImplemented("This class is deprecated and should be removed as soon as agents don't use it anymore") # TODO
+
 
 class BipartitGraphObservationSpace(GNNObservationSpace):
     """
@@ -294,6 +303,10 @@ class BipartitGraphObservationSpace(GNNObservationSpace):
             EDGE_INDEX: self.bipartit_edge_index,
             EDGE_MASK: self.edge_mask,
         }
+
+    @property
+    def node_feature_names(self):
+        raise NotImplemented("This class is deprecated and should be removed as soon as agents don't use it anymore")  # TODO
 
 
 class BusConnectionsGraphObsSpace(GNNObservationSpace):
@@ -405,6 +418,19 @@ class BusConnectionsGraphObsSpace(GNNObservationSpace):
         ]).transpose()
 
         return features
+
+    @property
+    def node_feature_names(self):
+        return [
+            "active_power_forecast",
+            "reactive_power_forecast",
+            "active_power",
+            "reactive_power",
+            "voltage",
+            "voltage_angle",
+            "current",
+            "rho"
+        ]
 
 
 def gym2pytorch_geometric_data(observation: dict[str, np.ndarray]) -> Data:
