@@ -4,14 +4,14 @@ import grid2op
 import torch
 from matplotlib import pyplot as plt
 
-from common.graph_structured_observation_space import BusConnectionsGraphObsSpace, EDGE_INDEX
+from common.graph_structured_observation_space import BusConnectivityGraphObsSpace, EDGE_INDEX
 from visualization.utils import get_node_styles, visualize_graph, latent_edge_hist, PlottingArgs
 
 
 class TestVisualization(unittest.TestCase):
     def test_get_node_positions(self):
         env = grid2op.make("l2rpn_case14_sandbox")
-        obs_space = BusConnectionsGraphObsSpace
+        obs_space = BusConnectivityGraphObsSpace
         node_styles = get_node_styles(env, obs_space)
         self.assertEqual(node_styles[0].position.shape, (2, ))
         x = [node_style.position[0] for node_style in node_styles]
@@ -30,7 +30,7 @@ class TestVisualization(unittest.TestCase):
 
     def test_visualize_latent_graph(self):
         env = grid2op.make("l2rpn_case14_sandbox")
-        obs_space = BusConnectionsGraphObsSpace(env.observation_space)
+        obs_space = BusConnectivityGraphObsSpace(env.observation_space)
         obs = env.reset()
 
         num_edge_types = 3

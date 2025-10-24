@@ -1,4 +1,4 @@
-_target_: common.graph_structured_observation_space.GraphObservationSpace
+_target_: common.graph_structured_observation_space.EntityGraphObservationSpace
 spaces_to_keep:
     - node_features
     - edge_features

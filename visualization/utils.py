@@ -13,7 +13,7 @@ from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 from torch import Tensor
 
-from common.graph_structured_observation_space import GNNObservationSpace, BusConnectionsGraphObsSpace
+from common.graph_structured_observation_space import GraphObservationSpace, BusConnectivityGraphObsSpace
 from nri.utils import fully_connected_edge_index
 
 
@@ -161,7 +161,7 @@ def latent_edge_hist(
     return fig
 
 
-def get_node_styles(env: Environment, observation_space: type[GNNObservationSpace]) -> List[NodeStyle]:
+def get_node_styles(env: Environment, observation_space: type[GraphObservationSpace]) -> List[NodeStyle]:
     """
     For a given environment and observation space class, return a list of node style objects. Each node style object
     contains position, color and shape.
@@ -169,7 +169,7 @@ def get_node_styles(env: Environment, observation_space: type[GNNObservationSpac
     :param observation_space: the class of the observation space that dictates which entities are nodes
     :return: a list of node positions similar to the ones used by the grid2op plots
     """
-    if observation_space == BusConnectionsGraphObsSpace:
+    if observation_space == BusConnectivityGraphObsSpace:
         plot_helper = PlotMatplot(env.observation_space)
 
         r = 20.0

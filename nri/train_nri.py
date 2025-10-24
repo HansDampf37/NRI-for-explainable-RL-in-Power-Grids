@@ -13,7 +13,7 @@ from torch.utils.data import Dataset, DataLoader, TensorDataset
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
-from common.graph_structured_observation_space import EDGE_INDEX, GNNObservationSpace
+from common.graph_structured_observation_space import EDGE_INDEX, GraphObservationSpace
 from nri.ElboObjective import ElboLoss
 from nri.FeatureMaskBuilder import FeatureMaskBuilder
 from nri.NRI import NRIModule
@@ -244,7 +244,7 @@ def main(cfg: DictConfig):
 
     # prepare plotting args
     env = grid2op.make(cfg.env.env_name)
-    observation_space: GNNObservationSpace = instantiate(cfg.nri.obs_space, grid2op_observation_space=env.observation_space)
+    observation_space: GraphObservationSpace = instantiate(cfg.nri.dataset_creation.obs_space, grid2op_observation_space=env.observation_space)
     edge_index = observation_space.to_gym(env.reset())[EDGE_INDEX]
     plotting_args = PlottingArgs(
         num_nodes=train_data.shape[-2],
@@ -255,7 +255,7 @@ def main(cfg: DictConfig):
     )
 
     # Prepare feature mask
-    feature_mask: Tensor = FeatureMaskBuilder(observation_space).build_mask(cfg.nri.obs_space.features_to_predict)
+    feature_mask: Tensor = FeatureMaskBuilder(observation_space).build_mask(cfg.nri.train.features_to_predict)
 
     # prepare model
     nri_module: NRIModule = instantiate(cfg.nri.model, x_dim=train_data.shape[-1])

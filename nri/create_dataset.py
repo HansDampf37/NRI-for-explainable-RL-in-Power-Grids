@@ -17,7 +17,7 @@ from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 
 from baselines.train_stable_baseline import build_agent
-from common.graph_structured_observation_space import EDGE_INDEX, EDGE_MASK, GNNObservationSpace
+from common.graph_structured_observation_space import EDGE_INDEX, EDGE_MASK, GraphObservationSpace
 from common.rewards import MazeRLReward
 
 logger = logging.getLogger(__name__)
@@ -70,7 +70,7 @@ def sample_trajectory(length: int, agent: BaseAgent, env: Environment, max_retri
     return trajectory
 
 
-def generate_dataset(num_sims: int, length: int, agent: BaseAgent, env: Environment, observation_converter: GNNObservationSpace) -> Dict:
+def generate_dataset(num_sims: int, length: int, agent: BaseAgent, env: Environment, observation_converter: GraphObservationSpace) -> Dict:
     """
     Creates a dataset containing multiple trajectories of the environment being operated by some agent.
     :param num_sims: the amount of trajectories to generate
@@ -104,11 +104,11 @@ def generate_dataset(num_sims: int, length: int, agent: BaseAgent, env: Environm
 def main(cfg: DictConfig):
     print(OmegaConf.to_yaml(cfg))
     # create env + observation space
-    env_train = grid2op.make(cfg.env.env_name + "_train", backend=LightSimBackend(), reward_class=MazeRLReward)
-    env_test = grid2op.make(cfg.env.env_name + "_test", backend=LightSimBackend(), reward_class=MazeRLReward)
-    env_val = grid2op.make(cfg.env.env_name + "_val", backend=LightSimBackend(), reward_class=MazeRLReward)
-    observation_converter: GNNObservationSpace = instantiate(
-        cfg.nri.obs_space,
+    env_train = grid2op.make(cfg.dataset_creation.env.env_name + "_train", backend=LightSimBackend(), reward_class=MazeRLReward)
+    env_test = grid2op.make(cfg.dataset_creation.env.env_name + "_test", backend=LightSimBackend(), reward_class=MazeRLReward)
+    env_val = grid2op.make(cfg.dataset_creation.env.env_name + "_val", backend=LightSimBackend(), reward_class=MazeRLReward)
+    observation_converter: GraphObservationSpace = instantiate(
+        cfg.nri.dataset_creation.obs_space,
         grid2op_observation_space=env_train.observation_space
     )
 
@@ -134,9 +134,9 @@ def main(cfg: DictConfig):
 
     timestamp = datetime.now().strftime("%Y-%m-%d_%H:%M")
     for grid_entity in train_data:
-        np.save(f'data/nri_dataset/train_{grid_entity}_{cfg.env.env_name}_{timestamp}_.npy', train_data[grid_entity])
-        np.save(f'data/nri_dataset/test_{grid_entity}_{cfg.env.env_name}_{timestamp}_.npy', test_data[grid_entity])
-        np.save(f'data/nri_dataset/val_{grid_entity}_{cfg.env.env_name}_{timestamp}_.npy', val_data[grid_entity])
+        np.save(f'data/nri_dataset/train_{grid_entity}_{cfg.dataset_creation.env.env_name}_{timestamp}_.npy', train_data[grid_entity])
+        np.save(f'data/nri_dataset/test_{grid_entity}_{cfg.dataset_creation.env.env_name}_{timestamp}_.npy', test_data[grid_entity])
+        np.save(f'data/nri_dataset/val_{grid_entity}_{cfg.dataset_creation.env.env_name}_{timestamp}_.npy', val_data[grid_entity])
 
 
 if __name__ == '__main__':

@@ -7,7 +7,7 @@ from torch_geometric.nn import MessagePassing
 from torch_geometric.nn import global_mean_pool
 
 from .MLP import MLP
-from .graph_structured_observation_space import EDGE_INDEX, EDGES, NODES, EDGE_MASK, GNNObservationSpace
+from .graph_structured_observation_space import EDGE_INDEX, EDGES, NODES, EDGE_MASK, GraphObservationSpace
 
 
 class NodeEdgeMP(MessagePassing):
@@ -200,7 +200,7 @@ class SB3GNNWrapper(BaseFeaturesExtractor):
     """
     def __init__(
             self,
-            observation_space: GNNObservationSpace,
+            observation_space: GraphObservationSpace,
             x_hidden_dim: int,
             e_hidden_dim: int,
             x_out_dim: int,

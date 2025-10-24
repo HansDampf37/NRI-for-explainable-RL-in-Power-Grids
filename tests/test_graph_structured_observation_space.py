@@ -6,15 +6,15 @@ from grid2op.gym_compat import GymEnv, DiscreteActSpace
 from stable_baselines3 import DQN
 from torch_geometric.data.data import Data
 
-from common.graph_structured_observation_space import GraphObservationSpace, EDGE_INDEX, \
-    EDGES, NODES, BipartitGraphObservationSpace, EDGE_MASK, BusConnectionsGraphObsSpace, gym2pytorch_geometric_data
+from common.graph_structured_observation_space import EntityGraphObservationSpace, EDGE_INDEX, \
+    EDGES, NODES, BipartitGraphObservationSpace, EDGE_MASK, BusConnectivityGraphObsSpace, gym2pytorch_geometric_data
 
 
 class TestGraphStructuredObservationSpace(unittest.TestCase):
     def setUp(self):
         self.env = grid2op.make("l2rpn_case14_sandbox")
         self.gym_env = GymEnv(self.env)
-        self.gym_env.observation_space = GraphObservationSpace(self.env.observation_space)
+        self.gym_env.observation_space = EntityGraphObservationSpace(self.env.observation_space)
         self.obs_space = self.gym_env.observation_space
 
     def test_observation_space(self):
@@ -27,7 +27,7 @@ class TestGraphStructuredObservationSpace(unittest.TestCase):
 
     def test_stable_baselines_compatibility(self):
         self.gym_env.action_space.close()
-        self.gym_env.observation_space = GraphObservationSpace(self.env.observation_space, spaces_to_keep=[NODES])
+        self.gym_env.observation_space = EntityGraphObservationSpace(self.env.observation_space, spaces_to_keep=[NODES])
         self.gym_env.action_space = DiscreteActSpace(self.env.action_space, attr_to_keep=["set_bus"])
         dqn = DQN("MultiInputPolicy", env=self.gym_env)
         dqn.learn(total_timesteps=100)
@@ -78,11 +78,11 @@ class TestBipartitGraphStructuredObservationSpace(unittest.TestCase):
         self.assertEqual(gym_obs[NODES].shape, (self.obs_space.num_nodes, target_feature_dim))
         self.assertEqual(gym_obs[EDGE_INDEX].shape, (2, self.obs_space.max_num_edges))
 
-class TestBusConnectionsGraphObsSpace(unittest.TestCase):
+class TestBusConnectivityGraphObsSpace(unittest.TestCase):
     def setUp(self):
         self.env = grid2op.make("l2rpn_case14_sandbox")
         self.gym_env = GymEnv(self.env, with_forecast=True)
-        self.gym_env.observation_space = BusConnectionsGraphObsSpace(self.env.observation_space)
+        self.gym_env.observation_space = BusConnectivityGraphObsSpace(self.env.observation_space)
         self.obs_space = self.gym_env.observation_space
 
     def test_observation_space(self):

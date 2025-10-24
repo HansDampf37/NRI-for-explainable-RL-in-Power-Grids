@@ -20,15 +20,15 @@ x_t, ensuring that the model only learns the dynamics of interest.
 """
 import torch
 
-from common import GNNObservationSpace
+from common import GraphObservationSpace
 
 
 class FeatureMaskBuilder:
-    def __init__(self, obs_space: GNNObservationSpace):
+    def __init__(self, obs_space: GraphObservationSpace):
         self.obs_space = obs_space
         self.name_to_idx = {name: i for i, name in enumerate(obs_space.node_feature_names)}
 
-    def build_mask(self, predict_features: list[str]):
+    def build_mask(self, predict_features: list[str]) -> np.ndarray:
         mask = torch.zeros(len(self.obs_space.node_feature_names), dtype=torch.bool)
         for name in predict_features:
             mask[self.name_to_idx[name]] = True

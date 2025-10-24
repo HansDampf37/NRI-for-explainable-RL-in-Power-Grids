@@ -1,23 +1,8 @@
 """
 This script contains observation space classes that transform the observation from grid2op into gymnasium Dict-like
-observations. The dict structures the data into node-data, edge-data, global data, and edge index.
-The edge index is an adjacency list of shape [2, NUM_EDGES].
-
-This script contains three classes:
-GraphObservationSpace:
-This observation considers the Graph G=(V,E) where:
-- V = {loads, generators, substations}
-- E = {powerlines, connections from loads/generators to substations}
-
-BipartiteGraphObservationSpace:
-This observation considers the bipartit Graph G=(V+E,E') where:
-- V = {loads, generators, substations}
-- E = {powerlines, connections from loads/generators to substations}
-- E' = {(v,e) in V x E | v == e[0] || v == e[1]}
-
-BusConnectionsGraphObsSpace
-This observation considers the graph where nodes encode connections between loads/generators/lines and buses.
-
+observations. The dict structures the data into node-data, edge-data, global data, edge index and edge mask.
+The edge index is an adjacency list of shape [2, MAX_NUM_EDGES].
+The edge mask is a boolean mask of shape [MAX_NUM_EDGES,]
 """
 from abc import ABC, abstractmethod
 from typing import List, Optional
@@ -34,7 +19,7 @@ EDGE_MASK = "edge_mask"
 GLOBAL = "global_features"
 
 
-class GNNObservationSpace(ABC, Dict):
+class GraphObservationSpace(ABC, Dict):
     """
     Superclass for any Graph observation space. Implements a dict observation space with the following spaces:
     - NODES node features shaped [num_nodes, x_dim]
@@ -88,17 +73,16 @@ class GNNObservationSpace(ABC, Dict):
         pass
 
 
-class GraphObservationSpace(GNNObservationSpace):
+class EntityGraphObservationSpace(GraphObservationSpace):
     """
-    This Observation space implements the Dict action space from gymnasium. It returns a dict features for the following
-    elements of the grid2op observation object:
+    This Observation returns a dict with the following features:
     - global_features: a Box-space containing global features of the powergrid (time, date, ...)
-    - edge_index: a Box-space containing the adjacency list as [2, E] array
     - node_features: a Box-space containing merged features for nodes (generators, loads, substations)
     - edge_features: a Box-space containing powerline features for edges (and zero feature vectors for powerlines connecting loads and generators to their substations)
+    - edge_index: a Box-space containing the adjacency list as [2, E] array
+    - edge_mask: a Box-space containing the edge mask array (since the amount of edges doesn't vary this can be ignored)
 
-
-    This assumes a static graph structure of the grid which is realistic for the grid2op scenario.
+    For more information about this graph read: https://beta-grid2op.readthedocs.io/en/latest/grid_graph.html#graph2-the-elements-graph
     """
     NUM_FEATURES_PER_GENERATOR = 9
     NUM_FEATURES_PER_NODE = 7
@@ -204,9 +188,9 @@ class GraphObservationSpace(GNNObservationSpace):
         :param obs: g2op Observation
         :return: numpy representation of the edge features
         """
-        line_features = GraphObservationSpace.line_features_from_observation(obs)
-        lines_connecting_generators = np.zeros((obs.n_gen, GraphObservationSpace.NUM_FEATURES_PER_LINE))
-        lines_connecting_loads = np.zeros((obs.n_load, GraphObservationSpace.NUM_FEATURES_PER_LINE))
+        line_features = EntityGraphObservationSpace.line_features_from_observation(obs)
+        lines_connecting_generators = np.zeros((obs.n_gen, EntityGraphObservationSpace.NUM_FEATURES_PER_LINE))
+        lines_connecting_loads = np.zeros((obs.n_load, EntityGraphObservationSpace.NUM_FEATURES_PER_LINE))
 
         return np.concatenate([line_features, lines_connecting_generators, lines_connecting_loads], axis=0)
 
@@ -256,18 +240,18 @@ class GraphObservationSpace(GNNObservationSpace):
         raise NotImplemented("This class is deprecated and should be removed as soon as agents don't use it anymore") # TODO
 
 
-class BipartitGraphObservationSpace(GNNObservationSpace):
+class BipartitGraphObservationSpace(GraphObservationSpace):
     """
-    This Observation space structures observation data similar to GraphObservationSpace in a graph-like structure.
-    In contrast to GraphObservationSpace this class creates a bipartit meta-graph G=(V+E, E').
+    This Observation space structures observation data based on the EntityGraphObservationSpace in a graph-like structure.
+    This class creates a bipartit meta-graph G=(V+E, E').
     The node set V+E contains nodes and edges from our previous graph. The edge set E' connects nodes v and e if they
     are adjacent in the original graph.
     """
 
-    NUM_FEATURES_PER_NODE = GraphObservationSpace.NUM_FEATURES_PER_NODE + GraphObservationSpace.NUM_FEATURES_PER_EDGE
+    NUM_FEATURES_PER_NODE = EntityGraphObservationSpace.NUM_FEATURES_PER_NODE + EntityGraphObservationSpace.NUM_FEATURES_PER_EDGE
 
     def __init__(self, grid2op_observation_space: ObservationSpace):
-        self.graph_obs_space = GraphObservationSpace(grid2op_observation_space, [NODES, EDGES, EDGE_INDEX])
+        self.graph_obs_space = EntityGraphObservationSpace(grid2op_observation_space, [NODES, EDGES, EDGE_INDEX])
         self.spaces_to_keep = [NODES, EDGE_INDEX]
         n_node_bipart = self.graph_obs_space.num_nodes + self.graph_obs_space.max_num_edges
         n_edge_bipart = 2 * self.graph_obs_space.max_num_edges
@@ -309,7 +293,7 @@ class BipartitGraphObservationSpace(GNNObservationSpace):
         raise NotImplemented("This class is deprecated and should be removed as soon as agents don't use it anymore")  # TODO
 
 
-class BusConnectionsGraphObsSpace(GNNObservationSpace):
+class BusConnectivityGraphObsSpace(GraphObservationSpace):
     """
     This observation space outputs a graph structured as follows:
     - loads, generators and powerline-bus-connections are modelled as nodes
@@ -318,6 +302,7 @@ class BusConnectionsGraphObsSpace(GNNObservationSpace):
     - active/reactive power,
     - voltage, voltage angle
     - current
+    equivalent to https://beta-grid2op.readthedocs.io/en/latest/grid_graph.html#graph3-the-connectivity-graph
     """
     NUM_FEATURES_PER_NODE = 8
 
@@ -443,3 +428,11 @@ def gym2pytorch_geometric_data(observation: dict[str, np.ndarray]) -> Data:
     edge_features = observation[EDGES] if EDGES in observation.keys() else None
     edge_index = observation[EDGE_INDEX][:, observation[EDGE_MASK]]
     return Data(x=node_features, edge_index=edge_index, edge_attr=edge_features)
+
+
+if __name__ == "__main__":
+    import grid2op
+    env = grid2op.make("l2rpn_case14_sandbox")
+    obs = env.reset()
+    print(obs.n_sub)
+    print(obs.connectivity_matrix().shape)

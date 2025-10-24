@@ -4,7 +4,7 @@ from typing import Dict
 from grid2op.gym_compat import BoxGymObsSpace, BoxGymActSpace
 from gymnasium.spaces import Discrete, Box
 
-from common.graph_structured_observation_space import BusConnectionsGraphObsSpace
+from common.graph_structured_observation_space import BusConnectivityGraphObsSpace
 from common.grid2op_env_wrapper import Grid2OpEnvWrapper
 
 
@@ -14,7 +14,7 @@ class TestGrid2opEnvWrapper(unittest.TestCase):
         self.env.reset()
 
     def test_custom_obs_space(self):
-        env = Grid2OpEnvWrapper(obs_space_creation=lambda e: BusConnectionsGraphObsSpace(e.observation_space))
+        env = Grid2OpEnvWrapper(obs_space_creation=lambda e: BusConnectivityGraphObsSpace(e.observation_space))
         obs, info = env.reset()
         self.assertIsInstance(obs, Dict)
 
