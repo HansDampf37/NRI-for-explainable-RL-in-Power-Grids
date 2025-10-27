@@ -1,5 +1,5 @@
 import math
-from typing import Optional
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -9,7 +9,7 @@ from torch import nn, Tensor
 class ElboLoss(nn.Module):
     """
     ELBO objective is defined as:
-    L = α * E_{q_φ(z|x)}[log p_θ(x|z)] − β * KL[q_φ(z|x)||p_θ(z)]
+    L = (α * E_{q_φ(z|x)}[log p_θ(x|z)] − β * KL[q_φ(z|x)||p_θ(z)]) / (α + β)
 
     The encoder q_φ(z|x) returns a factorized distribution of z_ij.
     The decoder reconstructs the input x with p_θ(x|z).
@@ -40,7 +40,7 @@ class ElboLoss(nn.Module):
         else:
             self.prior = None
 
-    def forward(self, predictions: Tensor, target: Tensor, posterior_probs: Tensor) -> Tensor:
+    def forward(self, predictions: Tensor, target: Tensor, posterior_probs: Tensor, with_nll_kl: bool = False) -> Union[Tensor, Tuple[Tensor, Tensor]]:
         """
         Compute the ELBO loss (- ELBO objective) for the inputs. Predictions should be close to target and posterior_probs
         should be close to the prior.
@@ -48,11 +48,14 @@ class ElboLoss(nn.Module):
         :param predictions: the VAEs output
         :param target: the VAEs target (input)
         :param posterior_probs: the distributions predicted by the encoder
-        :return: the ELBO loss
+        :param with_nll_kl: If this flag is set to true this method will also return the nll and kl loss terms
+        :return: the ELBO loss (and nll, kl if with_nll_kl == True)
         """
         nll = self.neg_log_likelihood(predictions, target)
         kl = self.kl_divergence_to_prior(posterior_probs)
-        return nll + kl
+        loss = (self.alpha * nll + self.beta * kl) / (self.alpha + self.beta)
+        return (loss, nll, kl) if with_nll_kl else loss
+
 
     def neg_log_likelihood(self, predictions: Tensor, target: Tensor) -> Tensor:
         """
@@ -67,7 +70,7 @@ class ElboLoss(nn.Module):
         mse_term = ((predictions - target) ** 2) / (2 * self.variance)
         D = predictions.shape[-1]
         constant_term = 0.5 * D * math.log(2 * math.pi * self.variance)
-        return self.alpha * (mse_term.sum(dim=-1).mean() + constant_term)
+        return mse_term.sum(dim=-1).mean() + constant_term
 
     def kl_divergence_to_prior(self, posterior_probs: Tensor) -> Tensor:
         """
@@ -78,9 +81,9 @@ class ElboLoss(nn.Module):
             # Negative entropy: -H(q) = sum q * log q
             neg_entropy = (posterior_probs * torch.log(posterior_probs)).sum(dim=-1)
             constant_term = math.log(posterior_probs.shape[-1])
-            return self.beta * (neg_entropy.mean() + constant_term)
+            return neg_entropy.mean() + constant_term
         else:
             # KL(q || p): sum q * log(q / p) = sum q * (log(q) - log(p))
             prior = self.prior.unsqueeze(0)
             kl = (posterior_probs * (torch.log(posterior_probs + self.eps) - torch.log(prior + self.eps))).sum(dim=-1)
-            return self.beta * (kl.mean())
+            return kl.mean()

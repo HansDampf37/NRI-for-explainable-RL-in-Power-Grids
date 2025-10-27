@@ -15,21 +15,22 @@ The training objective is to maximize
 p(x_{t+1} | x_t, θ_t),
 that is, to predict the next system state conditioned on the current state and external factors.
 
-This class implements this separation by applying a feature mask that restricts the loss function to the predictive subset
-x_t, ensuring that the model only learns the dynamics of interest.
+This separation can be achieved by applying a feature mask that restricts the loss function to the predictive subset
+x_t. This function creates the respective masks.
 """
-import torch
+import numpy as np
 
 from common import GraphObservationSpace
 
 
-class FeatureMaskBuilder:
-    def __init__(self, obs_space: GraphObservationSpace):
-        self.obs_space = obs_space
-        self.name_to_idx = {name: i for i, name in enumerate(obs_space.node_feature_names)}
-
-    def build_mask(self, predict_features: list[str]) -> np.ndarray:
-        mask = torch.zeros(len(self.obs_space.node_feature_names), dtype=torch.bool)
-        for name in predict_features:
-            mask[self.name_to_idx[name]] = True
-        return mask
+def get_feature_mask(obs_space: GraphObservationSpace, predict_features: list[str]) -> np.ndarray:
+    """
+    @param obs_space: masked observations must come from this observation space
+    @param predict_features: feature names that we want to keep after masking
+    @return: the mask as numpy array
+    """
+    name_to_idx = {name: i for i, name in enumerate(obs_space.node_feature_names)}
+    mask = np.zeros(len(obs_space.node_feature_names), dtype=bool)
+    for name in predict_features:
+        mask[name_to_idx[name]] = True
+    return mask

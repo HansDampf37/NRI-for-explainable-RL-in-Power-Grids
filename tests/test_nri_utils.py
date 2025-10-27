@@ -1,8 +1,10 @@
+import logging
 import unittest
+from unittest.mock import create_autospec
 
 import torch
 
-from nri.utils import fully_connected_edge_index, Edge2Node, Node2Edge, EdgeNode2Node
+from nri.utils import fully_connected_edge_index, Edge2Node, Node2Edge, EdgeNode2Node, warn_large_loss
 
 
 class TestNRIUtils(unittest.TestCase):
@@ -12,6 +14,14 @@ class TestNRIUtils(unittest.TestCase):
         self.assertEqual(edge_index.shape, (2, num_nodes ** 2 - num_nodes))
         edge_index = fully_connected_edge_index(num_nodes, "cpu", True)
         self.assertEqual(edge_index.shape, (2, num_nodes ** 2))
+
+    def test_warn_large_loss(self):
+        num_features = 8
+        nri_prediction = torch.rand(10, 10, 10, num_features)
+        nri_target = torch.rand(10, 10, 10, num_features)
+        logger = create_autospec(logging.Logger, instance=True)
+        per_feature_mse = warn_large_loss(logger, nri_prediction, nri_target)
+        self.assertEqual(per_feature_mse.shape, (num_features,))
 
 class TestEdge2Node(unittest.TestCase):
     def setUp(self):

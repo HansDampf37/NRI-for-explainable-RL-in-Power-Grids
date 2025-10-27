@@ -1,3 +1,4 @@
+import logging
 from typing import Union
 
 import numpy as np
@@ -138,3 +139,11 @@ class EdgeNode2Node(nn.Module):
         # index_reduce_ to average messages into receivers rows
         agg.index_reduce_(dim=-2, index=receivers, source=e, reduce="mean")
         return self.phi(torch.cat([agg, x], dim=-1))
+
+
+def warn_large_loss(logger: logging.Logger, predictions: Tensor, target: Tensor) -> Tensor:
+    with torch.no_grad():
+        per_feature_mse: Tensor = ((target - predictions).pow(2)).mean(dim=(0, 1, 2)).cpu().numpy()
+        logger.warning(f"Large Loss: {per_feature_mse.mean()}\n"
+                       f"The loss per feature is:\n{per_feature_mse}")
+        return per_feature_mse

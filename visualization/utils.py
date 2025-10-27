@@ -11,7 +11,6 @@ from grid2op.PlotGrid import PlotMatplot
 from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
-from torch import Tensor
 
 from common.graph_structured_observation_space import GraphObservationSpace, BusConnectivityGraphObsSpace
 from nri.utils import fully_connected_edge_index
@@ -37,7 +36,7 @@ class PlottingArgs:
     skip_first_edge_type: bool = True
 
 
-def visualize_graph(args: Optional[PlottingArgs] = None) -> Figure:
+def visualize_graph(args: PlottingArgs) -> Figure:
     """
     Visualize the graph including latent edges predicted by the NRI module.
     :param args: args for plotting
@@ -68,7 +67,7 @@ def visualize_graph(args: Optional[PlottingArgs] = None) -> Figure:
     edge_colors = [d["color"] for (_, _, d) in G.edges(data=True)]
     edge_weights = [d["weight"] for (_, _, d) in G.edges(data=True)]
 
-    if args.node_styles:
+    if args.node_styles is not None:
         pos = {i: ns.position for i, ns in enumerate(args.node_styles)}
         nx.draw_networkx_edges(G, pos, edge_color=edge_colors, width=edge_weights, style="solid", arrows=False)
         shapes = set(ns.shape for ns in args.node_styles)
@@ -133,9 +132,7 @@ def _create_legend(args: PlottingArgs, G: networkx.Graph) -> None:
     plt.legend(handles=node_legend + edge_legend, loc="best", frameon=False)
 
 
-def latent_edge_hist(
-        accumulated_edge_probabilities: Tensor,
-        skip_first_edge_type: bool = True):
+def latent_edge_hist(accumulated_edge_probabilities: np.ndarray, skip_first_edge_type: bool = True):
     """
     Visualize a histogram showcasing the probability masses for different edges for any edge type except the first.
 
@@ -144,9 +141,9 @@ def latent_edge_hist(
     :return: Reference to the Seaborn-styled matplotlib figure
     """
     if skip_first_edge_type:
-        df = pd.DataFrame({'Edge probability': accumulated_edge_probabilities[:, 1:].sum(dim=-1).tolist()})
+        df = pd.DataFrame({'Edge probability': accumulated_edge_probabilities[:, 1:].sum(axis=-1).tolist()})
     else:
-        df = pd.DataFrame({'Edge probability': accumulated_edge_probabilities.sum(dim=-1).tolist()})
+        df = pd.DataFrame({'Edge probability': accumulated_edge_probabilities.sum(axis=-1).tolist()})
 
     # Plot
     sns.set_theme(style="whitegrid")
