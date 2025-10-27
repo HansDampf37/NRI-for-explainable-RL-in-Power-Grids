@@ -1,4 +1,5 @@
 import logging
+import uuid
 from datetime import datetime
 from typing import Optional, List
 
@@ -269,7 +270,7 @@ def evaluate_nri_module(
 def main(cfg: DictConfig):
     logger.info(OmegaConf.to_yaml(cfg))
     timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M')
-    name = f"{cfg.nri.name}_{timestamp}"
+    name = f"{cfg.nri.name}_{timestamp}_{uuid.uuid4().hex}"
     tensorboard_logger = SummaryWriter(f'data/logs/nri/exp/{name}')
 
     # prepare training data
@@ -316,8 +317,8 @@ def main(cfg: DictConfig):
     )
 
     torch.save(nri_module.state_dict(), f"data/models/nri/{name}.pt")
-    save_edge_probs(nri_module, train_dataset, f"{name}_edges_training", cfg.nri.train.batch_size)
-    save_edge_probs(nri_module, test_dataset, f"{name}_edges_testing", cfg.nri.train.batch_size)
+    save_edge_probs(nri_module, train_dataset, f"edges_training_{name}", cfg.nri.train.batch_size)
+    save_edge_probs(nri_module, test_dataset, f"edges_testing_{name}", cfg.nri.train.batch_size)
 
 
 if __name__ == "__main__":
