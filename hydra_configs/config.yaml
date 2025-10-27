@@ -1,7 +1,7 @@
 defaults:
     -   env: case14
     -   baseline: gnn_dqn
-    -   nri: default
+    -   nri: with_forecast
     - _self_
 
 hydra:

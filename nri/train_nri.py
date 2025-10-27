@@ -115,7 +115,7 @@ class RunningMetrics:
                          f"Neg Log Likelihood: {self.running_nll / self.num_iter:.2f} "
                          f"KL Divergence: {self.running_kl_div / self.num_iter:.2f} "
                          f"MSE: {self.running_mse / self.num_iter:.2f} "
-                         f"Entropy of edge type predictions: {self.running_entropy / self.num_iter:.2f}"
+                         f"Entropy of edge type predictions: {self.running_entropy / self.num_iter:.2f} "
                          f"Gradient Norm: {self.grad_norm:.2f}" if self.grad_norm is not None else "")
 
 
@@ -269,7 +269,8 @@ def evaluate_nri_module(
 def main(cfg: DictConfig):
     logger.info(OmegaConf.to_yaml(cfg))
     timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M')
-    tensorboard_logger = SummaryWriter(f'data/logs/nri/{timestamp}')
+    name = f"{cfg.nri.name}_{timestamp}"
+    tensorboard_logger = SummaryWriter(f'data/logs/nri/exp/{name}')
 
     # prepare training data
     train_data = np.load(cfg.nri.train.training_dataset_path)
@@ -286,7 +287,7 @@ def main(cfg: DictConfig):
         node_styles=get_node_styles(env, observation_space.__class__),
         powerline_edge_index=edge_index,
         latent_edge_weight=5.0,
-        skip_first_edge_type=cfg.nri.model.skip_first_edge_type,
+        skip_first_edge_type=cfg.nri.model.skip_first,
     )
 
     # Prepare feature mask
@@ -314,9 +315,9 @@ def main(cfg: DictConfig):
         plotting_args=plotting_args
     )
 
-    torch.save(nri_module.state_dict(), f"data/models/nri/NRI_{timestamp}.pt")
-    save_edge_probs(nri_module, train_dataset, "nri_edges_training", cfg.nri.train.batch_size)
-    save_edge_probs(nri_module, test_dataset, "nri_edges_testing", cfg.nri.train.batch_size)
+    torch.save(nri_module.state_dict(), f"data/models/nri/{name}.pt")
+    save_edge_probs(nri_module, train_dataset, f"{name}_edges_training", cfg.nri.train.batch_size)
+    save_edge_probs(nri_module, test_dataset, f"{name}_edges_testing", cfg.nri.train.batch_size)
 
 
 if __name__ == "__main__":

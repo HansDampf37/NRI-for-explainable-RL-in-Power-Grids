@@ -1,9 +1,9 @@
 sbatch <<'EOF'
 #!/bin/bash
 
-#SBATCH --job-name=train_nri                                             # Name of the job
-#SBATCH --output=out/train_nri.%j.log                                    # Output file
-#SBATCH --error=out/error_train_nri.%j.log                               # Error file
+#SBATCH --job-name=train_nri_with_forecast                               # Name of the job
+#SBATCH --output=out/exp/train_nri_with_forecast.%j.log                  # Output file
+#SBATCH --error=out/exp/error_train_nri_with_forecast.%j.log             # Error file
 #SBATCH --ntasks=1                                                       # Number of tasks
 #SBATCH --gres=gpu:1                                                     # Request 1 GPU
 #SBATCH --time=48:00:00                                                  # Max wall time (HH:MM:SS)
@@ -15,5 +15,5 @@ cd ..
 module load devel/miniforge
 conda activate RL
 
-python test_cuda.py && PYTHONPATH=$(pwd) python nri/train_nri.py
+python test_cuda.py && PYTHONPATH=$(pwd) python nri/train_nri.py nri=with_forecast
 EOF

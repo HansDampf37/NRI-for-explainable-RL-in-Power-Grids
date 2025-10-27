@@ -304,17 +304,17 @@ class BusConnectivityGraphObsSpace(GraphObservationSpace):
     - current
     equivalent to https://beta-grid2op.readthedocs.io/en/latest/grid_graph.html#graph3-the-connectivity-graph
     """
-    NUM_FEATURES_PER_NODE = 8
-
-    def __init__(self, grid2op_observation_space: ObservationSpace):
+    def __init__(self, grid2op_observation_space: ObservationSpace, with_forecast: bool = True):
         obs_space = grid2op_observation_space
         num_node = obs_space.n_gen + obs_space.n_load + 2 * obs_space.n_line
         num_connections = obs_space.sub_info
         num_line = obs_space.n_line
         max_n_edge = (num_connections * (num_connections - 1) // 2).sum() + num_line
+        self.with_forecast = with_forecast
+        x_dim = 8 if with_forecast else 6
 
         super().__init__({
-            NODES: Box(low=-np.inf, high=np.inf, shape=(num_node, self.NUM_FEATURES_PER_NODE)),
+            NODES: Box(low=-np.inf, high=np.inf, shape=(num_node, x_dim)),
             EDGE_INDEX: Box(low=0, high=1, shape=(2, max_n_edge), dtype=np.int64),
             EDGE_MASK: Box(low=0, high=1, shape=(max_n_edge,), dtype=np.bool)
         })
@@ -361,8 +361,7 @@ class BusConnectivityGraphObsSpace(GraphObservationSpace):
 
         return np.array(edge_index).transpose()
 
-    @staticmethod
-    def get_node_features(g2op_obs: BaseObservation) -> np.ndarray:
+    def get_node_features(self, g2op_obs: BaseObservation) -> np.ndarray:
         """
         Compute [N, X_dim]-shaped node features from a grid2op observation.
         :param g2op_obs: The g2op observation
@@ -391,31 +390,51 @@ class BusConnectivityGraphObsSpace(GraphObservationSpace):
         current = np.concatenate([g2op_obs.a_or, g2op_obs.a_ex, I_mag])
         rho = np.concatenate([g2op_obs.rho, g2op_obs.rho, np.zeros((g2op_obs.n_gen + g2op_obs.n_load,))])
 
-        features = np.array([
-            active_power_forecast,
-            reactive_power_forecast,
-            active_power,
-            reactive_power,
-            voltage,
-            voltage_angle,
-            current,
-            rho
-        ]).transpose()
+        if self.with_forecast:
+            features = np.array([
+                active_power_forecast,
+                reactive_power_forecast,
+                active_power,
+                reactive_power,
+                voltage,
+                voltage_angle,
+                current,
+                rho
+            ]).transpose()
+        else:
+            features = np.array([
+                active_power,
+                reactive_power,
+                voltage,
+                voltage_angle,
+                current,
+                rho
+            ]).transpose()
 
         return features
 
     @property
     def node_feature_names(self):
-        return [
-            "active_power_forecast",
-            "reactive_power_forecast",
-            "active_power",
-            "reactive_power",
-            "voltage",
-            "voltage_angle",
-            "current",
-            "rho"
-        ]
+        if self.with_forecast:
+            return [
+                "active_power_forecast",
+                "reactive_power_forecast",
+                "active_power",
+                "reactive_power",
+                "voltage",
+                "voltage_angle",
+                "current",
+                "rho"
+            ]
+        else:
+            return [
+                "active_power",
+                "reactive_power",
+                "voltage",
+                "voltage_angle",
+                "current",
+                "rho"
+            ]
 
 
 def gym2pytorch_geometric_data(observation: dict[str, np.ndarray]) -> Data:
@@ -428,11 +447,3 @@ def gym2pytorch_geometric_data(observation: dict[str, np.ndarray]) -> Data:
     edge_features = observation[EDGES] if EDGES in observation.keys() else None
     edge_index = observation[EDGE_INDEX][:, observation[EDGE_MASK]]
     return Data(x=node_features, edge_index=edge_index, edge_attr=edge_features)
-
-
-if __name__ == "__main__":
-    import grid2op
-    env = grid2op.make("l2rpn_case14_sandbox")
-    obs = env.reset()
-    print(obs.n_sub)
-    print(obs.connectivity_matrix().shape)

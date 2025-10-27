@@ -94,7 +94,7 @@ class TestBusConnectivityGraphObsSpace(unittest.TestCase):
 
     def test_obs_shape(self):
         obs, _ = self.gym_env.reset()
-        self.assertEqual(obs[NODES].shape, (self.obs_space.num_nodes, self.obs_space.NUM_FEATURES_PER_NODE))
+        self.assertEqual(obs[NODES].shape, (self.obs_space.num_nodes, self.obs_space.x_dim))
         self.assertEqual(obs[EDGE_INDEX].shape, (2, self.obs_space.max_num_edges))
         self.assertEqual(obs[EDGE_MASK].shape, (self.obs_space.max_num_edges, ))
 
@@ -111,3 +111,13 @@ class TestBusConnectivityGraphObsSpace(unittest.TestCase):
         true_edges = np.unique(obs[EDGE_MASK], return_counts=True)[1]
         # all edges should be present -> only one edge label with all counts
         self.assertEqual(self.obs_space.max_num_edges, true_edges[0])
+
+    def test_with_and_without_forecasts(self):
+        obs_space_with_forecasts = BusConnectivityGraphObsSpace(self.env.observation_space, with_forecast=True)
+        obs_space_without_forecasts = BusConnectivityGraphObsSpace(self.env.observation_space, with_forecast=False)
+        self.assertIn("active_power_forecast", obs_space_with_forecasts.node_feature_names)
+        self.assertNotIn("active_power_forecast", obs_space_without_forecasts.node_feature_names)
+        self.assertEqual(obs_space_without_forecasts.x_dim, 6)
+        self.assertEqual(obs_space_with_forecasts.x_dim, 8)
+        self.assertEqual(obs_space_without_forecasts.to_gym(self.env.reset())[NODES].shape[-1], obs_space_without_forecasts.x_dim)
+        self.assertEqual(obs_space_with_forecasts.to_gym(self.env.reset())[NODES].shape[-1], obs_space_with_forecasts.x_dim)

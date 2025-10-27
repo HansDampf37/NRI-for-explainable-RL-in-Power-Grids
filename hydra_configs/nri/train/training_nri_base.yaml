@@ -3,3 +3,5 @@ num_epochs: 500
 batch_size: 8 # This should be rather small to be memory efficient
 learning_rate: 0.0005
 evaluate_every_k_epochs: 10
+alpha: 0.5 # weight for nll loss
+beta: 1.0 # weight for kl loss

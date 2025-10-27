@@ -128,9 +128,9 @@ def main(cfg: DictConfig):
     else:
         raise NotImplementedError(f"Unknown agent '{cfg.nri.agent}'")
 
-    train_data = generate_dataset(cfg.nri.num_train_trajectories, cfg.nri.trajectory_length, agent, env_train, observation_converter)
-    test_data = generate_dataset(cfg.nri.num_test_trajectories, cfg.nri.trajectory_length, agent, env_test, observation_converter)
-    val_data = generate_dataset(cfg.nri.num_val_trajectories, cfg.nri.trajectory_length, agent, env_val, observation_converter)
+    train_data = generate_dataset(cfg.nri.num_train_trajectories, cfg.nri.dataset_creation.trajectory_length, agent, env_train, observation_converter)
+    test_data = generate_dataset(cfg.nri.num_test_trajectories, cfg.nri.dataset_creation.trajectory_length, agent, env_test, observation_converter)
+    val_data = generate_dataset(cfg.nri.num_val_trajectories, cfg.nri.dataset_creation.trajectory_length, agent, env_val, observation_converter)
 
     timestamp = datetime.now().strftime("%Y-%m-%d_%H:%M")
     for grid_entity in train_data:

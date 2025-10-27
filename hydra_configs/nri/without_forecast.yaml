@@ -1,5 +1,6 @@
 defaults:
     -   dataset_creation: default
     -   model: default
-    -   train: with_forecast
+    -   train: no_forecast
 
+name: NRI_no_forecast
