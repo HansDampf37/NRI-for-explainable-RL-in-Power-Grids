@@ -113,11 +113,21 @@ class TestBusConnectivityGraphObsSpace(unittest.TestCase):
         self.assertEqual(self.obs_space.max_num_edges, true_edges[0])
 
     def test_with_and_without_forecasts(self):
-        obs_space_with_forecasts = BusConnectivityGraphObsSpace(self.env.observation_space, with_forecast=True)
-        obs_space_without_forecasts = BusConnectivityGraphObsSpace(self.env.observation_space, with_forecast=False)
+        obs_space_with_forecasts = BusConnectivityGraphObsSpace(self.env.observation_space, with_forecast=True, with_bus_indices=False)
+        obs_space_without_forecasts = BusConnectivityGraphObsSpace(self.env.observation_space, with_forecast=False, with_bus_indices=False)
         self.assertIn("active_power_forecast", obs_space_with_forecasts.node_feature_names)
         self.assertNotIn("active_power_forecast", obs_space_without_forecasts.node_feature_names)
         self.assertEqual(obs_space_without_forecasts.x_dim, 6)
         self.assertEqual(obs_space_with_forecasts.x_dim, 8)
         self.assertEqual(obs_space_without_forecasts.to_gym(self.env.reset())[NODES].shape[-1], obs_space_without_forecasts.x_dim)
         self.assertEqual(obs_space_with_forecasts.to_gym(self.env.reset())[NODES].shape[-1], obs_space_with_forecasts.x_dim)
+
+    def test_with_and_without_bus_indices(self):
+        obs_space_with_bus_ind = BusConnectivityGraphObsSpace(self.env.observation_space, with_forecast=False, with_bus_indices=True)
+        obs_space_without_bus_ind = BusConnectivityGraphObsSpace(self.env.observation_space, with_forecast=False, with_bus_indices=False)
+        self.assertIn("bus_indices", obs_space_with_bus_ind.node_feature_names)
+        self.assertNotIn("bus_indices", obs_space_without_bus_ind.node_feature_names)
+        self.assertEqual(obs_space_without_bus_ind.x_dim, 6)
+        self.assertEqual(obs_space_with_bus_ind.x_dim, 7)
+        self.assertEqual(obs_space_without_bus_ind.to_gym(self.env.reset())[NODES].shape[-1], obs_space_without_bus_ind.x_dim)
+        self.assertEqual(obs_space_with_bus_ind.to_gym(self.env.reset())[NODES].shape[-1], obs_space_with_bus_ind.x_dim)

@@ -304,14 +304,19 @@ class BusConnectivityGraphObsSpace(GraphObservationSpace):
     - current
     equivalent to https://beta-grid2op.readthedocs.io/en/latest/grid_graph.html#graph3-the-connectivity-graph
     """
-    def __init__(self, grid2op_observation_space: ObservationSpace, with_forecast: bool = True):
+    def __init__(self, grid2op_observation_space: ObservationSpace, with_forecast: bool = True, with_bus_indices: bool = False):
         obs_space = grid2op_observation_space
         num_node = obs_space.n_gen + obs_space.n_load + 2 * obs_space.n_line
         num_connections = obs_space.sub_info
         num_line = obs_space.n_line
         max_n_edge = (num_connections * (num_connections - 1) // 2).sum() + num_line
         self.with_forecast = with_forecast
-        x_dim = 8 if with_forecast else 6
+        self.with_bus_indices = with_bus_indices
+        x_dim = 6
+        if with_forecast:
+            x_dim += 2
+        if with_bus_indices:
+            x_dim += 1
 
         super().__init__({
             NODES: Box(low=-np.inf, high=np.inf, shape=(num_node, x_dim)),
@@ -389,53 +394,41 @@ class BusConnectivityGraphObsSpace(GraphObservationSpace):
         voltage_angle = np.concatenate([g2op_obs.theta_or, g2op_obs.theta_ex, g2op_obs.gen_theta, g2op_obs.load_theta])
         current = np.concatenate([g2op_obs.a_or, g2op_obs.a_ex, I_mag])
         rho = np.concatenate([g2op_obs.rho, g2op_obs.rho, np.zeros((g2op_obs.n_gen + g2op_obs.n_load,))])
+        bus_indices = np.concatenate([g2op_obs.line_or_bus, g2op_obs.line_ex_bus, g2op_obs.gen_bus, g2op_obs.load_bus])
 
+        features = [
+            active_power,
+            reactive_power,
+            voltage,
+            voltage_angle,
+            current,
+            rho
+        ]
         if self.with_forecast:
-            features = np.array([
-                active_power_forecast,
-                reactive_power_forecast,
-                active_power,
-                reactive_power,
-                voltage,
-                voltage_angle,
-                current,
-                rho
-            ]).transpose()
-        else:
-            features = np.array([
-                active_power,
-                reactive_power,
-                voltage,
-                voltage_angle,
-                current,
-                rho
-            ]).transpose()
+            features.append(active_power_forecast)
+            features.append(reactive_power_forecast)
+        if self.with_bus_indices:
+            features.append(bus_indices)
 
-        return features
+        return np.array(features).transpose()
 
     @property
-    def node_feature_names(self):
+    def node_feature_names(self) -> List[str]:
+        feature_names = [
+            "active_power",
+            "reactive_power",
+            "voltage",
+            "voltage_angle",
+            "current",
+            "rho"
+        ]
         if self.with_forecast:
-            return [
-                "active_power_forecast",
-                "reactive_power_forecast",
-                "active_power",
-                "reactive_power",
-                "voltage",
-                "voltage_angle",
-                "current",
-                "rho"
-            ]
-        else:
-            return [
-                "active_power",
-                "reactive_power",
-                "voltage",
-                "voltage_angle",
-                "current",
-                "rho"
-            ]
+            feature_names.append("active_power_forecast")
+            feature_names.append("reactive_power_forecast")
+        if self.with_bus_indices:
+            feature_names.append("bus_indices")
 
+        return feature_names
 
 def gym2pytorch_geometric_data(observation: dict[str, np.ndarray]) -> Data:
     """

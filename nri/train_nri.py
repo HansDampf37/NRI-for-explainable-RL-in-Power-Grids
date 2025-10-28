@@ -164,7 +164,8 @@ def train(
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     nri_module.to(device=device, dtype=torch.float32)
-    feature_mask = feature_mask.bool().to(device=device)
+    if feature_mask is not None:
+        feature_mask = feature_mask.bool().to(device=device)
 
     dataloader_train = DataLoader(training_set, batch_size=batch_size, shuffle=True)
     criterion = criterion if criterion is not None else ElboLoss()
