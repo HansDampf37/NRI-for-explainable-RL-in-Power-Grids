@@ -34,7 +34,7 @@ class Decoder(nn.Module):
         self.num_edge_types = num_edge_types
         self.skip_first = skip_first
 
-        self.node2edge_list: List[Node2Edge] = nn.ModuleList([
+        self.node2edge_list: nn.ModuleList[Node2Edge] = nn.ModuleList([
             Node2Edge(
                 x_dim=x_dim,
                 hidden_dim=hidden_dim,
