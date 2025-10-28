@@ -60,7 +60,7 @@ def visualize_graph(args: PlottingArgs) -> Figure:
             for edge_type, _ in enumerate(args.latent_edge_probs[edge_index]):
                 if not args.skip_first_edge_type or edge_type != 0:
                     weight = args.latent_edge_weight * args.latent_edge_probs[edge_index, edge_type]
-                    if weight > 1:
+                    if weight >= 1:
                         src, dst = edge_index_fully_connected[:, edge_index]
                         G.add_edge(int(src), int(dst), color=cmap(edge_type), weight=weight, type="Dependency")
 
