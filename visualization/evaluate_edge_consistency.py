@@ -53,7 +53,8 @@ class FiguresDict(TypedDict):
     hist_js: Figure
     agreement_hist: Figure
     mean_existence_vs_variability: Figure
-    max_existence_vs_variability: Figure
+    max_existence_vs_jensen_shannon_div: Figure
+    max_existence_vs_agreement: Figure
     session_js_heatmap: Figure
     # New combined 2x2 summary figure composing the four plots above
     summary: Figure
@@ -336,27 +337,45 @@ def plot_agreement_hist(agreement_fraction: npt.NDArray[np.floating], out_path: 
     return fig
 
 
-def plot_max_existence_cv_scatter(max_exists_probs: npt.NDArray[np.floating], cv: npt.NDArray[np.floating],
-                                  out_path: str, c: Optional[npt.NDArray[np.floating]] = None, c_label: Optional[str] = None) -> Figure:
-    """Scatter plot of top existence probability vs. mean CV per edge and return the figure.
+def plot_max_existence_vs_js_div_scatter(max_exists_probs: npt.NDArray[np.floating], js_div: npt.NDArray[np.floating],
+                                         out_path: str) -> Figure:
+    """Scatter plot of top existence probability vs. mean JS-Div per edge and return the figure.
 
-    For each edge, plot the highest existence probability (over S) against the mean CV (over K).
+    For each edge, plot the highest existence probability (over S) against the mean JS-Div (over Session types).
 
     Args:
     - max_exists_probs: np.ndarray (E, ); accumulate type probs except first and select maximum over sessions.
-    - cv: np.ndarray (E, K); coefficient of variation per type and edge.
-    - c: np.ndarray (E,); value to use for coloring
+    - js_div: np.ndarray (E, ); mean js-div for each edge across pairwise sessions.
     - out_path: Output file path (PNG).
 
     Returns: The created matplotlib Figure.
     """
     fig, ax = plt.subplots(figsize=(6, 5))
-    sc = ax.scatter(max_exists_probs, np.nanmean(cv, axis=1), c=c, cmap='viridis', s=20)
-    if c_label is not None:
-        fig.colorbar(sc, label=c_label)
+    ax.scatter(max_exists_probs, js_div, s=20)
     ax.set_xlabel('Max existence prob (over sessions) (per edge)')
-    ax.set_ylabel('Mean (over sessions) CV across types (per edge)')
-    ax.set_title('Existence probability vs variability (CV)')
+    ax.set_ylabel('Mean (over sessions pairs) Jensen-Shannon Divergence (per edge)')
+    ax.set_title('Max Existence probability vs variability (JS-Div)')
+    fig.tight_layout()
+    fig.savefig(out_path)
+    return fig
+
+def plot_max_existence_vs_agreement_fraction(max_exists_probs: npt.NDArray[np.floating], agreement_fraction: npt.NDArray[np.floating], out_path: str) -> Figure:
+    """Scatter plot of top existence probability vs. agreement fraction per edge and return the figure.
+
+    For each edge, plot the highest existence probability (over S) against agreement fraction (over Session types).
+
+    Args:
+    - max_exists_probs: np.ndarray (E, ); accumulate type probs except first and select maximum over sessions.
+    - agreement_fraction: np.ndarray (E, ); agreement fraction for each edge.
+    - out_path: Output file path (PNG).
+
+    Returns: The created matplotlib Figure.
+    """
+    fig, ax = plt.subplots(figsize=(6, 5))
+    ax.scatter(max_exists_probs, agreement_fraction, s=20)
+    ax.set_xlabel('Max existence prob (over sessions) (per edge)')
+    ax.set_ylabel('Agreement fraction (per edge)')
+    ax.set_title('Max Existence probability vs variability (Agreement fraction)')
     fig.tight_layout()
     fig.savefig(out_path)
     return fig
@@ -449,8 +468,8 @@ def _create_summary_figure_from_pngs(out_dir: str) -> Figure:
     paths = {
         'hist_js': os.path.join(out_dir, 'hist_js_per_edge.png'),
         'agreement_hist': os.path.join(out_dir, 'agreement_fraction_hist.png'),
-        'mean_existence_vs_variability': os.path.join(out_dir, 'mean_existence_vs_variability.png'),
-        'max_existence_vs_variability': os.path.join(out_dir, 'max_existence_vs_variability.png'),
+        'max_existence_vs_js_div_scatter': os.path.join(out_dir, 'max_existence_vs_js_div_scatter.png'),
+        'max_existence_vs_agreement_fraction': os.path.join(out_dir, 'max_existence_vs_agreement_fraction.png'),
     }
     # Create composite figure
     fig, axes = plt.subplots(1, 4, figsize=(24, 5))
@@ -498,8 +517,8 @@ def run_analysis(data_dir: str, prefix: str, out_dir: str, top_k: int = 20) -> T
     pairwise_js = pairwise_js_between_sessions(stacked)
     # plots
     fig1 = plot_hist_js(stats['js_per_edge'], os.path.join(out_dir, 'hist_js_per_edge.png'))
-    fig2 = plot_mean_existence_cv_scatter(stats['mean_exists_probs'], stats['cv'], os.path.join(out_dir, 'mean_existence_vs_variability.png'), stats['js_per_edge'], "Jensen-Shannon divergence")
-    fig2_5 = plot_max_existence_cv_scatter(stats['max_exists_probs'], stats['cv'], os.path.join(out_dir, 'max_existence_vs_variability.png'), stats['js_per_edge'], "Jensen-Shannon divergence")
+    fig2 = plot_max_existence_vs_js_div_scatter(stats['max_exists_probs'], stats['js_per_edge'], os.path.join(out_dir, 'max_existence_vs_js_div_scatter.png'))
+    fig2_5 = plot_max_existence_vs_agreement_fraction(stats['max_exists_probs'], stats['agreement_fraction'], os.path.join(out_dir, 'max_existence_vs_agreement_fraction.png'))
     fig3 = plot_session_js_heatmap(pairwise_js, os.path.join(out_dir, 'session_js_heatmap.png'))
     fig4 = plot_agreement_hist(stats['agreement_fraction'], os.path.join(out_dir, 'agreement_fraction_hist.png'))
     # choose edges to inspect: highest mean for any type, and highest js
@@ -562,8 +581,8 @@ def run_analysis_with_figs(data_dir: str, prefix: str, out_dir: str, top_k: int 
     pairwise_js = pairwise_js_between_sessions(stacked)
     figs: FiguresDict = {
         'hist_js': plot_hist_js(stats['js_per_edge'], os.path.join(out_dir, 'hist_js_per_edge.png')),
-        'mean_existence_vs_variability': plot_mean_existence_cv_scatter(stats['mean_exists_probs'], stats['cv'], os.path.join(out_dir, 'mean_existence_vs_variability.png'), stats['js_per_edge'], "Jensen-Shannon divergence"),
-        'max_existence_vs_variability': plot_max_existence_cv_scatter(stats['max_exists_probs'], stats['cv'], os.path.join(out_dir, 'max_existence_vs_variability.png'), stats['js_per_edge'], "Jensen-Shannon divergence"),
+        'max_existence_vs_jensen_shannon_div': plot_max_existence_vs_js_div_scatter(stats['max_exists_probs'], stats['js_per_edge'], os.path.join(out_dir, 'max_existence_vs_js_div_scatter.png')),
+        'max_existence_vs_agreement': plot_max_existence_vs_agreement_fraction(stats['max_exists_probs'], stats['agreement_fraction'], os.path.join(out_dir, 'max_existence_vs_agreement_fraction.png')),
         'session_js_heatmap': plot_session_js_heatmap(pairwise_js, os.path.join(out_dir, 'session_js_heatmap.png')),
         'agreement_hist': plot_agreement_hist(stats['agreement_fraction'], os.path.join(out_dir, 'agreement_fraction_hist.png')),
         'summary': _create_summary_figure_from_pngs(out_dir),
