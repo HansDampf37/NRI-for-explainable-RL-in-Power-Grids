@@ -2,6 +2,7 @@ import logging
 import uuid
 from datetime import datetime
 from typing import Optional, List
+from pathlib import Path
 
 import grid2op
 import hydra
@@ -85,6 +86,10 @@ class RunningMetrics:
         @param tensorboard_tag: the group tag
         @param epoch: the current epoch
         """
+        if self.num_iter == 0:
+            self.logger.info("No iterations to log")
+            return
+
         if self.summary_writer is not None:
             self.summary_writer.add_scalar(f"Loss/{tensorboard_tag}", self.running_loss / self.num_iter, epoch)
             self.summary_writer.add_scalar(f"Negative Log Likelihood/{tensorboard_tag}", self.running_nll / self.num_iter, epoch)
@@ -112,12 +117,14 @@ class RunningMetrics:
                 latent_edges_hist = latent_edge_hist(self.running_edge_type_probs / self.num_iter)
                 self.summary_writer.add_figure(f"Histogram of predicted latent edges/{tensorboard_tag}", latent_edges_hist, epoch)
 
-        self.logger.info(f"{tensorboard_tag} Epoch {epoch}: loss: {self.running_loss / self.num_iter:.2f} "
-                         f"Neg Log Likelihood: {self.running_nll / self.num_iter:.2f} "
-                         f"KL Divergence: {self.running_kl_div / self.num_iter:.2f} "
-                         f"MSE: {self.running_mse / self.num_iter:.2f} "
-                         f"Entropy of edge type predictions: {self.running_entropy / self.num_iter:.2f} "
-                         f"Gradient Norm: {self.grad_norm:.2f}" if self.grad_norm is not None else "")
+        msg = (f"{tensorboard_tag} Epoch {epoch}: loss: {self.running_loss / self.num_iter:.2f} "
+               f"Neg Log Likelihood: {self.running_nll / self.num_iter:.2f} "
+               f"KL Divergence: {self.running_kl_div / self.num_iter:.2f} "
+               f"MSE: {self.running_mse / self.num_iter:.2f} "
+               f"Entropy of edge type predictions: {self.running_entropy / self.num_iter:.2f} ")
+        if self.grad_norm is not None:
+            msg += f"Gradient Norm: {self.grad_norm:.2f}"
+        self.logger.info(msg)
 
 
 def train(
@@ -125,7 +132,7 @@ def train(
         training_set: Dataset,
         testing_set: Optional[Dataset] = None,
         criterion: Optional[ElboLoss] = None,
-        feature_mask: Optional[np.ndarray] = None,
+        feature_mask: Optional[Tensor] = None,
         edge_index: Optional[Tensor] = None,
         tensorboard_logger: Optional[SummaryWriter] = None,
         num_epochs: int = 100,
@@ -153,10 +160,11 @@ def train(
     """
     num_params = sum(p.numel() for p in nri_module.parameters() if p.requires_grad)
     logger.info(f"Starting training of NRI module with {num_params} trainable parameters")
-
     plotting_args = plotting_args or PlottingArgs(num_nodes=training_set[0][0].shape[-2])
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     nri_module.to(device=device, dtype=torch.float32)
+    feature_mask = feature_mask.bool().to(device=device)
 
     dataloader_train = DataLoader(training_set, batch_size=batch_size, shuffle=True)
     criterion = criterion if criterion is not None else ElboLoss()
@@ -194,7 +202,8 @@ def train(
         # evaluate
         if epoch % evaluate_every_k_epochs == 0 and testing_set is not None:
             # do latent edge weight sweep on last evaluation
-            plotting_args.do_weight_sweep = (epoch // evaluate_every_k_epochs + 1) * evaluate_every_k_epochs > num_epochs
+            is_last_eval = epoch + evaluate_every_k_epochs >= num_epochs
+            plotting_args.do_weight_sweep = is_last_eval
             evaluate_nri_module(
                 nri_module=nri_module,
                 testing_set=testing_set,
@@ -214,7 +223,7 @@ def evaluate_nri_module(
         nri_module: NRIModule,
         testing_set: Dataset,
         criterion: Optional[ElboLoss] = None,
-        feature_mask: Optional[np.ndarray] = None,
+        feature_mask: Optional[Tensor] = None,
         edge_index: Optional[Tensor] = None,
         tensorboard_logger: Optional[SummaryWriter] = None,
         current_epoch: Optional[int] = None,
@@ -236,13 +245,12 @@ def evaluate_nri_module(
     plotting_args = plotting_args or PlottingArgs(num_nodes=testing_set[0][0].shape[-2])
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     nri_module.to(device=device, dtype=torch.float32)
+    nri_module.eval()
+    criterion = criterion if criterion is not None else ElboLoss()
+    data_loader = DataLoader(testing_set, batch_size=batch_size, shuffle=True)
+    metrics = RunningMetrics(summary_writer=tensorboard_logger, plotting_args=plotting_args)
 
     with torch.no_grad():
-        criterion = criterion if criterion is not None else ElboLoss()
-        data_loader = DataLoader(testing_set, batch_size=batch_size, shuffle=True)
-        nri_module.eval()
-        metrics = RunningMetrics(summary_writer=tensorboard_logger, plotting_args=plotting_args)
-
         for batch_ in tqdm(data_loader, desc="Testing"):
             batch: Tensor = batch_[0].to(device=device, dtype=torch.float32)
             predictions, edge_type_distributions = nri_module.forward(batch, edge_index)
@@ -316,9 +324,12 @@ def main(cfg: DictConfig):
         plotting_args=plotting_args
     )
 
-    torch.save(nri_module.state_dict(), f"data/models/nri/{name}.pt")
+    save_path = Path(f"data/models/nri/{name}.pt")
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(nri_module.state_dict(), save_path)
     save_edge_probs(nri_module, train_dataset, f"edges_training_{name}", cfg.nri.train.batch_size)
     save_edge_probs(nri_module, test_dataset, f"edges_testing_{name}", cfg.nri.train.batch_size)
+    tensorboard_logger.close()
 
 
 if __name__ == "__main__":
