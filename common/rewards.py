@@ -17,14 +17,18 @@ class MazeRLReward(BaseReward):
     def __call__(self, action: BaseAction, env: BaseEnv, has_error: bool, is_done: bool, is_illegal: bool, is_ambiguous: bool) -> float:
         if not is_done and not has_error:
             rho = env.current_obs.rho
-            rho_max = max(rho)
             n_offline = env.n_line - sum(env.current_obs.line_status)
-            if rho_max <= 1.0:
-                u = max(rho_max - 0.5, 0)
-            else:
-                u = np.sum(rho[rho > 1] - 0.5)
-
-            res = np.exp(-u - 0.5 * n_offline)
+            res = self.rew(n_offline, rho)
         else:
             res = self.reward_min
+        return res
+
+    @staticmethod
+    def rew(n_offline: int, rho: np.ndarray) -> float:
+        rho_max = max(rho)
+        if rho_max <= 1.0:
+            u = max(rho_max - 0.5, 0)
+        else:
+            u = np.sum(rho[rho > 1] - 0.5)
+        res = np.exp(-u - 0.5 * n_offline)
         return res
