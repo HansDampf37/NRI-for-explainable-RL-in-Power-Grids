@@ -104,39 +104,39 @@ def generate_dataset(num_sims: int, length: int, agent: BaseAgent, env: Environm
 def main(cfg: DictConfig):
     print(OmegaConf.to_yaml(cfg))
     # create env + observation space
-    env_train = grid2op.make(cfg.dataset_creation.env.env_name + "_train", backend=LightSimBackend(), reward_class=MazeRLReward)
-    env_test = grid2op.make(cfg.dataset_creation.env.env_name + "_test", backend=LightSimBackend(), reward_class=MazeRLReward)
-    env_val = grid2op.make(cfg.dataset_creation.env.env_name + "_val", backend=LightSimBackend(), reward_class=MazeRLReward)
+    env_train = grid2op.make(cfg.nri.dataset_creation.env_name + "_train", backend=LightSimBackend(), reward_class=MazeRLReward)
+    env_test = grid2op.make(cfg.nri.dataset_creation.env_name + "_test", backend=LightSimBackend(), reward_class=MazeRLReward)
+    env_val = grid2op.make(cfg.nri.dataset_creation.env_name + "_val", backend=LightSimBackend(), reward_class=MazeRLReward)
     observation_converter: GraphObservationSpace = instantiate(
         cfg.nri.dataset_creation.obs_space,
         grid2op_observation_space=env_train.observation_space
     )
 
     # create agent
-    if cfg.nri.agent == 'random':
+    if cfg.nri.dataset_creation.agent == 'random':
         agent = RandomAgent(env_train.action_space)
-    elif cfg.nri.agent == 'do_nothing':
+    elif cfg.nri.dataset_creation.agent == 'do_nothing':
         agent = DoNothingAgent(env_train.action_space)
-    elif cfg.nri.agent == 'reconnect':
+    elif cfg.nri.dataset_creation.agent == 'reconnect':
         agent = RecoPowerlineAgent(env_train.action_space)
-    elif cfg.nri.agent == 'topology_greedy':
+    elif cfg.nri.dataset_creation.agent == 'topology_greedy':
         agent = TopologyGreedy(env_train.action_space)
         logger.warning("You have configured the topology greedy agent that will simulate every topology action. "
                        "This is only feasible for small environments.")
-    elif cfg.nri.agent == 'baseline':
-        agent = build_agent(cfg, load_weights_from=cfg.nri.model_path)
+    elif cfg.nri.dataset_creation.agent == 'baseline':
+        agent = build_agent(cfg, load_weights_from=cfg.nri.dataset_creation.model_path)
     else:
-        raise NotImplementedError(f"Unknown agent '{cfg.nri.agent}'")
+        raise NotImplementedError(f"Unknown agent '{cfg.nri.dataset_creation.agent}'")
 
-    train_data = generate_dataset(cfg.nri.num_train_trajectories, cfg.nri.dataset_creation.trajectory_length, agent, env_train, observation_converter)
-    test_data = generate_dataset(cfg.nri.num_test_trajectories, cfg.nri.dataset_creation.trajectory_length, agent, env_test, observation_converter)
-    val_data = generate_dataset(cfg.nri.num_val_trajectories, cfg.nri.dataset_creation.trajectory_length, agent, env_val, observation_converter)
+    train_data = generate_dataset(cfg.nri.dataset_creation.num_train_trajectories, cfg.nri.dataset_creation.trajectory_length, agent, env_train, observation_converter)
+    test_data = generate_dataset(cfg.nri.dataset_creation.num_test_trajectories, cfg.nri.dataset_creation.trajectory_length, agent, env_test, observation_converter)
+    val_data = generate_dataset(cfg.nri.dataset_creation.num_val_trajectories, cfg.nri.dataset_creation.trajectory_length, agent, env_val, observation_converter)
 
     timestamp = datetime.now().strftime("%Y-%m-%d_%H:%M")
     for grid_entity in train_data:
-        np.save(f'data/nri_dataset/train_{grid_entity}_{cfg.dataset_creation.env.env_name}_{timestamp}_.npy', train_data[grid_entity])
-        np.save(f'data/nri_dataset/test_{grid_entity}_{cfg.dataset_creation.env.env_name}_{timestamp}_.npy', test_data[grid_entity])
-        np.save(f'data/nri_dataset/val_{grid_entity}_{cfg.dataset_creation.env.env_name}_{timestamp}_.npy', val_data[grid_entity])
+        np.save(f'data/nri_dataset/train_{grid_entity}_{cfg.nri.dataset_creation.env_name}_{timestamp}_.npy', train_data[grid_entity])
+        np.save(f'data/nri_dataset/test_{grid_entity}_{cfg.nri.dataset_creation.env_name}_{timestamp}_.npy', test_data[grid_entity])
+        np.save(f'data/nri_dataset/val_{grid_entity}_{cfg.nri.dataset_creation.env_name}_{timestamp}_.npy', val_data[grid_entity])
 
 
 if __name__ == '__main__':
