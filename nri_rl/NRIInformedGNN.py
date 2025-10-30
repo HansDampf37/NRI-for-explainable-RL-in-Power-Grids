@@ -1,6 +1,6 @@
 import torch
 from torch import nn, Tensor
-from torch_geometric.nn import global_mean_pool, GCNConv
+from torch_geometric.nn import global_mean_pool, GCNConv, BatchNorm
 
 from common.MLP import MLP
 
@@ -42,8 +42,9 @@ class NRIInformedGNN(nn.Module):
             x_out_dim: int,
             n_layers: int = 3,
             n_edge_types: int = 2,
-            skip_first: bool = True,
+            skip_last: bool = True,
             dropout_prob: float = 0.0,
+            residual: bool = True,
     ):
         """
         Instantiate GNN feature extractor.
@@ -53,23 +54,26 @@ class NRIInformedGNN(nn.Module):
         :param x_out_dim: output node feature dimension
         :param n_layers: number of message passing layers (default: 3)
         :param n_edge_types: number of edge types (K) (default: 2)
-        :param skip_first: whether to skip the first edge type (since it encodes no existing) (default: True)
+        :param skip_last: whether to skip the last edge type (since it encodes no existing) (default: True)
         :param dropout_prob: dropout probability (default 0)
+        :param residual: whether to use residual connections (default: True)
         """
         super().__init__()
         self.n_layers = n_layers
         self.n_edge_types = n_edge_types
-        self.skip_first = skip_first
-        self.activation_function = nn.ELU()
-        self.dropout = nn.Dropout(dropout_prob)
+        self.residual = residual
+        # precompute the edge type range
+        self.edge_type_range = range(self.n_edge_types - 1) if skip_last else range(self.n_edge_types)
 
         # initial projection to working dims
         self.node_proj = MLP(
             input_features=x_dim,
             output_features=x_hidden_dim,
             hidden_dim=x_hidden_dim,
-            dropout_prob=dropout_prob
+            dropout_prob=dropout_prob,
+            do_batch_norm=False
         )
+        self.bn_node_proj = BatchNorm(x_hidden_dim)
 
         # build message passing layers
         self.layers = nn.ModuleList([
@@ -79,20 +83,25 @@ class NRIInformedGNN(nn.Module):
                     out_channels=x_hidden_dim,
                     improved=True,
                     add_self_loops=True,
-                ) for _ in range(n_edge_types - 1 if skip_first else n_edge_types)
+                ) for _ in self.edge_type_range
             ]) for _ in range(n_layers)
         ])
+        # batch norm activation and dropout in every hidden layer
+        self.bn_message_passing = nn.ModuleList([BatchNorm(x_hidden_dim) for _ in range(n_layers)])
+        self.activation_function = nn.ELU()
+        self.dropout = nn.Dropout(dropout_prob)
 
         self.final = MLP(
             input_features=x_hidden_dim,
             output_features=x_out_dim,
             hidden_dim=x_hidden_dim,
             dropout_prob=dropout_prob,
+            do_batch_norm=False
         )
 
     def forward(self, x: Tensor, edge_index: Tensor, edge_type_posterior: Tensor, batch: Tensor) -> Tensor:
         """
-        Forward pass. Accepts only graphs batched via batch vector. For batching use the batch argument.
+        Forward pass. Accepts only graphs batched via batch vector.
 
         :param x: node features [N, x_in_dim]
         :param edge_index: models adjacency [2, E]
@@ -100,20 +109,21 @@ class NRIInformedGNN(nn.Module):
         :param edge_type_posterior: edge type probabilities (normally computed by NRI encoder) [E, K]
         :return: output features [B, x_out_dim]
         """
-        _, E = edge_index.shape
-        K = self.n_edge_types
-
         # embed input x in hidden space
+        assert edge_type_posterior.size(0) == edge_index.size(1)
         x_h = self.node_proj(x) # [N, x_hidden_dim]
+        x_h = self.bn_node_proj(x_h)
 
         # push through message passing
-        for mp in self.layers:
-            start_index = 1 if self.skip_first else 0
+        for l, mp in enumerate(self.layers):
             outs = [
-                mp[edge_type](x_h, edge_index, edge_type_posterior[..., edge_type])
-                for edge_type in range(start_index, K)
+                mp[edge_type](x=x_h, edge_index=edge_index, edge_weight=edge_type_posterior[:, edge_type])
+                for edge_type in self.edge_type_range
             ]
-            x_h = self.activation_function(torch.stack(outs).sum(0))
+            x_h_ks = torch.stack(outs).sum(0)
+            x_h_ks = self.bn_message_passing[l](x_h_ks)
+            x_h_ks = self.activation_function(x_h_ks)
+            x_h = x_h + x_h_ks if self.residual else x_h_ks
             x_h = self.dropout(x_h)
 
         # project hidden space onto output space
