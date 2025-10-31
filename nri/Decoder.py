@@ -51,6 +51,7 @@ class Decoder(nn.Module):
             x_out_dim=x_dim,
             dropout_prob=dropout_prob
         )
+        self.linear = nn.Linear(x_dim, x_dim)
 
     def single_step_forward(
         self,
@@ -79,6 +80,7 @@ class Decoder(nn.Module):
             e_all = e_all + e_k if e_all is not None else e_k
 
         delta = self.edge_node2node.forward(x, e_all, edge_index)
+        delta = self.linear(delta)
         return x + delta
 
     def forward(
