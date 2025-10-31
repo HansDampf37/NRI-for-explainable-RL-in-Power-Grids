@@ -38,10 +38,10 @@ class NRIInformedGNN(nn.Module):
     def __init__(
             self,
             x_dim: int,
-            x_hidden_dim: int,
+            hidden_dim: int,
             x_out_dim: int,
             n_layers: int = 3,
-            n_edge_types: int = 2,
+            num_edge_types: int = 2,
             skip_last: bool = True,
             dropout_prob: float = 0.0,
             residual: bool = True,
@@ -50,17 +50,17 @@ class NRIInformedGNN(nn.Module):
         Instantiate GNN feature extractor.
 
         :param x_dim: input node feature dimension
-        :param x_hidden_dim: hidden dim for node embeddings
+        :param hidden_dim: hidden dim for node embeddings
         :param x_out_dim: output node feature dimension
         :param n_layers: number of message passing layers (default: 3)
-        :param n_edge_types: number of edge types (K) (default: 2)
+        :param num_edge_types: number of edge types (K) (default: 2)
         :param skip_last: whether to skip the last edge type (since it encodes no existing) (default: True)
         :param dropout_prob: dropout probability (default 0)
         :param residual: whether to use residual connections (default: True)
         """
         super().__init__()
         self.n_layers = n_layers
-        self.n_edge_types = n_edge_types
+        self.n_edge_types = num_edge_types
         self.residual = residual
         # precompute the edge type range
         self.edge_type_range = range(self.n_edge_types - 1) if skip_last else range(self.n_edge_types)
@@ -68,33 +68,33 @@ class NRIInformedGNN(nn.Module):
         # initial projection to working dims
         self.node_proj = MLP(
             input_features=x_dim,
-            output_features=x_hidden_dim,
-            hidden_dim=x_hidden_dim,
+            output_features=hidden_dim,
+            hidden_dim=hidden_dim,
             dropout_prob=dropout_prob,
             do_batch_norm=False
         )
-        self.bn_node_proj = BatchNorm(x_hidden_dim)
+        self.bn_node_proj = BatchNorm(hidden_dim)
 
         # build message passing layers
         self.layers = nn.ModuleList([
             nn.ModuleList([
                 GCNConv(
-                    in_channels=x_hidden_dim,
-                    out_channels=x_hidden_dim,
+                    in_channels=hidden_dim,
+                    out_channels=hidden_dim,
                     improved=True,
                     add_self_loops=True,
                 ) for _ in self.edge_type_range
             ]) for _ in range(n_layers)
         ])
         # batch norm activation and dropout in every hidden layer
-        self.bn_message_passing = nn.ModuleList([BatchNorm(x_hidden_dim) for _ in range(n_layers)])
+        self.bn_message_passing = nn.ModuleList([BatchNorm(hidden_dim) for _ in range(n_layers)])
         self.activation_function = nn.ELU()
         self.dropout = nn.Dropout(dropout_prob)
 
         self.final = MLP(
-            input_features=x_hidden_dim,
+            input_features=hidden_dim,
             output_features=x_out_dim,
-            hidden_dim=x_hidden_dim,
+            hidden_dim=hidden_dim,
             dropout_prob=dropout_prob,
             do_batch_norm=False
         )

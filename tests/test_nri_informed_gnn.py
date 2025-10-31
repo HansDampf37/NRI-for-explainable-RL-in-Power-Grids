@@ -1,7 +1,7 @@
 import unittest
 import torch
 from torch_geometric.data import Data, Batch
-from nri_rl.NRIInformedGNN import NRIInformedGNN
+from nri.nri_rl import NRIInformedGNN
 
 
 class TestNRIInformedGNN(unittest.TestCase):
@@ -24,10 +24,10 @@ class TestNRIInformedGNN(unittest.TestCase):
     def test_nri_informed_gnn(self):
         model = NRIInformedGNN(
             x_dim=4,
-            x_hidden_dim=8,
+            hidden_dim=8,
             x_out_dim=5,
             n_layers=2,
-            n_edge_types=2,
+            num_edge_types=2,
             skip_last=True,
             dropout_prob=0.1,
             residual=True,
@@ -41,10 +41,10 @@ class TestNRIInformedGNN(unittest.TestCase):
     def test_without_residual(self):
         model = NRIInformedGNN(
             x_dim=4,
-            x_hidden_dim=8,
+            hidden_dim=8,
             x_out_dim=5,
             n_layers=2,
-            n_edge_types=2,
+            num_edge_types=2,
             skip_last=True,
             dropout_prob=0.0,
             residual=False,

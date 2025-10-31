@@ -4,6 +4,7 @@ from typing import Union
 import numpy as np
 import torch
 from torch import Tensor, nn
+from torch_geometric.utils import dense_to_sparse
 
 from common.MLP import MLP
 
@@ -22,6 +23,29 @@ def fully_connected_edge_index(num_nodes: int, device: str = "cpu", self_loops: 
     if not self_loops:
         edge_index = edge_index[:, edge_index[0] != edge_index[1]]
     return edge_index.to(device=device)
+
+def fully_connected_edge_index_per_batch(batch: Tensor, device: str = "cpu", self_loops: bool = False) -> Tensor:
+    """
+    Create an edge index representing batch of fully connected edge indices.
+    :param batch: graph index per node.
+    :param self_loops: If true, create self-loops.
+    :param device: Device to use.
+    """
+    # batch: [N]  integer graph IDs
+    num_graphs = int(batch.max()) + 1
+    edge_indices = []
+    for g in range(num_graphs):
+        node_idx = (batch == g).nonzero(as_tuple=False).view(-1)
+        n = node_idx.numel()
+        if n == 0:
+            continue
+        adj = torch.ones((n, n), dtype=torch.bool, device=device)
+        if not self_loops:
+            adj.fill_diagonal_(False)
+        edge_index_local, _ = dense_to_sparse(adj)
+        edge_index_global = node_idx[edge_index_local]
+        edge_indices.append(edge_index_global)
+    return torch.cat(edge_indices, dim=1)
 
 
 class Node2Edge(nn.Module):

@@ -3,8 +3,10 @@ import unittest
 from unittest.mock import create_autospec
 
 import torch
+from torch_geometric.utils import to_dense_adj
 
-from nri.utils import fully_connected_edge_index, Edge2Node, Node2Edge, EdgeNode2Node, warn_large_loss
+from nri.utils import fully_connected_edge_index, Edge2Node, Node2Edge, EdgeNode2Node, warn_large_loss, \
+    fully_connected_edge_index_per_batch
 
 
 class TestNRIUtils(unittest.TestCase):
@@ -14,6 +16,47 @@ class TestNRIUtils(unittest.TestCase):
         self.assertEqual(edge_index.shape, (2, num_nodes ** 2 - num_nodes))
         edge_index = fully_connected_edge_index(num_nodes, "cpu", True)
         self.assertEqual(edge_index.shape, (2, num_nodes ** 2))
+
+    def test_single_graph_no_self_loops(self):
+        batch = torch.tensor([0, 0, 0])
+        edge_index = fully_connected_edge_index_per_batch(batch, self_loops=False)
+        adj = to_dense_adj(edge_index)[0]
+        expected = torch.ones((3, 3), dtype=torch.bool)
+        expected.fill_diagonal_(False)
+        self.assertTrue(torch.equal(adj.bool(), expected))
+
+    def test_single_graph_with_self_loops(self):
+        batch = torch.tensor([0, 0, 0])
+        edge_index = fully_connected_edge_index_per_batch(batch, self_loops=True)
+        adj = to_dense_adj(edge_index)[0]
+        expected = torch.ones((3, 3), dtype=torch.bool)
+        self.assertTrue(torch.equal(adj.bool(), expected))
+
+    def test_multiple_graphs(self):
+        batch = torch.tensor([0, 0, 1, 1, 1])
+        edge_index = fully_connected_edge_index_per_batch(batch, self_loops=False)
+        adj = to_dense_adj(edge_index, batch=batch)
+        expected_0 = torch.ones((2, 2), dtype=torch.bool)
+        expected_0.fill_diagonal_(False)
+        expected_1 = torch.ones((3, 3), dtype=torch.bool)
+        expected_1.fill_diagonal_(False)
+        self.assertTrue(torch.equal(adj[0].bool()[:2, :2], expected_0))
+        self.assertTrue(torch.equal(adj[1].bool(), expected_1))
+
+    def test_empty_graph(self):
+        batch = torch.tensor([0, 1, 1])
+        edge_index = fully_connected_edge_index_per_batch(batch, self_loops=False)
+        adj = to_dense_adj(edge_index, batch=batch)
+        expected_0 = torch.zeros((2, 2), dtype=torch.bool)
+        expected_1 = torch.ones((2, 2), dtype=torch.bool)
+        expected_1.fill_diagonal_(False)
+        self.assertTrue(torch.equal(adj[0].bool(), expected_0))
+        self.assertTrue(torch.equal(adj[1].bool(), expected_1))
+
+    def test_device_cpu(self):
+        batch = torch.tensor([0, 0])
+        edge_index = fully_connected_edge_index_per_batch(batch, device="cpu")
+        self.assertEqual(edge_index.device.type, "cpu")
 
     def test_warn_large_loss(self):
         num_features = 8
