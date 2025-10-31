@@ -1,8 +1,10 @@
 import unittest
-import torch
-from nri.nri_rl import NRI_GNN
 
-class TestNRIFeatureExtractor(unittest.TestCase):
+import numpy as np
+import torch
+from nri.agent.NRI import NRI_GNN
+
+class TestNRIGNN(unittest.TestCase):
     def setUp(self):
         # Initialize parameters for NRIFeatureExtractor
         self.x_dim = 5
@@ -21,16 +23,16 @@ class TestNRIFeatureExtractor(unittest.TestCase):
 
         # Dummy data for testing
         self.batch_size = 2
-        self.num_nodes = 6
-        self.edge_index = torch.randint(0, self.num_nodes, (2, 7))  # Random edge indices
-        self.node_features = torch.rand(self.num_nodes, self.x_dim)  # Random node feature tensor
-        self.batch = torch.tensor([0, 0, 1, 1, 0, 1])  # Batch tensor
+        self.num_nodes_per_batch = 3
+        self.node_features = torch.rand(self.num_nodes_per_batch * self.batch_size, self.x_dim)  # Random node feature tensor
+        self.batch = torch.tensor(np.array([[i] * self.num_nodes_per_batch for i in range(self.batch_size)]).flatten())  # Batch tensor
+        self.num_fc_edges_per_batch = self.num_nodes_per_batch * (self.num_nodes_per_batch - 1)
 
     def test_forward_shape(self):
-        predictions, p_z_given_x = self.model(self.node_features, self.edge_index, self.batch)
+        predictions, p_z_given_x = self.model(self.node_features, batch=self.batch)
         # Check output shapes
-        self.assertEqual(predictions.shape, (self.batch_size, self.x_out_dim), "Output shape mismatch")
-        self.assertEqual(p_z_given_x.shape, (self.edge_index.size(1), self.num_edge_types), "Softmax probabilities shape mismatch")
+        self.assertEqual(predictions.shape, (self.batch_size, self.x_out_dim))
+        self.assertEqual(p_z_given_x.shape, (self.batch_size, self.num_fc_edges_per_batch, self.num_edge_types))
 
     def test_forward_values(self):
         predictions, p_z_given_x = self.model(x=self.node_features, batch=self.batch)
@@ -41,10 +43,7 @@ class TestNRIFeatureExtractor(unittest.TestCase):
     def test_inference(self):
         self.model.eval()  # Set the model to evaluation mode
         with torch.no_grad():
-            predictions, p_z_given_x = self.model(self.node_features, self.edge_index, self.batch)
+            predictions, p_z_given_x = self.model(self.node_features, batch=self.batch)
             # Check that predictions are valid after inference
             self.assertIsNotNone(predictions, "Predictions should not be None")
             self.assertIsNotNone(p_z_given_x, "Posterior probabilities should not be None")
-
-if __name__ == '__main__':
-    unittest.main()

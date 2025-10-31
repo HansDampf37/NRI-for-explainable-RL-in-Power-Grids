@@ -3,11 +3,12 @@ from typing import Optional
 import torch
 import torch.nn.functional as f
 from torch import nn, Tensor
+from torch_geometric.utils import to_dense_batch
 
 from nri.Sampling import GumbelSoftmax
 from nri.utils import fully_connected_edge_index_per_batch
-from nri.nri_rl.Encoder import Encoder
-from nri.nri_rl.GNN import NRIInformedGNN
+from nri.agent.Encoder import Encoder
+from nri.agent.GNN import NRIInformedGNN
 
 
 class NRI_GNN(nn.Module):
@@ -60,31 +61,36 @@ class NRI_GNN(nn.Module):
             skip_last=True,
         )
 
-    def forward(
-        self,
-        x: Tensor,
-        edge_index: Optional[Tensor] = None,
-        batch: Optional[Tensor] = None,
-    ) -> tuple[Tensor, Tensor]:
+    def forward(self, x: Tensor, batch: Optional[Tensor] = None,
+                edge_index: Optional[Tensor] = None) -> tuple[Tensor, Tensor]:
         """
         Forward pass.
 
         Args:
-            x (Tensor): Node features of shape [N, x_dim].
-            edge_index (Tensor): Graph connectivity in COO format [2, E]. (defaults to fully connected per batch)
-            batch (Tensor): Batch vector mapping each node to its graph [N]. (defaults to every node in the same batch)
+            x (Tensor): Node features of shape [B*N, x_dim].
+            batch (Tensor): Batch vector mapping each node to its graph [B*N]. (defaults to every node in the same batch)
+            edge_index (Tensor): Graph connectivity in COO format [2, B*E]. (defaults to fully connected per batch) THIS NEEDS TO HAVE A CONSISTENT NUMBER OF EDGES PER BATCH!
 
         Returns:
             tuple[Tensor, Tensor]:
                 predictions (Tensor): Graph-level features [B, x_out_dim].
-                p_z_given_x (Tensor): Soft edge-type posterior probabilities [E, K].
+                p_z_given_x (Tensor): Soft edge-type posterior probabilities [B, E, K].
         """
-        N, x_dim = x.shape[-2:]
-        batch = batch if batch is not None else torch.zeros(N).to(x.device)
+        BxN, x_dim = x.shape[-2:]
+        batch = batch if batch is not None else torch.zeros(BxN).to(x.device)
         edge_index = edge_index if edge_index is not None else fully_connected_edge_index_per_batch(batch, x.device)
 
-        encoder_logits: Tensor = self.encoder.forward(x=x, edge_index=edge_index, batch=batch)
-        p_z_given_x: Tensor = f.softmax(encoder_logits, dim=-1)
-        p_one_hot: Tensor = self.gumbel_softmax.forward(x=encoder_logits)
-        predictions: Tensor = self.gnn.forward(x=x, edge_index=edge_index, edge_type_posterior=p_one_hot, batch=batch)
-        return predictions, p_z_given_x
+        # get posterior
+        encoder_logits: Tensor = self.encoder.forward(x=x, batch=batch, edge_index=edge_index) # [B*E, K]
+        p_z_given_x: Tensor = f.softmax(encoder_logits, dim=-1) # [B*E, K]
+        p_one_hot: Tensor = self.gumbel_softmax.forward(x=encoder_logits) # [B*E, K]
+
+        # condition gnn on posterior and push x
+        predictions: Tensor = self.gnn.forward(x=x, batch=batch, edge_index=edge_index, edge_type_posterior=p_one_hot)
+
+        # transform posterior into batched format.
+        edge_batch = batch[edge_index[0]] # edge is in the same batch as incident nodes
+        batched_p_z_given_x, mask = to_dense_batch(p_z_given_x, edge_batch)
+        assert(torch.all(mask), "Different number of edge per batch is not allowed.")
+
+        return predictions, batched_p_z_given_x

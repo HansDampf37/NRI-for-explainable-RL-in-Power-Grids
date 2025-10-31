@@ -1,7 +1,7 @@
 import unittest
 import torch
 from torch_geometric.data import Data, Batch
-from nri.nri_rl import NRIInformedGNN
+from nri.agent.GNN import NRIInformedGNN
 
 
 class TestNRIInformedGNN(unittest.TestCase):
