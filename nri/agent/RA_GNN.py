@@ -5,9 +5,9 @@ from torch_geometric.nn import global_mean_pool, GCNConv, BatchNorm
 from common.MLP import MLP
 
 
-class NRIInformedGNN(nn.Module):
+class RA_GNN(nn.Module):
     """
-    The NRI-Informed GNN performs message passing conditioned on edge-type probabilities
+    The Relation Aware GNN performs message passing conditioned on edge-type probabilities
     predicted by a Neural Relational Inference (NRI) encoder.
 
     The NRI encoder output represents a distribution over K possible edge types for
@@ -20,7 +20,7 @@ class NRIInformedGNN(nn.Module):
 
     The overall pipeline:
     1. Project input node features x ∈ [N, X_in] into a hidden space.
-    2. Apply NRI-informed message passing layers (each conditioned on edge-type weights).
+    2. Apply relations aware message passing layers (each conditioned on edge-type weights).
     3. Project hidden representations into the output feature space.
     4. Aggregate node features into graph-level embeddings via global mean pooling.
 
@@ -47,7 +47,7 @@ class NRIInformedGNN(nn.Module):
             residual: bool = True,
     ):
         """
-        Instantiate GNN feature extractor.
+        Instantiate relations aware GNN.
 
         :param x_dim: input node feature dimension
         :param hidden_dim: hidden dim for node embeddings

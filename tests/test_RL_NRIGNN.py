@@ -2,7 +2,7 @@ import unittest
 
 import numpy as np
 import torch
-from nri.agent.NRI import NRI_GNN
+from nri.agent.RA_FE import RAFeatureExtractor
 
 class TestNRIGNN(unittest.TestCase):
     def setUp(self):
@@ -13,7 +13,7 @@ class TestNRIGNN(unittest.TestCase):
         self.num_edge_types = 4
         self.dropout_prob = 0.2
 
-        self.model = NRI_GNN(
+        self.model = RAFeatureExtractor(
             x_dim=self.x_dim,
             hidden_dim=self.hidden_dim,
             x_out_dim=self.x_out_dim,

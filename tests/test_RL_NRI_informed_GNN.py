@@ -1,7 +1,7 @@
 import unittest
 import torch
 from torch_geometric.data import Data, Batch
-from nri.agent.GNN import NRIInformedGNN
+from nri.agent.RA_GNN import RA_GNN
 
 
 class TestNRIInformedGNN(unittest.TestCase):
@@ -22,7 +22,7 @@ class TestNRIInformedGNN(unittest.TestCase):
         self.edge_type_posterior = torch.softmax(torch.randn(self.E, 2), dim=-1)
 
     def test_nri_informed_gnn(self):
-        model = NRIInformedGNN(
+        model = RA_GNN(
             x_dim=4,
             hidden_dim=8,
             x_out_dim=5,
@@ -39,7 +39,7 @@ class TestNRIInformedGNN(unittest.TestCase):
         self.assertFalse(torch.isinf(out).any())
 
     def test_without_residual(self):
-        model = NRIInformedGNN(
+        model = RA_GNN(
             x_dim=4,
             hidden_dim=8,
             x_out_dim=5,
@@ -53,7 +53,7 @@ class TestNRIInformedGNN(unittest.TestCase):
         self.assertEqual(out.shape, (2, 5))
 
     def test_invalid_edge_weight_shape(self):
-        model = NRIInformedGNN(4, 8, 5)
+        model = RA_GNN(4, 8, 5)
         bad_edge_weights = torch.randn(self.E + 1, 2)
         with self.assertRaises(AssertionError):
             _ = model(self.x, self.edge_index, bad_edge_weights, self.batch)

@@ -1,0 +1,171 @@
+from typing import Union, Optional, Tuple
+
+import hydra
+import numpy as np
+import torch as th
+from gymnasium import spaces
+from hydra.utils import instantiate
+from omegaconf import OmegaConf, DictConfig
+from stable_baselines3 import DQN
+from stable_baselines3.common.type_aliases import GymEnv, PyTorchObs
+from stable_baselines3.dqn.policies import DQNPolicy, QNetwork
+from torch import nn
+
+from common import GraphObservationSpace, G2OpGymEnv
+from nri.agent.HuberKLLoss import HuberKLLoss
+from nri.agent.RA_FE import RAFeatureExtractorSB3
+
+
+class RADQN(DQN):
+    """
+    This class implements the DQN interface from sb3. It uses the RA_GNN to predict the q_values. The loss is extended,
+    to include the distance between posterior p(z|x) to the prior p(z).
+    """
+
+    def __init__(self,
+                 env: Union[GymEnv, str],
+                 loss: HuberKLLoss,
+                 **kwargs):
+        super().__init__(RA_DQNPolicy, env, **kwargs)
+        assert isinstance(env.observation_space, GraphObservationSpace), "RADQN requires a graph observation space"
+        self.loss = loss
+
+    def train(self, gradient_steps: int, batch_size: int = 100) -> None:
+        # Switch to train mode (this affects batch norm / dropout)
+        self.policy.set_training_mode(True)
+        # Update learning rate according to schedule
+        self._update_learning_rate(self.policy.optimizer)
+
+        losses = []
+        for _ in range(gradient_steps):
+            # Sample replay buffer
+            replay_data = self.replay_buffer.sample(batch_size, env=self._vec_normalize_env)  # type: ignore[union-attr]
+            # For n-step replay, discount factor is gamma**n_steps (when no early termination)
+            discounts = replay_data.discounts if replay_data.discounts is not None else self.gamma
+
+            with th.no_grad():
+                # Compute the next Q-values using the target network
+                next_q_values, _ = self.q_net_target(replay_data.next_observations)
+                # Follow greedy policy: use the one with the highest value
+                next_q_values, _ = next_q_values.max(dim=1)
+                # Avoid potential broadcast issue
+                next_q_values = next_q_values.reshape(-1, 1)
+                # 1-step TD target
+                target_q_values = replay_data.rewards + (1 - replay_data.dones) * discounts * next_q_values
+
+            # Get current Q-values estimates
+            current_q_values, posterior_distributions = self.q_net(replay_data.observations)
+
+            # Retrieve the q-values for the actions from the replay buffer
+            current_q_values = th.gather(current_q_values, dim=1, index=replay_data.actions.long())
+
+            # Compute Huber loss (less sensitive to outliers)
+            loss = self.loss.forward(current_q_values, target_q_values, posterior_distributions)
+            losses.append(loss.item())
+
+            # Optimize the policy
+            self.policy.optimizer.zero_grad()
+            loss.backward()
+            # Clip gradient norm
+            th.nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
+            self.policy.optimizer.step()
+
+        # Increase update counter
+        self._n_updates += gradient_steps
+
+        self.logger.record("train/n_updates", self._n_updates, exclude="tensorboard")
+        self.logger.record("train/loss", np.mean(losses))
+
+
+class RA_QNetwork(QNetwork):
+    def __init__(
+            self,
+            observation_space: GraphObservationSpace,
+            action_space: spaces.Discrete,
+            features_extractor: RAFeatureExtractorSB3,
+            features_dim: int,
+            net_arch: Optional[list[int]] = None,
+            activation_fn: type[nn.Module] = nn.ReLU,
+            normalize_images: bool = True,
+    ):
+        super().__init__(
+            observation_space=observation_space,
+            action_space=action_space,
+            features_extractor=features_extractor,
+            features_dim=features_dim,
+            net_arch=net_arch,
+            activation_fn=activation_fn,
+            normalize_images=normalize_images
+        )
+
+    def forward(self, obs: PyTorchObs) -> Tuple[th.Tensor]:
+        """
+        Predict the q-values.
+
+        :param obs: Observation
+        :return: The estimated Q-Value for each action.
+        """
+        x, p_x_given_z = self.extract_features(obs, self.features_extractor)
+        return self.q_net(x), p_x_given_z
+
+
+class RA_DQNPolicy(DQNPolicy):
+    def make_q_net(self) -> QNetwork:
+        net_args = self._update_features_extractor(self.net_args, features_extractor=None)
+        return RA_QNetwork(**net_args).to(self.device)
+
+
+def get_env(cfg):
+    """
+    Creates a Grid2opWrapperEnvironment from hydra config using action and observation spaces from the configs baseline
+
+    :param cfg: The hydra config
+    :return: The environment
+    """
+    env: G2OpGymEnv = instantiate(
+        cfg.env,
+        obs_space_creation=lambda e: instantiate(cfg.ra_dqn.obs_space, grid2op_observation_space=e.observation_space),
+        act_space_creation=lambda e: instantiate(cfg.ra_dqn.act_space, grid2op_action_space=e.action_space)
+    )
+    return env
+
+
+@hydra.main(config_path="../../hydra_configs", config_name="config", version_base="1.3")
+def main(cfg: DictConfig):
+    print(OmegaConf.to_yaml(cfg))
+    env = get_env(cfg)
+    prior = np.array([])
+
+    policy_kwargs = {
+        "net_arch": cfg.ra_dqn.model.sb3.policy_kwargs.net_arch,
+        "features_extractor_class": RAFeatureExtractorSB3,
+        "features_extractor_kwargs": {
+            "hidden_dim": cfg.ra_dqn.model.sb3.policy_kwargs.features_extractor_kwargs.hidden_dim,
+            "out_dim": cfg.ra_dqn.model.sb3.policy_kwargs.features_extractor_kwargs.out_dim,
+            "num_edge_types": cfg.ra_dqn.model.sb3.policy_kwargs.features_extractor_kwargs.num_edge_types,
+            "dropout_prob": cfg.ra_dqn.model.sb3.policy_kwargs.features_extractor_kwargs.dropout_prob,
+        }
+    }
+
+    algorithm = RADQN(
+        env=env,
+        tensorboard_log="data/logs/radqn",
+        loss=HuberKLLoss(prior=prior, alpha=1, beta=0.2),
+        policy_kwargs=policy_kwargs,
+        verbose=cfg.ra_dqn.model.sb3.verbose,
+        train_freq=cfg.ra_dqn.model.sb3.train_freq,
+        gradient_steps=cfg.ra_dqn.model.sb3.gradient_steps,
+        gamma=cfg.ra_dqn.model.sb3.gamma,
+        exploration_fraction=cfg.ra_dqn.model.sb3.exploration_fraction,
+        exploration_final_eps=cfg.ra_dqn.model.sb3.exploration_final_eps,
+        target_update_interval=cfg.ra_dqn.model.sb3.target_update_interval,
+        learning_starts=cfg.ra_dqn.model.sb3.learning_starts,
+        buffer_size=cfg.ra_dqn.model.sb3.buffer_size,
+        batch_size=cfg.ra_dqn.model.sb3.batch_size,
+        learning_rate=cfg.ra_dqn.model.sb3.learning_rate,
+    )
+    algorithm.learn(total_timesteps=int(1e6), tb_log_name="radqn1")
+
+
+if __name__ == "__main__":
+    main()

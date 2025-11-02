@@ -2,18 +2,21 @@ from typing import Optional
 
 import torch
 import torch.nn.functional as f
+from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from torch import nn, Tensor
+from torch_geometric.data import Data, Batch
 from torch_geometric.utils import to_dense_batch
 
+from common import GraphObservationSpace, NODES
 from nri.Sampling import GumbelSoftmax
-from nri.utils import fully_connected_edge_index_per_batch
 from nri.agent.Encoder import Encoder
-from nri.agent.GNN import NRIInformedGNN
+from nri.agent.RA_GNN import RA_GNN
+from nri.utils import fully_connected_edge_index_per_batch
 
 
-class NRI_GNN(nn.Module):
+class RAFeatureExtractor(nn.Module):
     """
-    Combines an NRI encoder with an NRI-informed GN.
+    Combines an NRI encoder with a relations aware GGN.
 
     The encoder predicts edge-type logits for each edge. These logits are used both
     to compute soft edge-type probabilities (for monitoring) and to sample discrete
@@ -50,7 +53,7 @@ class NRI_GNN(nn.Module):
             dropout_prob=dropout_prob,
         )
         self.gumbel_softmax = GumbelSoftmax()
-        self.gnn: NRIInformedGNN = NRIInformedGNN(
+        self.gnn: RA_GNN = RA_GNN(
             x_dim=x_dim,
             hidden_dim=hidden_dim,
             x_out_dim=x_out_dim,
@@ -60,6 +63,7 @@ class NRI_GNN(nn.Module):
             residual=True,
             skip_last=True,
         )
+        self.x_out_dim = x_out_dim
 
     def forward(self, x: Tensor, batch: Optional[Tensor] = None,
                 edge_index: Optional[Tensor] = None) -> tuple[Tensor, Tensor]:
@@ -94,3 +98,39 @@ class NRI_GNN(nn.Module):
         assert(torch.all(mask), "Different number of edge per batch is not allowed.")
 
         return predictions, batched_p_z_given_x
+
+
+class RAFeatureExtractorSB3(BaseFeaturesExtractor):
+    """
+    Wraps the RAFeatureExtractor to be compatible with the sb3 API.
+    """
+
+    def __init__(
+            self,
+            observation_space: GraphObservationSpace,
+            hidden_dim: int,
+            out_dim: int,
+            num_edge_types: int,
+            dropout_prob: float = 0.0,
+    ):
+        BaseFeaturesExtractor.__init__(self, observation_space, features_dim=out_dim)
+        self.gnn_feature_extractor = RAFeatureExtractor(
+            x_dim=observation_space.x_dim,
+            hidden_dim=hidden_dim,
+            x_out_dim=out_dim,
+            num_edge_types=num_edge_types,
+            dropout_prob=dropout_prob,
+        )
+
+    def forward(self, observations: dict[str, torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor]:
+        node_features_batch = observations[NODES]  # [B, N, node_in_dim]
+
+        data_list = []
+        batch_size = node_features_batch.size(0)
+
+        for b in range(batch_size):
+            node_features = node_features_batch[b]
+            data_list.append(Data(x=node_features))
+
+        batch: Batch = Batch.from_data_list(data_list)
+        return self.gnn_feature_extractor(x=batch.x, batch=batch.batch)
