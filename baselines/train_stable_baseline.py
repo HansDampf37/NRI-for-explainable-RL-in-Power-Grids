@@ -12,8 +12,7 @@ from omegaconf import DictConfig, OmegaConf
 from stable_baselines3.common.base_class import BaseAlgorithm
 
 from baselines.baseline_agent import BaselineAgent, evaluate_agent
-from common import Grid2OpEnvWrapper
-from common.grid2op_env_wrapper import get_env
+from common import G2OpGymEnv
 from common.rewards import MazeRLReward
 
 logging.basicConfig(level=logging.WARN, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -53,7 +52,7 @@ def evaluate(cfg: DictConfig):
     :param cfg: The hydra configuration.
     """
     alg: BaseAlgorithm = model_setup(cfg, load_weights_from=Path(base_path_models.joinpath(cfg.baseline.model.name)))
-    env: Grid2OpEnvWrapper = get_env(cfg)
+    env: G2OpGymEnv = get_env(cfg)
 
     for _ in range(cfg.baseline.eval.nb_episodes):
         obs, info = env.reset()
@@ -72,14 +71,15 @@ def evaluate(cfg: DictConfig):
         base_path.mkdir(parents=True, exist_ok=True)
         with open(base_path.joinpath("episode_meta.json"), 'w') as f:
             json.dump({
-            "agent_seed": None,
-            "chronics_max_timestep": -1,
-            "cumulative_reward": cumulative_reward,
-            "nb_timestep_played": episode_length
-        }, f, indent=4)
+                "agent_seed": None,
+                "chronics_max_timestep": -1,
+                "cumulative_reward": cumulative_reward,
+                "nb_timestep_played": episode_length
+            }, f, indent=4)
 
     for dataset in ["train", "test", "val"]:
-        grid2op_env = grid2op.make(f"{cfg.env.env_name}_{dataset}", backend=LightSimBackend(), reward_class=MazeRLReward)
+        grid2op_env = grid2op.make(f"{cfg.env.env_name}_{dataset}", backend=LightSimBackend(),
+                                   reward_class=MazeRLReward)
         evaluate_agent(
             agent=build_agent(cfg, Path(base_path_models.joinpath(cfg.baseline.model.name))),
             env=grid2op_env,
@@ -111,7 +111,7 @@ def model_setup(cfg: DictConfig, load_weights_from: Optional[Path] = None) -> Ba
     :param load_weights_from: the path to the model to load
     """
     # create grid2opWrapperEnvironment from hydra config using action and observation spaces from the config
-    env: Grid2OpEnvWrapper = get_env(cfg)
+    env: G2OpGymEnv = get_env(cfg)
 
     # model
     hacky_feature_extractor_kwargs = {}
@@ -135,6 +135,21 @@ def model_setup(cfg: DictConfig, load_weights_from: Optional[Path] = None) -> Ba
     if load_weights_from is not None:
         alg.set_parameters(load_weights_from)
     return alg
+
+
+def get_env(cfg):
+    """
+    Creates a Grid2opWrapperEnvironment from hydra config using action and observation spaces from the configs baseline
+
+    :param cfg: The hydra config
+    :return: The environment
+    """
+    env: G2OpGymEnv = instantiate(
+        cfg.env,
+        obs_space_creation=lambda e: instantiate(cfg.baseline.obs_space, grid2op_observation_space=e.observation_space),
+        act_space_creation=lambda e: instantiate(cfg.baseline.act_space, grid2op_action_space=e.action_space)
+    )
+    return env
 
 
 @hydra.main(config_path="../hydra_configs", config_name="config", version_base="1.3")

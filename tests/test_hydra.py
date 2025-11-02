@@ -5,7 +5,7 @@ import hydra
 from grid2op.gym_compat import DiscreteActSpace, BoxGymObsSpace
 from hydra.utils import instantiate
 
-from common import Grid2OpEnvWrapper
+from common import G2OpGymEnv
 from common.graph_structured_observation_space import EntityGraphObservationSpace
 
 class TestHydra(unittest.TestCase):
@@ -40,4 +40,4 @@ class TestHydra(unittest.TestCase):
                 obs_space_creation = lambda e: instantiate(obs_cfg.baseline.obs_space, grid2op_observation_space=e.observation_space),
                 act_space_creation = lambda e: instantiate(act_cfg.baseline.act_space, grid2op_action_space=e.action_space)
             )
-            self.assertIsInstance(env, Grid2OpEnvWrapper)
+            self.assertIsInstance(env, G2OpGymEnv)

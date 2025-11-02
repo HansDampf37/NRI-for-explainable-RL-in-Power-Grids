@@ -1,5 +1,5 @@
 sb3:
-    _target_: stable_baselines3.dqn.dqn.DQN
+    _target_: nri/agent/RADQN
     verbose: 1
     train_freq: 16
     gradient_steps: 8
@@ -11,7 +11,13 @@ sb3:
     buffer_size: 10000
     batch_size: 128
     learning_rate: 4e-3
+    policy_kwargs:
+        net_arch: [ 100 ]
+        features_extractor_kwargs:
+            hidden_dim: 32
+            out_dim: 32
+            num_edge_types: 2
+            dropout_prob: 0.1
 
-name: dqn
 topology_policy:
     _target_: baselines.topo_policies_sb3.TopoPolicyStableDQN

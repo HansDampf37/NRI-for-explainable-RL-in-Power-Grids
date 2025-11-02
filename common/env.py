@@ -3,20 +3,20 @@ from typing import Optional
 import grid2op
 from grid2op.gym_compat import DiscreteActSpace, BoxGymObsSpace
 from gymnasium import Env
-from hydra.utils import instantiate
 from l2rpn_baselines.utils import GymEnvWithRecoWithDN
 from lightsim2grid import LightSimBackend
 
 from common.rewards import MazeRLReward
 
 
-class Grid2OpEnvWrapper(Env):
+class G2OpGymEnv(Env):
     """
     Gymnasium-compatible wrapper for Grid2Op environments with heuristic actions
 
     This class wraps a Grid2Op environment and exposes it through a standard
     Gymnasium interface. This wrapper implements the same logic as GymEnvWithRecoWithDN
-    (automatically reconnect powerlines do nothing if load is low).
+    (automatically reconnect powerlines do nothing if load is low). Additionally, the do-nothing action is applied
+    whenever the maximum line load is lower than safe_max_rho.
     """
 
     def __init__(self,
@@ -26,7 +26,7 @@ class Grid2OpEnvWrapper(Env):
                  obs_space_creation=lambda env: BoxGymObsSpace(grid2op_observation_space=env.observation_space)):
         super().__init__()
         self._g2op_env = grid2op.make(env_name, backend=LightSimBackend(), reward_class=MazeRLReward)
-        self._gym_env = GymEnvWithRecoWithDN(self._g2op_env, safe_max_rho=safe_max_rho, with_forecast=True)
+        self._gym_env = GymEnvWithRecoWithDN(self._g2op_env, safe_max_rho=safe_max_rho, with_forecast=False)
 
         self._gym_env.observation_space.close()
         self._gym_env.observation_space = obs_space_creation(self._g2op_env)
@@ -44,18 +44,3 @@ class Grid2OpEnvWrapper(Env):
 
     def step(self, action):
         return self._gym_env.step(action)
-
-
-def get_env(cfg):
-    """
-    Creates a Grid2opWrapperEnvironment from hydra config using action and observation spaces from the configs baseline
-
-    :param cfg: The hydra config
-    :return: The environment
-    """
-    env: Grid2OpEnvWrapper = instantiate(
-        cfg.env,
-        obs_space_creation=lambda e: instantiate(cfg.baseline.obs_space, grid2op_observation_space=e.observation_space),
-        act_space_creation=lambda e: instantiate(cfg.baseline.act_space, grid2op_action_space=e.action_space)
-    )
-    return env

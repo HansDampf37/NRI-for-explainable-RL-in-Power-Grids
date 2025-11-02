@@ -5,16 +5,16 @@ from grid2op.gym_compat import BoxGymObsSpace, BoxGymActSpace
 from gymnasium.spaces import Discrete, Box
 
 from common.graph_structured_observation_space import BusConnectivityGraphObsSpace
-from common.grid2op_env_wrapper import Grid2OpEnvWrapper
+from common.env import G2OpGymEnv
 
 
 class TestGrid2opEnvWrapper(unittest.TestCase):
     def setUp(self):
-        self.env = Grid2OpEnvWrapper()
+        self.env = G2OpGymEnv()
         self.env.reset()
 
     def test_custom_obs_space(self):
-        env = Grid2OpEnvWrapper(obs_space_creation=lambda e: BusConnectivityGraphObsSpace(e.observation_space))
+        env = G2OpGymEnv(obs_space_creation=lambda e: BusConnectivityGraphObsSpace(e.observation_space))
         obs, info = env.reset()
         self.assertIsInstance(obs, Dict)
 
@@ -24,7 +24,7 @@ class TestGrid2opEnvWrapper(unittest.TestCase):
         self.assertEqual(self.env._g2op_env.n_gen, 6)  # small env by default
 
     def test_config_2(self):
-        self.env = Grid2OpEnvWrapper(
+        self.env = G2OpGymEnv(
             env_name="l2rpn_idf_2023",
             act_space_creation=lambda e: BoxGymActSpace(e.action_space),
             obs_space_creation=lambda e: BoxGymObsSpace(e.observation_space, attr_to_keep=["rho"]))
