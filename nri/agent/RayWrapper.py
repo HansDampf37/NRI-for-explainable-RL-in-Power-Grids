@@ -1,50 +1,45 @@
-from typing import Dict
+from typing import Dict, Tuple
 
+import ray
 import torch
 from grid2op.gym_compat import DiscreteActSpace
 from gymnasium.spaces import Discrete
-from ray.rllib.algorithms.dqn import DQNConfig, DQN
-from ray.rllib.core.rl_module import RLModule, RLModuleSpec
-from torch import nn
+from ray.rllib.algorithms import PPOConfig
+from ray.rllib.core.rl_module import RLModuleSpec
+from ray.rllib.core.rl_module.torch import TorchRLModule
+from torch import nn, Tensor
 from torch_geometric.data import Data, Batch
 
-from common import GraphObservationSpace, NODES, Grid2OpEnvWrapper, BusConnectivityGraphObsSpace
-from nri.agent.NRI import NRI_GNN
+from common import NODES, G2OpGymEnv, BusConnectivityGraphObsSpace
+from nri.agent.RA_FE import RAFeatureExtractor
 
 
-class RayEnv(Grid2OpEnvWrapper):
+class RayEnv(G2OpGymEnv):
     def __init__(self, env_config: Dict):
         super().__init__(
             env_name=env_config["env_name"],
             safe_max_rho=env_config["safe_max_rho"],
-            act_space_creation=lambda env: DiscreteActSpace(env.action_space),
+            act_space_creation=lambda env: DiscreteActSpace(env.action_space, attr_to_keep=["set_bus"]),
             obs_space_creation=lambda env: BusConnectivityGraphObsSpace(env.observation_space)
         )
 
 
-class NRI_DQN(RLModule, nn.Module):
-    def __init__(self, observation_space: GraphObservationSpace, action_space: Discrete, model_config: Dict, catalog_class, inference_only: bool = False, learner_only: bool = False):
-        RLModule.__init__(
-            self,
-            observation_space=observation_space,
-            action_space=action_space,
-            inference_only=inference_only,
-            learner_only=learner_only,
-            model_config=model_config,
-            catalog_class=catalog_class)
-        nn.Module.__init__(self)
-
-        self.nri_gnn = NRI_GNN(
-            x_dim=observation_space.x_dim,
-            hidden_dim=model_config["hidden_dim"],
-            x_out_dim=model_config["hidden_dim"],
-            num_edge_types=model_config["num_edge_types"],
-            dropout_prob=model_config["dropout_prob"]
+class NRI_DQN(TorchRLModule):
+    def setup(self):
+        assert isinstance(self.observation_space, BusConnectivityGraphObsSpace)
+        assert isinstance(self.action_space, Discrete)
+        self._nri_gnn = RAFeatureExtractor(
+            x_dim=self.observation_space.x_dim,
+            hidden_dim=self.model_config["hidden_dim"],
+            x_out_dim=self.model_config["hidden_dim"],
+            num_edge_types=self.model_config["num_edge_types"],
+            dropout_prob=self.model_config["dropout_prob"]
         )
-        self.linear = nn.Linear(model_config["hidden_dim"], action_space.n)
+        self._linear = nn.Linear(self.model_config["hidden_dim"], self.action_space.n)
 
-    def forward(self, input_dict: dict[str, torch.Tensor], state, seq_lens):
-        observations = input_dict["obs"]
+
+    def _forward(self, batch: dict[str, dict[str, Tensor]], **kwargs) -> Tuple[Tensor, Tensor]:
+        observations = batch["obs"]
         node_features_batch = observations[NODES]  # [B, N, node_in_dim]
 
         data_list = []
@@ -55,22 +50,23 @@ class NRI_DQN(RLModule, nn.Module):
             data_list.append(Data(x=node_features))
 
         batch: Batch = Batch.from_data_list(data_list)
-        x, p_z_given_x = self.nri_gnn.forward(x=batch.x, batch=batch.batch)
-        x = self.linear(x)
+        x, p_z_given_x = self._nri_gnn.forward(x=batch.x, batch=batch.batch)
+        x = self._linear(x)
         return x, p_z_given_x
 
 
 def main():
+    ray.init()
+    env_config = {
+        "env_name": "l2rpn_case14_sandbox",
+        "safe_max_rho": 0.95
+    }
     config = (
-        DQNConfig()
-        .api_stack(enable_rl_module_and_learner=True)
-        .environment(
-            env=RayEnv,
-            env_config={
-                "env_name": "l2rpn_case14_sandbox",
-                "safe_max_rho": 0.95
-            }
-        )
+        PPOConfig()
+        .training(gamma=0.9, lr=0.01)
+        .environment(env=RayEnv, env_config=env_config)
+        .resources(num_gpus=1 if torch.cuda.is_available() else 0)
+        .env_runners(num_env_runners=0)
         .framework("torch")
         .rl_module(
             rl_module_spec=RLModuleSpec(
@@ -83,7 +79,43 @@ def main():
             )
         )
     )
-    algo = DQN(config=config)
+
+    # A config object can be used to construct the respective Algorithm.
+    config.build_algo()
+    # config = (
+    #     DQNConfig()
+    #     .api_stack(enable_rl_module_and_learner=True)
+    #     .framework("torch")
+    #     .environment(
+    #         env=RayEnv,
+    #         env_config={
+    #             "env_name": "l2rpn_case14_sandbox",
+    #             "safe_max_rho": 0.95
+    #         }
+    #     )
+    #     .rl_module(
+    #         rl_module_spec=RLModuleSpec(
+    #             module_class=NRI_DQN,
+    #             model_config={
+    #                 "hidden_dim": 32,
+    #                 "num_edge_types": 2,
+    #                 "dropout_prob": 0.1,
+    #             },
+    #         )
+    #     )
+    #     .training(
+    #         replay_buffer_config={
+    #             "type": "PrioritizedEpisodeReplayBuffer",
+    #             "capacity": 60000,
+    #             "alpha": 0.5,
+    #             "beta": 0.5,
+    #         },
+    #         n_step=120_000,
+    #     )
+    #     .env_runners(num_env_runners=0)
+    # )
+    # algo = DQN(config=config)
+    # algo.train()
 
 
 if __name__ == "__main__":
