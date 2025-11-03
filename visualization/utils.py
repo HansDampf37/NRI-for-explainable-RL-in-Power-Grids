@@ -33,7 +33,7 @@ class PlottingArgs:
     latent_edge_probs: Optional[np.ndarray] = None
     latent_edge_weight: float = 5.0
     do_weight_sweep: bool = False
-    skip_first_edge_type: bool = True
+    skip_last_edge_type: bool = True
 
 
 def visualize_graph(args: PlottingArgs) -> Figure:
@@ -46,8 +46,10 @@ def visualize_graph(args: PlottingArgs) -> Figure:
     fig = plt.figure(figsize=(18, 10))
     ax = plt.gca()
 
+    # create graph
     G = nx.MultiDiGraph()
     G.add_nodes_from(range(args.num_nodes))
+
 
     if args.powerline_edge_index is not None:
         for src, dst in args.powerline_edge_index.T:
@@ -56,13 +58,14 @@ def visualize_graph(args: PlottingArgs) -> Figure:
     if args.latent_edge_probs is not None:
         cmap = plt.get_cmap("Pastel1")
         edge_index_fully_connected = fully_connected_edge_index(num_nodes=args.num_nodes)
+        max_edge_type = args.latent_edge_probs.shape[1] - 1
         for edge_index, _ in enumerate(args.latent_edge_probs):
             for edge_type, _ in enumerate(args.latent_edge_probs[edge_index]):
-                if not args.skip_first_edge_type or edge_type != 0:
+                if not args.skip_last_edge_type or edge_type != max_edge_type:
                     weight = args.latent_edge_weight * args.latent_edge_probs[edge_index, edge_type]
                     if weight >= 1:
                         src, dst = edge_index_fully_connected[:, edge_index]
-                        G.add_edge(int(src), int(dst), color=cmap(edge_type), weight=weight, type="Dependency")
+                        G.add_edge(int(src), int(dst), color=cmap(1+edge_type), weight=weight, type="Dependency")
 
     edge_colors = [d["color"] for (_, _, d) in G.edges(data=True)]
     edge_weights = [d["weight"] for (_, _, d) in G.edges(data=True)]
@@ -132,16 +135,16 @@ def _create_legend(args: PlottingArgs, G: networkx.Graph) -> None:
     plt.legend(handles=node_legend + edge_legend, loc="best", frameon=False)
 
 
-def latent_edge_hist(accumulated_edge_probabilities: np.ndarray, skip_first_edge_type: bool = True):
+def latent_edge_hist(accumulated_edge_probabilities: np.ndarray, skip_last_edge_type: bool = True):
     """
     Visualize a histogram showcasing the probability masses for different edges for any edge type except the first.
 
     :param accumulated_edge_probabilities: Edge probabilities of shape [E, num_edge_types] with probabilities for each edge - edge_type combination
-    :param skip_first_edge_type: Whether to skip edges with type 0 (default: True)
+    :param skip_last_edge_type: Whether to skip last edge type (default: True)
     :return: Reference to the Seaborn-styled matplotlib figure
     """
-    if skip_first_edge_type:
-        df = pd.DataFrame({'Edge probability': accumulated_edge_probabilities[:, 1:].sum(axis=-1).tolist()})
+    if skip_last_edge_type:
+        df = pd.DataFrame({'Edge probability': accumulated_edge_probabilities[:, :-1].sum(axis=-1).tolist()})
     else:
         df = pd.DataFrame({'Edge probability': accumulated_edge_probabilities.sum(axis=-1).tolist()})
 

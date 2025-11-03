@@ -31,7 +31,7 @@ class NRIModule(nn.Module):
             num_edge_types: int = 2,
             pred_steps: int = 3,
             dropout_prob: float = 0.0,
-            skip_first: bool = True
+            skip_last: bool = True
     ):
         """
         Constructs a NRI module.
@@ -55,12 +55,12 @@ class NRIModule(nn.Module):
             num_edge_types=num_edge_types,
             hidden_dim=hidden_dim,
             dropout_prob=dropout_prob,
-            skip_first=skip_first
+            skip_last=skip_last
         )
         self.gumbel_softmax = GumbelSoftmax()
         self.pred_steps = pred_steps
         self.num_edge_types = num_edge_types
-        self.skip_first = skip_first
+        self.skip_last = skip_last
 
 
     def forward(self, x: Tensor, edge_index: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:

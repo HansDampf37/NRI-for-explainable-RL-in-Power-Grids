@@ -20,19 +20,20 @@ class Decoder(nn.Module):
         num_edge_types: int,
         hidden_dim: int,
         dropout_prob: float = 0.0,
-        skip_first: bool = False,
+        skip_last: bool = False,
     ):
         """
         Constructor
         :param x_dim: number of input features for nodes
         :param hidden_dim: hidden dimension for MLPs used
         :param dropout_prob: dropout probability (defaults to 0.)
-        :param skip_first: whether to skip the first edge type (this edge type commonly encoder the no-edge type) (defaults to False)
+        :param skip_last: whether to skip the last edge type (this edge type commonly encoder the no-edge type) (defaults to False)
         """
         super().__init__()
 
         self.num_edge_types = num_edge_types
-        self.skip_first = skip_first
+        self.skip_last = skip_last
+        self.edge_type_range = range(self.num_edge_types - 1) if skip_last else range(self.num_edge_types)
 
         self.node2edge_list: nn.ModuleList[Node2Edge] = nn.ModuleList([
             Node2Edge(
@@ -41,7 +42,7 @@ class Decoder(nn.Module):
                 e_dim=hidden_dim,
                 dropout_prob=dropout_prob,
             )
-            for _ in range(num_edge_types)
+            for _ in self.edge_type_range
         ])
 
         self.edge_node2node = EdgeNode2Node(
@@ -69,12 +70,11 @@ class Decoder(nn.Module):
         :param edge_index: edge index used by the encoder [2, E]. Defaults to fully meshed edge index.
         :return: node features for next time step [(B), T, N, X_dim]
         """
-        start_idx = 1 if self.skip_first else 0
         edge_index = edge_index if edge_index is not None else fully_connected_edge_index(x.shape[-2], x.device)
         edge_types = edge_types.unsqueeze(-3) # [(B), 1, E, edge_types]
 
         e_all = None
-        for k in range(start_idx, self.num_edge_types):
+        for k in self.edge_type_range:
             e_k = edge_types[..., [k]] * self.node2edge_list[k].forward(x, edge_index)
             e_all = e_all + e_k if e_all is not None else e_k
 

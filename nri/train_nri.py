@@ -297,7 +297,7 @@ def main(cfg: DictConfig):
         node_styles=get_node_styles(env, observation_space.__class__),
         powerline_edge_index=edge_index,
         latent_edge_weight=5.0,
-        skip_first_edge_type=cfg.nri.model.skip_first,
+        skip_last_edge_type=cfg.nri.model.skip_last,
     )
 
     # Prepare feature mask

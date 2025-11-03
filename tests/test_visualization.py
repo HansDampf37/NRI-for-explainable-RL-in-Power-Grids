@@ -46,7 +46,7 @@ class TestVisualization(unittest.TestCase):
             powerline_edge_index=obs_space.to_gym(obs)[EDGE_INDEX],
             latent_edge_probs=edge_type_probs.numpy(),
             latent_edge_weight=2,
-            skip_first_edge_type=True
+            skip_last_edge_type=True
         )
         fig = visualize_graph(plotting_args)
         # plt.show()

@@ -30,7 +30,7 @@ class TestDecoder(unittest.TestCase):
             num_edge_types=self.num_edge_types,
             hidden_dim=self.hidden_dim,
             dropout_prob=0.3,
-            skip_first=False,
+            skip_last=False,
         )
 
     def test_single_step_forward_shape(self):
