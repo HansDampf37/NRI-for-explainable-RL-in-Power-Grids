@@ -7,7 +7,7 @@ from typing import Union, Optional, Tuple, Any
 
 import hydra
 import numpy as np
-import torch as th
+import torch
 from gymnasium import spaces
 from hydra.utils import instantiate
 from omegaconf import OmegaConf, DictConfig
@@ -15,11 +15,12 @@ from stable_baselines3 import DQN
 from stable_baselines3.common.buffers import ReplayBuffer
 from stable_baselines3.common.type_aliases import GymEnv, PyTorchObs, Schedule
 from stable_baselines3.dqn.policies import DQNPolicy, QNetwork
-from torch import nn
+from torch import nn, Tensor
 
-from common import GraphObservationSpace, G2OpGymEnv
+from common import GraphObservationSpace, G2OpGymEnv, EDGE_INDEX
 from nri.agent.HuberKLLoss import HuberKLLoss
 from nri.agent.RA_FE import RAFeatureExtractorSB3
+from nri.utils import fully_connected_edge_index, _get_prior
 
 
 class RADQN(DQN):
@@ -53,7 +54,7 @@ class RADQN(DQN):
                  policy_kwargs: Optional[dict[str, Any]] = None,
                  verbose: int = 0,
                  seed: Optional[int] = None,
-                 device: Union[th.device, str] = "auto",
+                 device: Union[torch.device, str] = "auto",
                  _init_setup_model: bool = True) -> None:
         """
         Constructor.
@@ -105,7 +106,7 @@ class RADQN(DQN):
             # For n-step replay, discount factor is gamma**n_steps (when no early termination)
             discounts = replay_data.discounts if replay_data.discounts is not None else self.gamma
 
-            with th.no_grad():
+            with torch.no_grad():
                 # Compute the next Q-values using the target network
                 next_q_values, _ = self.q_net_target(replay_data.next_observations)
                 # Follow greedy policy: use the one with the highest value
@@ -119,7 +120,7 @@ class RADQN(DQN):
             current_q_values, posterior_distributions = self.q_net(replay_data.observations)
 
             # Retrieve the q-values for the actions from the replay buffer
-            current_q_values = th.gather(current_q_values, dim=1, index=replay_data.actions.long())
+            current_q_values = torch.gather(current_q_values, dim=1, index=replay_data.actions.long())
 
             # Compute Huber loss (less sensitive to outliers)
             loss, huber, kl = self.loss_fn.forward(
@@ -136,7 +137,7 @@ class RADQN(DQN):
             self.policy.optimizer.zero_grad()
             loss.backward()
             # Clip gradient norm
-            th.nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
+            torch.nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
             self.policy.optimizer.step()
 
         # Increase update counter
@@ -175,7 +176,7 @@ class RA_QNetwork(QNetwork):
             normalize_images=normalize_images
         )
 
-    def forward(self, obs: PyTorchObs) -> Tuple[th.Tensor]:
+    def forward(self, obs: PyTorchObs) -> Tuple[torch.Tensor]:
         """
         Predict the q-values.
 
@@ -216,8 +217,6 @@ def main(cfg: DictConfig):
     timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M')
     name = f"ra_dqn_{timestamp}_{uuid.uuid4().hex}"
     env = get_env(cfg)
-    env.reset()
-    prior = np.array([])
 
     policy_kwargs = {
         "net_arch": cfg.ra_dqn.model.sb3.policy_kwargs.net_arch,
@@ -226,14 +225,23 @@ def main(cfg: DictConfig):
             "hidden_dim": cfg.ra_dqn.model.sb3.policy_kwargs.features_extractor_kwargs.hidden_dim,
             "out_dim": cfg.ra_dqn.model.sb3.policy_kwargs.features_extractor_kwargs.out_dim,
             "num_edge_types": cfg.ra_dqn.model.sb3.policy_kwargs.features_extractor_kwargs.num_edge_types,
-            "dropout_prob": cfg.ra_dqn.model.sb3.policy_kwargs.features_extractor_kwargs.dropout_prob,
+            "dropout_prob": cfg.ra_dqn.model.sb3.policy_kwargs.features_extractor_kwargs.dropout_prob, #TODO optionally include edge index here to restrict edges for nri
         }
     }
+
+    # create loss function
+    prior_for_graph_edges = Tensor(cfg.ra_dqn.model.loss.prior_for_graph_edges).to(dtype=torch.float32)
+    prior_for_non_graph_edges = Tensor(cfg.ra_dqn.model.loss.prior_for_non_graph_edges).to(dtype=torch.float32)
+    powergrid_edge_index = torch.from_numpy(env.reset()[0][EDGE_INDEX]) # [2, E]
+    N = powergrid_edge_index.max() + 1
+    all_edges = fully_connected_edge_index(N) # [2, E']
+    prior = _get_prior(powergrid_edge_index, all_edges, prior_for_graph_edges, prior_for_non_graph_edges)
+    loss_fn = HuberKLLoss(prior=prior, alpha=cfg.ra_dqn.model.loss.alpha, beta=cfg.ra_dqn.model.loss.beta)
 
     algorithm = RADQN(
         env=env,
         tensorboard_log="data/logs/radqn",
-        loss_fn=HuberKLLoss(prior=prior, alpha=1, beta=0.2),
+        loss_fn=loss_fn,
         policy_kwargs=policy_kwargs,
         verbose=cfg.ra_dqn.model.sb3.verbose,
         train_freq=cfg.ra_dqn.model.sb3.train_freq,

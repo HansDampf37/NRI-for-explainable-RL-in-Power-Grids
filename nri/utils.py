@@ -24,6 +24,7 @@ def fully_connected_edge_index(num_nodes: int, device: str = "cpu", self_loops: 
         edge_index = edge_index[:, edge_index[0] != edge_index[1]]
     return edge_index.to(device=device)
 
+
 def fully_connected_edge_index_per_batch(batch: Tensor, device: str = "cpu", self_loops: bool = False) -> Tensor:
     """
     Create an edge index representing batch of fully connected edge indices.
@@ -46,6 +47,34 @@ def fully_connected_edge_index_per_batch(batch: Tensor, device: str = "cpu", sel
         edge_index_global = node_idx[edge_index_local]
         edge_indices.append(edge_index_global)
     return torch.cat(edge_indices, dim=1)
+
+
+def _get_prior(graph_edges: Tensor, all_edges: Tensor, prior_for_graph_edges: Tensor,
+               prior_for_non_graph_edges: Tensor) -> Tensor:
+    """
+    Given edge indices for graph edges [2,E] and all considered edges [2, E'] return a tensor of shape [E', K] containing
+    prior distribution for each considered edge in E'. If the edge exists as part of the graph it receives the distribution
+    `prior_for_graph_edges`. Otherwise, its distribution is set to `prior_for_non_graph_edges`.
+    @param graph_edges: Edge index for graph edges [2, E]
+    @param all_edges: Edge index for all considered edges [2, E'] (typically fully connected)
+    @param prior_for_graph_edges: prior distribution for graph edges [E, K]
+    @param prior_for_non_graph_edges: prior distribution for non-graph edges [E, K]
+    @return: prior distribution for all considered edges in E'
+    """
+    assert prior_for_graph_edges.shape == prior_for_non_graph_edges.shape
+    all_edges = all_edges.T
+    E, _ = all_edges.shape
+    mask = torch.zeros((E,), dtype=torch.bool)
+    for e in range(graph_edges.shape[1]):
+        mask = torch.logical_or(
+            torch.all(all_edges == graph_edges[:, e].unsqueeze(0), dim=1),
+            mask
+        )
+    num_edge_types = prior_for_graph_edges.shape[0]
+    prior = torch.zeros((E, num_edge_types), dtype=torch.float32)
+    prior[mask] = prior_for_graph_edges
+    prior[torch.logical_not(mask)] = prior_for_non_graph_edges
+    return prior
 
 
 class Node2Edge(nn.Module):

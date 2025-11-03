@@ -1,10 +1,9 @@
 import math
 from typing import Optional, Tuple, Union
 
-import numpy.typing as npt
 import torch
-from torch import nn, Tensor
 import torch.nn.functional as F
+from torch import nn, Tensor
 
 
 class HuberKLLoss(nn.Module):
@@ -17,7 +16,7 @@ class HuberKLLoss(nn.Module):
     The prior p_θ(z) is a distribution that the posterior distribution q_φ(z|x) is pushed towards.
     """
 
-    def __init__(self, prior: Optional[npt.NDArray] = None, alpha: float = 1.0, beta: float = 1.0):
+    def __init__(self, prior: Optional[Tensor] = None, alpha: float = 1.0, beta: float = 1.0):
         """
         Constructor
 
@@ -32,7 +31,7 @@ class HuberKLLoss(nn.Module):
 
         if prior is not None:
             device = "cuda" if torch.cuda.is_available() else "cpu"
-            prior = torch.from_numpy(prior).to(dtype=torch.float32, device=device)
+            prior = prior.to(dtype=torch.float32, device=device)
             prior = prior / prior.sum(dim=-1, keepdim=True)
             self.register_buffer('prior', prior)
         else:
@@ -66,6 +65,5 @@ class HuberKLLoss(nn.Module):
             return neg_entropy.mean() + constant_term
         else:
             # KL(q || p): sum q * log(q / p) = sum q * (log(q) - log(p))
-            prior = self.prior.unsqueeze(0)
-            kl = (posterior_probs * (torch.log(posterior_probs + self.eps) - torch.log(prior + self.eps))).sum(dim=-1)
+            kl = (posterior_probs * (torch.log(posterior_probs + self.eps) - torch.log(self.prior + self.eps))).sum(dim=-1)
             return kl.mean()
