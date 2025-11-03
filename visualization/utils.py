@@ -53,7 +53,7 @@ def visualize_graph(args: PlottingArgs) -> Figure:
 
     if args.powerline_edge_index is not None:
         for src, dst in args.powerline_edge_index.T:
-            G.add_edge(int(src), int(dst), color="gray", weight=1, type="Powerline")
+            G.add_edge(int(src), int(dst), color="gray", weight=1, type="Connection")
 
     if args.latent_edge_probs is not None:
         cmap = plt.get_cmap("Pastel1")
@@ -121,13 +121,13 @@ def _create_legend(args: PlottingArgs, G: networkx.Graph) -> None:
                label=f"Edge type {i}")
         for i, c in enumerate(dependency_edge_colors_unique)
     ]
-    powerline_edge_color = [d["color"] for (_, _, d) in G.edges(data=True) if d["type"] == "Powerline"]
+    powerline_edge_color = [d["color"] for (_, _, d) in G.edges(data=True) if d["type"] == "Connection"]
     if len(powerline_edge_color) > 0:
         powerline_legend_entry = Line2D(
             [0], [0],
             color=powerline_edge_color[0],
             lw=2,
-            label=f"Powerline"
+            label=f"Connection"
         )
         edge_legend.insert(0, powerline_legend_entry)
 
