@@ -3,7 +3,7 @@ This script implements the relations aware DQN (RADQN) in the sb3 framework.
 """
 import uuid
 from datetime import datetime
-from typing import Union, Optional, Tuple, Any
+from typing import Union, Optional, Tuple, Any, Dict, List
 
 import hydra
 import numpy as np
@@ -41,10 +41,10 @@ class RADQN(DQN):
                  batch_size: int = 32,
                  tau: float = 1.0,
                  gamma: float = 0.99,
-                 train_freq: Union[int, tuple[int, str]] = 4,
+                 train_freq: Union[int, Tuple[int, str]] = 4,
                  gradient_steps: int = 1,
                  replay_buffer_class: Optional[type[ReplayBuffer]] = None,
-                 replay_buffer_kwargs: Optional[dict[str, Any]] = None,
+                 replay_buffer_kwargs: Optional[Dict[str, Any]] = None,
                  optimize_memory_usage: bool = False,
                  n_steps: int = 1,
                  target_update_interval: int = 10000,
@@ -54,7 +54,7 @@ class RADQN(DQN):
                  max_grad_norm: float = 10,
                  stats_window_size: int = 100,
                  tensorboard_log: Optional[str] = None,
-                 policy_kwargs: Optional[dict[str, Any]] = None,
+                 policy_kwargs: Optional[Dict[str, Any]] = None,
                  verbose: int = 0,
                  seed: Optional[int] = None,
                  device: Union[torch.device, str] = "auto",
@@ -65,7 +65,7 @@ class RADQN(DQN):
         @param loss_fn: a HuberKLLoss object that is used to train the DQN
         """
         super().__init__(
-            RA_DQNPolicy,
+            RADQNPolicy,
             env,
             learning_rate,
             buffer_size,
@@ -94,6 +94,9 @@ class RADQN(DQN):
         assert isinstance(env.observation_space, GraphObservationSpace), "RADQN requires a graph observation space"
         self.loss_fn = loss_fn
         self.plotting_args = plotting_args
+        if seed is not None:
+            torch.manual_seed(seed)
+            np.random.seed(seed)
 
     def train(self, gradient_steps: int, batch_size: int = 100) -> None:
         # Switch to train mode (this affects batch norm / dropout)
@@ -128,7 +131,7 @@ class RADQN(DQN):
             current_q_values = torch.gather(current_q_values, dim=1, index=replay_data.actions.long())
 
             # Compute Huber loss (less sensitive to outliers)
-            loss, huber, kl = self.loss_fn.forward(
+            loss, huber, kl = self.loss_fn(
                 current_q_values,
                 target_q_values,
                 posterior_distributions,
@@ -167,7 +170,7 @@ class RADQN(DQN):
                 writer.add_figure("train/image", mean_latent_edges_image, global_step=self._n_updates)
 
 
-class RA_QNetwork(QNetwork):
+class RAQNetwork(QNetwork):
     """
     The RA-QNetwork is like the regular QNetwork with the following differences:
     1. Its Observation space is a GraphObservationSpace
@@ -180,7 +183,7 @@ class RA_QNetwork(QNetwork):
             action_space: spaces.Discrete,
             features_extractor: RAFeatureExtractorSB3,
             features_dim: int,
-            net_arch: Optional[list[int]] = None,
+            net_arch: Optional[List[int]] = None,
             activation_fn: type[nn.Module] = nn.ReLU,
             normalize_images: bool = True,
     ):
@@ -194,7 +197,7 @@ class RA_QNetwork(QNetwork):
             normalize_images=normalize_images
         )
 
-    def forward(self, obs: PyTorchObs) -> Tuple[torch.Tensor]:
+    def forward(self, obs: PyTorchObs) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Predict the q-values.
 
@@ -205,13 +208,13 @@ class RA_QNetwork(QNetwork):
         return self.q_net(x), p_x_given_z
 
 
-class RA_DQNPolicy(DQNPolicy):
+class RADQNPolicy(DQNPolicy):
     """
     This Policy is just like the DQNPolicy with the difference that it uses RA-QNetworks instead of regular QNetworks.
     """
     def make_q_net(self) -> QNetwork:
         net_args = self._update_features_extractor(self.net_args, features_extractor=None)
-        return RA_QNetwork(**net_args).to(self.device)
+        return RAQNetwork(**net_args).to(self.device)
 
 
 def get_env(cfg):
