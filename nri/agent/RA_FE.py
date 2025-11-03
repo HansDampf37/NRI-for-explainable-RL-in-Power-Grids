@@ -1,3 +1,6 @@
+"""
+This script contains the relations aware FeatureExtractor (RAFeatureExtractor).
+"""
 from typing import Optional
 
 import torch
@@ -16,7 +19,7 @@ from nri.utils import fully_connected_edge_index_per_batch
 
 class RAFeatureExtractor(nn.Module):
     """
-    Combines an NRI encoder with a relations aware GGN.
+    Combines an NRI encoder with a relations aware GGN (RA-GNN).
 
     The encoder predicts edge-type logits for each edge. These logits are used both
     to compute soft edge-type probabilities (for monitoring) and to sample discrete

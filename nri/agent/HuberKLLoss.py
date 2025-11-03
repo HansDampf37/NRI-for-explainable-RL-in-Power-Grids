@@ -1,7 +1,7 @@
 import math
 from typing import Optional, Tuple, Union
 
-import numpy as np
+import numpy.typing as npt
 import torch
 from torch import nn, Tensor
 import torch.nn.functional as F
@@ -10,14 +10,14 @@ import torch.nn.functional as F
 class HuberKLLoss(nn.Module):
     """
     HuberKLL is defined as:
-    L = (α * E_{q_φ(z|x)}[huber(p_θ(y|x,z), target)] + β * KL[q_φ(z|x)||p_θ(z)]) / (α + β)
+    L(x, target) = (α * E_{z ~ q_φ(.|x), y ~ p_θ(y|x,z)}[huber(y, target)] + β * KL[q_φ(z|x)||p_θ(z)]) / (α + β)
 
     The encoder q_φ(z|x) returns a factorized distribution of z_ij.
     The NRI_informed_GNN p_θ(y|x,z) makes a prediction based on input x and z_ij
     The prior p_θ(z) is a distribution that the posterior distribution q_φ(z|x) is pushed towards.
     """
 
-    def __init__(self, prior: Optional[np.ndarray] = None, alpha: float = 1.0, beta: float = 1.0):
+    def __init__(self, prior: Optional[npt.NDArray] = None, alpha: float = 1.0, beta: float = 1.0):
         """
         Constructor
 
@@ -31,8 +31,9 @@ class HuberKLLoss(nn.Module):
         self.beta = beta
 
         if prior is not None:
-            prior = torch.tensor(prior, dtype=torch.float32, device="cuda" if torch.cuda.is_available() else "cpu")
-            prior = prior / prior.sum()
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            prior = torch.from_numpy(prior).to(dtype=torch.float32, device=device)
+            prior = prior / prior.sum(dim=-1, keepdim=True)
             self.register_buffer('prior', prior)
         else:
             self.prior = None

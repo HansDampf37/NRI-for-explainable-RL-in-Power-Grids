@@ -1,4 +1,8 @@
-from typing import Union, Optional, Tuple
+"""
+This script implements the relations aware DQN (RADQN) in the sb3 framework.
+"""
+
+from typing import Union, Optional, Tuple, Any
 
 import hydra
 import numpy as np
@@ -7,7 +11,8 @@ from gymnasium import spaces
 from hydra.utils import instantiate
 from omegaconf import OmegaConf, DictConfig
 from stable_baselines3 import DQN
-from stable_baselines3.common.type_aliases import GymEnv, PyTorchObs
+from stable_baselines3.common.buffers import ReplayBuffer
+from stable_baselines3.common.type_aliases import GymEnv, PyTorchObs, Schedule
 from stable_baselines3.dqn.policies import DQNPolicy, QNetwork
 from torch import nn
 
@@ -18,15 +23,69 @@ from nri.agent.RA_FE import RAFeatureExtractorSB3
 
 class RADQN(DQN):
     """
-    This class implements the DQN interface from sb3. It uses the RA_GNN to predict the q_values. The loss is extended,
+    This class implements the DQN interface from sb3. It uses the RA-GNN to predict the q_values. The loss is extended,
     to include the distance between posterior p(z|x) to the prior p(z).
     """
 
     def __init__(self,
                  env: Union[GymEnv, str],
                  loss: HuberKLLoss,
-                 **kwargs):
-        super().__init__(RA_DQNPolicy, env, **kwargs)
+                 learning_rate: Union[float, Schedule] = 1e-4,
+                 buffer_size: int = 1_000_000,  # 1e6
+                 learning_starts: int = 100,
+                 batch_size: int = 32,
+                 tau: float = 1.0,
+                 gamma: float = 0.99,
+                 train_freq: Union[int, tuple[int, str]] = 4,
+                 gradient_steps: int = 1,
+                 replay_buffer_class: Optional[type[ReplayBuffer]] = None,
+                 replay_buffer_kwargs: Optional[dict[str, Any]] = None,
+                 optimize_memory_usage: bool = False,
+                 n_steps: int = 1,
+                 target_update_interval: int = 10000,
+                 exploration_fraction: float = 0.1,
+                 exploration_initial_eps: float = 1.0,
+                 exploration_final_eps: float = 0.05,
+                 max_grad_norm: float = 10,
+                 stats_window_size: int = 100,
+                 tensorboard_log: Optional[str] = None,
+                 policy_kwargs: Optional[dict[str, Any]] = None,
+                 verbose: int = 0,
+                 seed: Optional[int] = None,
+                 device: Union[th.device, str] = "auto",
+                 _init_setup_model: bool = True) -> None:
+        """
+        Constructor.
+        @param env: the environment
+        @param loss: a HuberKLLoss object that is used to train the DQN
+        """
+        super().__init__(
+            RA_DQNPolicy,
+            env,
+            learning_rate,
+            buffer_size,
+            learning_starts,
+            batch_size,
+            tau,
+            gamma,
+            train_freq,
+            gradient_steps,
+            replay_buffer_class,
+            replay_buffer_kwargs,
+            optimize_memory_usage,
+            n_steps,
+            target_update_interval,
+            exploration_fraction,
+            exploration_initial_eps,
+            exploration_final_eps,
+            max_grad_norm,
+            stats_window_size,
+            tensorboard_log,
+            policy_kwargs,
+            verbose,
+            seed,
+            device,
+            _init_setup_model)
         assert isinstance(env.observation_space, GraphObservationSpace), "RADQN requires a graph observation space"
         self.loss = loss
 
@@ -78,6 +137,12 @@ class RADQN(DQN):
 
 
 class RA_QNetwork(QNetwork):
+    """
+    The RA-QNetwork is like the regular QNetwork with the following differences:
+    1. Its Observation space is a GraphObservationSpace
+    2. It uses a RA-FeatureExtractor
+    3. Its forward-method outputs the predicted q-values AND the posterior distributions predicted by the FeatureExtractor
+    """
     def __init__(
             self,
             observation_space: GraphObservationSpace,
@@ -102,14 +167,17 @@ class RA_QNetwork(QNetwork):
         """
         Predict the q-values.
 
-        :param obs: Observation
-        :return: The estimated Q-Value for each action.
+        @param obs: Observation
+        @return: The estimated Q-Value for each action, the posterior distribution predicted by the RA-FeatureExtractor.
         """
         x, p_x_given_z = self.extract_features(obs, self.features_extractor)
         return self.q_net(x), p_x_given_z
 
 
 class RA_DQNPolicy(DQNPolicy):
+    """
+    This Policy is just like the DQNPolicy with the difference that it uses RA-QNetworks instead of regular QNetworks.
+    """
     def make_q_net(self) -> QNetwork:
         net_args = self._update_features_extractor(self.net_args, features_extractor=None)
         return RA_QNetwork(**net_args).to(self.device)
