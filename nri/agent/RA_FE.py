@@ -98,7 +98,7 @@ class RAFeatureExtractor(nn.Module):
         # transform posterior into batched format.
         edge_batch = batch[edge_index[0]] # edge is in the same batch as incident nodes
         batched_p_z_given_x, mask = to_dense_batch(p_z_given_x, edge_batch)
-        assert(torch.all(mask), "Different number of edge per batch is not allowed.")
+        assert torch.all(mask), "Different number of edge per batch is not allowed."
 
         return predictions, batched_p_z_given_x
 

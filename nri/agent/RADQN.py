@@ -30,7 +30,7 @@ class RADQN(DQN):
 
     def __init__(self,
                  env: Union[GymEnv, str],
-                 loss: HuberKLLoss,
+                 loss_fn: HuberKLLoss,
                  learning_rate: Union[float, Schedule] = 1e-4,
                  buffer_size: int = 1_000_000,  # 1e6
                  learning_starts: int = 100,
@@ -58,7 +58,7 @@ class RADQN(DQN):
         """
         Constructor.
         @param env: the environment
-        @param loss: a HuberKLLoss object that is used to train the DQN
+        @param loss_fn: a HuberKLLoss object that is used to train the DQN
         """
         super().__init__(
             RA_DQNPolicy,
@@ -88,7 +88,7 @@ class RADQN(DQN):
             device,
             _init_setup_model)
         assert isinstance(env.observation_space, GraphObservationSpace), "RADQN requires a graph observation space"
-        self.loss = loss
+        self.loss_fn = loss_fn
 
     def train(self, gradient_steps: int, batch_size: int = 100) -> None:
         # Switch to train mode (this affects batch norm / dropout)
@@ -122,7 +122,7 @@ class RADQN(DQN):
             current_q_values = th.gather(current_q_values, dim=1, index=replay_data.actions.long())
 
             # Compute Huber loss (less sensitive to outliers)
-            loss, huber, kl = self.loss.forward(
+            loss, huber, kl = self.loss_fn.forward(
                 current_q_values,
                 target_q_values,
                 posterior_distributions,
@@ -216,6 +216,7 @@ def main(cfg: DictConfig):
     timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M')
     name = f"ra_dqn_{timestamp}_{uuid.uuid4().hex}"
     env = get_env(cfg)
+    env.reset()
     prior = np.array([])
 
     policy_kwargs = {
@@ -232,7 +233,7 @@ def main(cfg: DictConfig):
     algorithm = RADQN(
         env=env,
         tensorboard_log="data/logs/radqn",
-        loss=HuberKLLoss(prior=prior, alpha=1, beta=0.2),
+        loss_fn=HuberKLLoss(prior=prior, alpha=1, beta=0.2),
         policy_kwargs=policy_kwargs,
         verbose=cfg.ra_dqn.model.sb3.verbose,
         train_freq=cfg.ra_dqn.model.sb3.train_freq,
