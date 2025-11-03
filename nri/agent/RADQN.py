@@ -13,14 +13,16 @@ from hydra.utils import instantiate
 from omegaconf import OmegaConf, DictConfig
 from stable_baselines3 import DQN
 from stable_baselines3.common.buffers import ReplayBuffer
+from stable_baselines3.common.logger import TensorBoardOutputFormat
 from stable_baselines3.common.type_aliases import GymEnv, PyTorchObs, Schedule
 from stable_baselines3.dqn.policies import DQNPolicy, QNetwork
 from torch import nn, Tensor
 
-from common import GraphObservationSpace, G2OpGymEnv, EDGE_INDEX
+from common import GraphObservationSpace, G2OpGymEnv, EDGE_INDEX, BusConnectivityGraphObsSpace
 from nri.agent.HuberKLLoss import HuberKLLoss
 from nri.agent.RA_FE import RAFeatureExtractorSB3
 from nri.utils import fully_connected_edge_index, _get_prior
+from visualization.utils import visualize_graph, PlottingArgs, get_node_styles
 
 
 class RADQN(DQN):
@@ -32,6 +34,7 @@ class RADQN(DQN):
     def __init__(self,
                  env: Union[GymEnv, str],
                  loss_fn: HuberKLLoss,
+                 plotting_args: Optional[PlottingArgs] = None,
                  learning_rate: Union[float, Schedule] = 1e-4,
                  buffer_size: int = 1_000_000,  # 1e6
                  learning_starts: int = 100,
@@ -90,6 +93,7 @@ class RADQN(DQN):
             _init_setup_model)
         assert isinstance(env.observation_space, GraphObservationSpace), "RADQN requires a graph observation space"
         self.loss_fn = loss_fn
+        self.plotting_args = plotting_args
 
     def train(self, gradient_steps: int, batch_size: int = 100) -> None:
         # Switch to train mode (this affects batch norm / dropout)
@@ -100,6 +104,7 @@ class RADQN(DQN):
         losses = []
         huber_losses = []
         kl_divs = []
+        mean_posteriors = []
         for _ in range(gradient_steps):
             # Sample replay buffer
             replay_data = self.replay_buffer.sample(batch_size, env=self._vec_normalize_env)  # type: ignore[union-attr]
@@ -132,6 +137,7 @@ class RADQN(DQN):
             losses.append(loss.item())
             huber_losses.append(huber.item())
             kl_divs.append(kl.item())
+            mean_posteriors.append(posterior_distributions.mean(dim=0).detach().cpu().numpy())
 
             # Optimize the policy
             self.policy.optimizer.zero_grad()
@@ -147,6 +153,18 @@ class RADQN(DQN):
         self.logger.record("train/loss", np.mean(losses))
         self.logger.record("train/huber-loss", np.mean(huber_losses))
         self.logger.record("train/kl-div", np.mean(kl_divs))
+
+        # visualize and plot images
+        if self.plotting_args is not None:
+            self.plotting_args.latent_edge_probs = np.mean(mean_posteriors, axis=0)
+            mean_latent_edges_image = visualize_graph(self.plotting_args)
+            tb_formatter = next(
+                (fmt for fmt in self.logger.output_formats if isinstance(fmt, TensorBoardOutputFormat)),
+                None
+            )
+            if tb_formatter is not None:
+                writer = tb_formatter.writer  # this is the SummaryWriter
+                writer.add_figure("train/image", mean_latent_edges_image, global_step=self._n_updates)
 
 
 class RA_QNetwork(QNetwork):
@@ -238,9 +256,18 @@ def main(cfg: DictConfig):
     prior = _get_prior(powergrid_edge_index, all_edges, prior_for_graph_edges, prior_for_non_graph_edges)
     loss_fn = HuberKLLoss(prior=prior, alpha=cfg.ra_dqn.model.loss.alpha, beta=cfg.ra_dqn.model.loss.beta)
 
+    # create plotting args
+    plotting_args = PlottingArgs(
+        N,
+        get_node_styles(env._g2op_env, BusConnectivityGraphObsSpace),
+        powerline_edge_index=powergrid_edge_index,
+        skip_last_edge_type=True,
+    )
+
     algorithm = RADQN(
         env=env,
         tensorboard_log="data/logs/radqn",
+        plotting_args=plotting_args,
         loss_fn=loss_fn,
         policy_kwargs=policy_kwargs,
         verbose=cfg.ra_dqn.model.sb3.verbose,
