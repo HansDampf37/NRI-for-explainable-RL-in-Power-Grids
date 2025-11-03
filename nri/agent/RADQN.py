@@ -1,7 +1,8 @@
 """
 This script implements the relations aware DQN (RADQN) in the sb3 framework.
 """
-
+import uuid
+from datetime import datetime
 from typing import Union, Optional, Tuple, Any
 
 import hydra
@@ -96,6 +97,8 @@ class RADQN(DQN):
         self._update_learning_rate(self.policy.optimizer)
 
         losses = []
+        huber_losses = []
+        kl_divs = []
         for _ in range(gradient_steps):
             # Sample replay buffer
             replay_data = self.replay_buffer.sample(batch_size, env=self._vec_normalize_env)  # type: ignore[union-attr]
@@ -119,8 +122,15 @@ class RADQN(DQN):
             current_q_values = th.gather(current_q_values, dim=1, index=replay_data.actions.long())
 
             # Compute Huber loss (less sensitive to outliers)
-            loss = self.loss.forward(current_q_values, target_q_values, posterior_distributions)
+            loss, huber, kl = self.loss.forward(
+                current_q_values,
+                target_q_values,
+                posterior_distributions,
+                with_huber_kl=True
+            )
             losses.append(loss.item())
+            huber_losses.append(huber.item())
+            kl_divs.append(kl.item())
 
             # Optimize the policy
             self.policy.optimizer.zero_grad()
@@ -134,6 +144,8 @@ class RADQN(DQN):
 
         self.logger.record("train/n_updates", self._n_updates, exclude="tensorboard")
         self.logger.record("train/loss", np.mean(losses))
+        self.logger.record("train/huber-loss", np.mean(huber_losses))
+        self.logger.record("train/kl-div", np.mean(kl_divs))
 
 
 class RA_QNetwork(QNetwork):
@@ -201,6 +213,8 @@ def get_env(cfg):
 @hydra.main(config_path="../../hydra_configs", config_name="config", version_base="1.3")
 def main(cfg: DictConfig):
     print(OmegaConf.to_yaml(cfg))
+    timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M')
+    name = f"ra_dqn_{timestamp}_{uuid.uuid4().hex}"
     env = get_env(cfg)
     prior = np.array([])
 
@@ -232,7 +246,7 @@ def main(cfg: DictConfig):
         batch_size=cfg.ra_dqn.model.sb3.batch_size,
         learning_rate=cfg.ra_dqn.model.sb3.learning_rate,
     )
-    algorithm.learn(total_timesteps=int(1e6), tb_log_name="radqn1")
+    algorithm.learn(total_timesteps=int(1e6), tb_log_name=name)
 
 
 if __name__ == "__main__":
