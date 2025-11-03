@@ -92,11 +92,13 @@ class BusConnectivityGraphObsSpace(GraphObservationSpace):
         num_line = obs_space.n_line
         max_n_edge = (num_connections * (num_connections - 1) // 2).sum() + num_line
         x_dim = 10
+        global_dim = 6
 
         super().__init__({
             NODES: Box(low=-np.inf, high=np.inf, shape=(num_node, x_dim)),
             EDGE_INDEX: Box(low=0, high=1, shape=(2, max_n_edge), dtype=np.int64),
-            EDGE_MASK: Box(low=0, high=1, shape=(max_n_edge,), dtype=np.bool)
+            EDGE_MASK: Box(low=0, high=1, shape=(max_n_edge,), dtype=np.bool),
+            GLOBAL: Box(low=-np.inf, high=np.inf, shape=(global_dim, )),
         })
 
     def to_gym(self, g2op_obs: BaseObservation) -> dict[str, npt.NDArray]:
@@ -216,14 +218,14 @@ class BusConnectivityGraphObsSpace(GraphObservationSpace):
     @property
     def node_feature_names(self) -> List[str]:
         feature_names = [
-            # "active_power_forecast",
-            # "reactive_power_forecast",
+            "active_power_forecast",
+            "reactive_power_forecast",
             "active_power",
             "reactive_power",
             "voltage",
             "voltage_angle",
             "current",
-            "rho"
+            "rho",
             "sub_indices",
             "bus_indices",
         ]

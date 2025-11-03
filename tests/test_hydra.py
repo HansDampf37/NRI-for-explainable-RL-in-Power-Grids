@@ -6,15 +6,15 @@ from grid2op.gym_compat import DiscreteActSpace, BoxGymObsSpace
 from hydra.utils import instantiate
 
 from common import G2OpGymEnv
-from common.graph_structured_observation_space import EntityGraphObservationSpace
+from common.graph_structured_observation_space import BusConnectivityGraphObsSpace
 
 class TestHydra(unittest.TestCase):
     def test_hydra_obs_space(self):
         with hydra.initialize(config_path="../hydra_configs", version_base="1.3"):
-            cfg = hydra.compose(config_name="baseline/obs_space/entity_graph_obs_space")
+            cfg = hydra.compose(config_name="baseline/obs_space/bus_connectivity_graph_obs_space")
             env = grid2op.make("l2rpn_case14_sandbox")
             obs_space = instantiate(cfg.baseline.obs_space, grid2op_observation_space=env.observation_space)
-            self.assertIsInstance(obs_space, EntityGraphObservationSpace)
+            self.assertIsInstance(obs_space, BusConnectivityGraphObsSpace)
 
     def test_hydra_act_space(self):
         with hydra.initialize(config_path="../hydra_configs", version_base="1.3"):

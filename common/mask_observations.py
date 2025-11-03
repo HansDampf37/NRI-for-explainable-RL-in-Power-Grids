@@ -30,7 +30,7 @@ def get_feature_mask(obs_space: GraphObservationSpace, predict_features: list[st
     @return: the mask as numpy array
     """
     name_to_idx = {name: i for i, name in enumerate(obs_space.node_feature_names)}
-    mask = np.zeros(len(obs_space.node_feature_names), dtype=bool)
+    mask = np.zeros(obs_space.x_dim, dtype=bool)
     for name in predict_features:
         mask[name_to_idx[name]] = True
     return mask

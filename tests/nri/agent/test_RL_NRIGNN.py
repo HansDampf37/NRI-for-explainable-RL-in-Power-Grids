@@ -38,7 +38,7 @@ class TestNRIGNN(unittest.TestCase):
         predictions, p_z_given_x = self.model(x=self.node_features, batch=self.batch)
         # Check that the softmax outputs are valid probabilities
         self.assertTrue(torch.all(p_z_given_x >= 0) and torch.all(p_z_given_x <= 1), "Probabilities are out of bounds")
-        self.assertTrue(torch.allclose(p_z_given_x.sum(dim=-1), torch.ones(p_z_given_x.size(0))), "Softmax probabilities do not sum to 1")
+        self.assertTrue(torch.allclose(p_z_given_x.sum(dim=-1), torch.ones(self.batch_size, p_z_given_x.size(1))), "Softmax probabilities do not sum to 1")
 
     def test_inference(self):
         self.model.eval()  # Set the model to evaluation mode

@@ -9,13 +9,13 @@ from baselines.train_stable_baseline import model_setup, build_agent
 
 class TestTrainDQN(unittest.TestCase):
     def test_model_setup(self):
-        with hydra.initialize(config_path="../hydra_configs", version_base="1.3"):
+        with hydra.initialize(config_path="../../hydra_configs", version_base="1.3"):
             env_cfg = hydra.compose(config_name="config")
             dqn = model_setup(env_cfg)
             dqn.learn(10)
 
     def test_build_agent(self):
-        with hydra.initialize(config_path="../hydra_configs", version_base="1.3"):
+        with hydra.initialize(config_path="../../hydra_configs", version_base="1.3"):
             cfg = hydra.compose(config_name="config")
             agent = build_agent(cfg, load_weights_from=None)
             agent.topology_policy.get_k_best_actions = lambda _1, _2: []
