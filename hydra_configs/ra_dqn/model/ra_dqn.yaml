@@ -9,7 +9,7 @@ sb3:
     target_update_interval: 600
     learning_starts: 1000
     buffer_size: 10000
-    batch_size: 128
+    batch_size: 32
     learning_rate: 4e-3
     policy_kwargs:
         net_arch: [ 100 ]

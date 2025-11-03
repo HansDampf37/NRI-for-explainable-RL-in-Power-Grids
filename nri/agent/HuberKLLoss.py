@@ -60,7 +60,7 @@ class HuberKLLoss(nn.Module):
         """
         if self.prior is None:
             # Negative entropy: -H(q) = sum q * log q
-            neg_entropy = (posterior_probs * torch.log(posterior_probs)).sum(dim=-1)
+            neg_entropy = (posterior_probs * torch.log(posterior_probs + self.eps)).sum(dim=-1)
             constant_term = math.log(posterior_probs.shape[-1])
             return neg_entropy.mean() + constant_term
         else:

@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from nri.agent.RA_FE import RAFeatureExtractor
 
-class TestNRIGNN(unittest.TestCase):
+class TestRA_FE(unittest.TestCase):
     def setUp(self):
         # Initialize parameters for NRIFeatureExtractor
         self.x_dim = 5

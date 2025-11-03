@@ -4,7 +4,7 @@ from torch_geometric.data import Data, Batch
 from nri.agent.RA_GNN import RA_GNN
 
 
-class TestNRIInformedGNN(unittest.TestCase):
+class TestRAGNN(unittest.TestCase):
     def setUp(self):
         torch.manual_seed(0)
         # two toy graphs for batching
