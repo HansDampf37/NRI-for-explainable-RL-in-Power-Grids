@@ -17,7 +17,7 @@ from tqdm import tqdm
 
 from common.graph_structured_observation_space import EDGE_INDEX, GraphObservationSpace
 from nri.ElboObjective import ElboLoss
-from nri.FeatureMaskBuilder import get_feature_mask
+from common.mask_observations import get_feature_mask
 from nri.NRI import NRIModule
 from nri.get_edge_probs import save_edge_probs
 from nri.utils import warn_large_loss

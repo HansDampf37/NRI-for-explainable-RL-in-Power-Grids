@@ -5,7 +5,7 @@ import numpy as np
 from numpy.testing import assert_array_equal
 
 from common import BusConnectivityGraphObsSpace, NODES
-from nri.FeatureMaskBuilder import get_feature_mask
+from common.mask_observations import get_feature_mask
 
 
 class TestFeatureMaskBuilder(unittest.TestCase):

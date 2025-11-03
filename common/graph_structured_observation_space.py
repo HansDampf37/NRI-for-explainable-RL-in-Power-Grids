@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 from typing import List, Optional
 
 import numpy as np
+import numpy.typing as npt
 from grid2op.Observation import BaseObservation, ObservationSpace
 from gymnasium.spaces import Dict, Box
 from torch_geometric.data import Data
@@ -29,9 +30,9 @@ class GraphObservationSpace(ABC, Dict):
     - GLOBAL (optional) global features [...]
     """
     @abstractmethod
-    def to_gym(self, g2op_obs: BaseObservation) -> dict[str, np.ndarray]:
+    def to_gym(self, g2op_obs: BaseObservation) -> dict[str, npt.NDArray]:
         """
-        Transforms a grid2op observation into an observation of this space.
+        Transforms the grid2op observation instance into a dict observation compatible with the gymnasium API.
         :param g2op_obs: The grid2op observation.
         :return: a gym-like dict observation.
         """
@@ -73,226 +74,6 @@ class GraphObservationSpace(ABC, Dict):
         pass
 
 
-class EntityGraphObservationSpace(GraphObservationSpace):
-    """
-    This Observation returns a dict with the following features:
-    - global_features: a Box-space containing global features of the powergrid (time, date, ...)
-    - node_features: a Box-space containing merged features for nodes (generators, loads, substations)
-    - edge_features: a Box-space containing powerline features for edges (and zero feature vectors for powerlines connecting loads and generators to their substations)
-    - edge_index: a Box-space containing the adjacency list as [2, E] array
-    - edge_mask: a Box-space containing the edge mask array (since the amount of edges doesn't vary this can be ignored)
-
-    For more information about this graph read: https://beta-grid2op.readthedocs.io/en/latest/grid_graph.html#graph2-the-elements-graph
-    """
-    NUM_FEATURES_PER_GENERATOR = 9
-    NUM_FEATURES_PER_NODE = 7
-    NUM_FEATURES_PER_LOAD = 5
-    NUM_FEATURES_PER_LINE = 13
-    NUM_FEATURES_PER_EDGE = NUM_FEATURES_PER_LINE
-    NUM_GLOBAL_FEATURES = 6
-
-    def __init__(self, grid2op_observation_space: ObservationSpace, spaces_to_keep: Optional[List[str]] = None):
-        """
-        Constructor.
-        :param grid2op_observation_space: original g2op observation space
-        :param spaces_to_keep: which spaces to keep (global_features, node_features, edge_features, edge_index, generator_features, load_features, line_features)
-        """
-        self.spaces_to_keep = spaces_to_keep or [NODES, EDGES, EDGE_INDEX, EDGE_MASK]
-        super().__init__(self._dict_description_from_inputs(grid2op_observation_space, self.spaces_to_keep))
-        self.edge_index = self.generate_edge_index(grid2op_observation_space)
-        self.edge_mask = np.ones(self.edge_index.shape[1], dtype=np.bool)
-
-    def to_gym(self, g2op_obs: BaseObservation) -> dict[str, np.ndarray]:
-        result: dict[str, np.ndarray] = {}
-        if GLOBAL in self.spaces_to_keep:
-            result[GLOBAL] = self.global_features_from_observation(g2op_obs)
-        if EDGES in self.spaces_to_keep:
-            result[EDGES] = self.edge_features_from_observation(g2op_obs)
-        if NODES in self.spaces_to_keep:
-            result[NODES] = self.node_features_from_observation(g2op_obs)
-        if EDGE_INDEX in self.spaces_to_keep:
-            result[EDGE_INDEX] = self.edge_index
-        if EDGE_MASK in self.spaces_to_keep:
-            result[EDGE_MASK] = self.edge_mask
-
-        return result
-
-    @staticmethod
-    def line_features_from_observation(obs: BaseObservation) -> np.ndarray:
-        """
-        Returns a numpy representation of the features for lines in the observation. The returned numpy array
-        is of shape (n, x) where n is the number of lines and x is the number of features per line.
-
-        :param obs: The observation
-        :return: the numpy representation of the lines in the observation
-        """
-        return np.array([
-            obs.line_status,  # whether the line is connected
-            obs.rho,  # the load on the line from 0 to 1
-            obs.thermal_limit,  # the thermal limit of each line (in A)
-            obs.p_or,  # the power at the origin (in MW)
-            obs.q_or,  # the reactive power at the origin (in MVar)
-            obs.a_or,  # the current at the origin (in A)
-            obs.theta_or,  # the voltage angle at the origin (in deg)
-            obs.line_or_bus,  # the bus that the origin of the line is connected to (1, 2 or -1)
-            obs.p_ex,  # the power at the extremity (in MW)
-            obs.q_ex,  # the reactive power at the extremity (in MVar)
-            obs.a_ex,  # the current at the extremity (in A)
-            obs.theta_ex,  # the voltage angle at the extremity (in deg)
-            obs.line_ex_bus,  # the bus that the extremity of the line is connected to (1, 2 or -1)
-        ]).transpose()
-
-    @staticmethod
-    def global_features_from_observation(obs: BaseObservation) -> np.ndarray:
-        """
-        Returns a numpy representation of global features in the observation. The returned numpy array is of shape
-        (n, ) where n is the number of global features.
-        :param obs: The observation
-        :return: the numpy representation of the global features
-        """
-        return np.array([
-            obs.year,
-            obs.month,
-            obs.day,
-            obs.hour_of_day,
-            obs.day_of_week,
-            obs.minute_of_hour
-        ])
-
-    @staticmethod
-    def node_features_from_observation(obs: BaseObservation) -> np.ndarray:
-        """
-        Returns a numpy representation of node features in the observation. The returned numpy array is of shape
-        (n, x) where n is the number of nodes and x is the number of features per node.
-        :param obs: g2op Observation
-        :return: numpy representation of the node features
-        """
-        zeros_subs = np.zeros(shape=(obs.n_sub,))
-        zeros_loads = np.zeros(shape=(obs.n_load,))
-
-        return np.array([
-            np.concatenate([zeros_subs, obs.gen_p, -obs.load_p]),
-            np.concatenate([zeros_subs, obs.gen_q, -obs.load_q]),
-            np.concatenate([zeros_subs, obs.gen_v, -obs.load_v]),
-            np.concatenate([zeros_subs, obs.gen_theta, obs.load_theta]),
-            np.concatenate([zeros_subs, obs.gen_bus, obs.load_bus]),
-            np.concatenate([zeros_subs, obs.actual_dispatch, zeros_loads]),
-            np.concatenate([zeros_subs, obs.curtailment_limit_mw, zeros_loads])
-        ]).transpose()
-
-    @staticmethod
-    def edge_features_from_observation(obs: BaseObservation) -> np.ndarray:
-        """
-        Returns a numpy representation of edge features in the observation. The returned numpy array is of shape
-        (n, x) where n is the number of edges and x is the number of features per edge.
-        :param obs: g2op Observation
-        :return: numpy representation of the edge features
-        """
-        line_features = EntityGraphObservationSpace.line_features_from_observation(obs)
-        lines_connecting_generators = np.zeros((obs.n_gen, EntityGraphObservationSpace.NUM_FEATURES_PER_LINE))
-        lines_connecting_loads = np.zeros((obs.n_load, EntityGraphObservationSpace.NUM_FEATURES_PER_LINE))
-
-        return np.concatenate([line_features, lines_connecting_generators, lines_connecting_loads], axis=0)
-
-    @staticmethod
-    def generate_edge_index(g2op_obs_space: ObservationSpace) -> np.ndarray:
-        """
-        Generate the edge index. The edge index models which nodes are connected by edges. It is of shape [2, E]
-        containing source and target node indices for each edge.
-        :param g2op_obs_space: the grid2op observation space
-        :return: the edge index
-        """
-        powerline_source_idx = g2op_obs_space.line_or_to_subid
-        powerline_target_idx = g2op_obs_space.line_ex_to_subid
-        generator_idx = np.arange(g2op_obs_space.n_sub, g2op_obs_space.n_sub + g2op_obs_space.n_gen)
-        generator_target_idx = g2op_obs_space.gen_to_subid
-        load_source_idx = g2op_obs_space.load_to_subid
-        load_idx = np.arange(g2op_obs_space.n_sub + g2op_obs_space.n_gen,
-                             g2op_obs_space.n_sub + g2op_obs_space.n_gen + g2op_obs_space.n_load)
-
-        return np.stack([
-            np.concatenate([powerline_source_idx, generator_idx, load_source_idx]),
-            np.concatenate([powerline_target_idx, generator_target_idx, load_idx])
-        ])
-
-    def _dict_description_from_inputs(self, grid2op_observation_space: ObservationSpace, spaces_to_keep: List[str]) -> dict:
-        """
-        Helper function to describe the final dict space
-        """
-        n_node = grid2op_observation_space.n_gen + grid2op_observation_space.n_load + grid2op_observation_space.n_sub
-        n_edge = grid2op_observation_space.n_line + grid2op_observation_space.n_load + grid2op_observation_space.n_gen
-        result = dict()
-        if GLOBAL in spaces_to_keep:
-            result[GLOBAL] = Box(low=-np.inf, high=np.inf, shape=(self.NUM_GLOBAL_FEATURES,))
-        if NODES in spaces_to_keep:
-            result[NODES] = Box(low=-np.inf, high=np.inf, shape=(n_node, self.NUM_FEATURES_PER_NODE))
-        if EDGES in spaces_to_keep:
-            result[EDGES] = Box(low=-np.inf, high=np.inf, shape=(n_edge, self.NUM_FEATURES_PER_EDGE))
-        if EDGE_INDEX in spaces_to_keep:
-            result[EDGE_INDEX] = Box(low=0, high=1, shape=(2, n_edge), dtype=np.long)
-        if EDGE_MASK in spaces_to_keep:
-            result[EDGE_MASK] = Box(low=0, high=1, shape=(n_edge, ), dtype=np.long)
-
-        return result
-
-    @property
-    def node_feature_names(self):
-        raise NotImplemented("This class is deprecated and should be removed as soon as agents don't use it anymore") # TODO
-
-
-class BipartitGraphObservationSpace(GraphObservationSpace):
-    """
-    This Observation space structures observation data based on the EntityGraphObservationSpace in a graph-like structure.
-    This class creates a bipartit meta-graph G=(V+E, E').
-    The node set V+E contains nodes and edges from our previous graph. The edge set E' connects nodes v and e if they
-    are adjacent in the original graph.
-    """
-
-    NUM_FEATURES_PER_NODE = EntityGraphObservationSpace.NUM_FEATURES_PER_NODE + EntityGraphObservationSpace.NUM_FEATURES_PER_EDGE
-
-    def __init__(self, grid2op_observation_space: ObservationSpace):
-        self.graph_obs_space = EntityGraphObservationSpace(grid2op_observation_space, [NODES, EDGES, EDGE_INDEX])
-        self.spaces_to_keep = [NODES, EDGE_INDEX]
-        n_node_bipart = self.graph_obs_space.num_nodes + self.graph_obs_space.max_num_edges
-        n_edge_bipart = 2 * self.graph_obs_space.max_num_edges
-
-        super().__init__({
-            NODES: Box(low=-np.inf, high=np.inf, shape=(n_node_bipart, self.NUM_FEATURES_PER_NODE)),
-            EDGE_INDEX: Box(low=0, high=1, shape=(2, n_edge_bipart), dtype=np.long),
-            EDGE_MASK: Box(low=0, high=1, shape=(n_edge_bipart, ), dtype=np.long)
-        })
-
-        edge_index = self.graph_obs_space.generate_edge_index(grid2op_observation_space)
-        edge_indices = np.arange(self.graph_obs_space.max_num_edges) + self.graph_obs_space.num_nodes
-
-        bipartit_edge_index_source = np.stack([edge_index[0], edge_indices])
-        bipartit_edge_index_target = np.stack([edge_indices, edge_index[1]])
-        self.bipartit_edge_index = np.concatenate([bipartit_edge_index_source, bipartit_edge_index_target], axis=1)
-        self.edge_mask = np.ones((self.max_num_edges, ), dtype=np.bool)
-
-    def to_gym(self, g2op_obs: BaseObservation) -> dict[str, np.ndarray]:
-        d = self.graph_obs_space.to_gym(g2op_obs)
-        node_features = d[NODES]  # [N, N_dim]
-        edge_features = d[EDGES]  # [E, E_dim]
-        number_nodes, number_node_features = node_features.shape  # N, N_dim
-        number_edges, number_edge_features = edge_features.shape  # E, E_dim
-        padding_1 = np.zeros(shape=(number_edges, number_node_features))  # [E, N_dim]
-        padding_2 = np.zeros(shape=(number_nodes, number_edge_features))  # [N, E_dim]
-        padded_node_features = np.concatenate([node_features, padding_1], axis=0)  # [N + E, N_dim]
-        padded_edge_features = np.concatenate([padding_2, edge_features], axis=0)  # [N + E, E_dim]
-        bipartit_node_features = np.concatenate([padded_node_features, padded_edge_features], axis=1)  # [N + E, N_dim + E_dim]
-
-        return {
-            NODES: bipartit_node_features,
-            EDGE_INDEX: self.bipartit_edge_index,
-            EDGE_MASK: self.edge_mask,
-        }
-
-    @property
-    def node_feature_names(self):
-        raise NotImplemented("This class is deprecated and should be removed as soon as agents don't use it anymore")  # TODO
-
-
 class BusConnectivityGraphObsSpace(GraphObservationSpace):
     """
     This observation space outputs a graph structured as follows:
@@ -304,19 +85,13 @@ class BusConnectivityGraphObsSpace(GraphObservationSpace):
     - current
     equivalent to https://beta-grid2op.readthedocs.io/en/latest/grid_graph.html#graph3-the-connectivity-graph
     """
-    def __init__(self, grid2op_observation_space: ObservationSpace, with_forecast: bool = True, with_bus_indices: bool = False):
+    def __init__(self, grid2op_observation_space: ObservationSpace):
         obs_space = grid2op_observation_space
         num_node = obs_space.n_gen + obs_space.n_load + 2 * obs_space.n_line
         num_connections = obs_space.sub_info
         num_line = obs_space.n_line
         max_n_edge = (num_connections * (num_connections - 1) // 2).sum() + num_line
-        self.with_forecast = with_forecast
-        self.with_bus_indices = with_bus_indices
-        x_dim = 6
-        if with_forecast:
-            x_dim += 2
-        if with_bus_indices:
-            x_dim += 1
+        x_dim = 10
 
         super().__init__({
             NODES: Box(low=-np.inf, high=np.inf, shape=(num_node, x_dim)),
@@ -324,12 +99,11 @@ class BusConnectivityGraphObsSpace(GraphObservationSpace):
             EDGE_MASK: Box(low=0, high=1, shape=(max_n_edge,), dtype=np.bool)
         })
 
-    def to_gym(self, g2op_obs: BaseObservation) -> dict[str, np.ndarray]:
-        """
-        Transforms the grid2op observation instance into a dict observation compatible with the gymnasium API.
-        """
+    def to_gym(self, g2op_obs: BaseObservation) -> dict[str, npt.NDArray]:
+        # get data
         node_features = self.get_node_features(g2op_obs)
         edge_index = self.get_edge_index(g2op_obs)
+        global_features = self.get_global_features(g2op_obs)
         # pad edge index
         num_edges = edge_index.shape[1]
         edge_index_padded = np.zeros((2, self.max_num_edges), dtype=int)
@@ -341,10 +115,11 @@ class BusConnectivityGraphObsSpace(GraphObservationSpace):
         return {
             NODES: node_features,
             EDGE_INDEX: edge_index_padded,
-            EDGE_MASK: edge_mask
+            EDGE_MASK: edge_mask,
+            GLOBAL: global_features
         }
 
-    def get_edge_index(self, g2op_obs: BaseObservation) -> np.ndarray:
+    def get_edge_index(self, g2op_obs: BaseObservation) -> npt.NDArray[np.int32]:
         """
         Compute the [2, E_max] shaped padded edge index. As a padding 0s are added.
         :param g2op_obs: The g2op observation
@@ -364,9 +139,10 @@ class BusConnectivityGraphObsSpace(GraphObservationSpace):
             # node i and i + n_line are endpoints of the same powerline and should be connected
             edge_index.append([i, i + g2op_obs.n_line])
 
-        return np.array(edge_index).transpose()
+        return np.array(edge_index).transpose().astype(np.int32)
 
-    def get_node_features(self, g2op_obs: BaseObservation) -> np.ndarray:
+    @staticmethod
+    def get_node_features(g2op_obs: BaseObservation) -> npt.NDArray[np.float32]:
         """
         Compute [N, X_dim]-shaped node features from a grid2op observation.
         :param g2op_obs: The g2op observation
@@ -395,38 +171,54 @@ class BusConnectivityGraphObsSpace(GraphObservationSpace):
         current = np.concatenate([g2op_obs.a_or, g2op_obs.a_ex, I_mag])
         rho = np.concatenate([g2op_obs.rho, g2op_obs.rho, np.zeros((g2op_obs.n_gen + g2op_obs.n_load,))])
         bus_indices = np.concatenate([g2op_obs.line_or_bus, g2op_obs.line_ex_bus, g2op_obs.gen_bus, g2op_obs.load_bus])
+        sub_indices = np.concatenate([g2op_obs.line_or_to_subid, g2op_obs.line_ex_to_subid, g2op_obs.gen_to_subid, g2op_obs.load_to_subid])
 
         features = [
+            active_power_forecast,
+            reactive_power_forecast,
             active_power,
             reactive_power,
             voltage,
             voltage_angle,
             current,
-            rho
+            rho,
+            sub_indices,
+            bus_indices,
         ]
-        if self.with_forecast:
-            features.append(active_power_forecast)
-            features.append(reactive_power_forecast)
-        if self.with_bus_indices:
-            features.append(bus_indices)
 
-        return np.array(features).transpose()
+        return np.array(features).transpose().astype(np.float32)
+
+    @staticmethod
+    def get_global_features(g2op_obs: BaseObservation) -> npt.NDArray[np.float32]:
+        """
+        Returns a numpy representation of global features in the observation. The returned numpy array is of shape
+        (n, ) where n is the number of global features.
+        :param g2op_obs: The observation
+        :return: the numpy representation of the global features
+        """
+        return np.array([
+            g2op_obs.year,
+            g2op_obs.month,
+            g2op_obs.day,
+            g2op_obs.hour_of_day,
+            g2op_obs.day_of_week,
+            g2op_obs.minute_of_hour
+        ])
 
     @property
     def node_feature_names(self) -> List[str]:
         feature_names = [
+            "active_power_forecast",
+            "reactive_power_forecast",
             "active_power",
             "reactive_power",
             "voltage",
             "voltage_angle",
             "current",
             "rho"
+            "sub_indices",
+            "bus_indices",
         ]
-        if self.with_forecast:
-            feature_names.append("active_power_forecast")
-            feature_names.append("reactive_power_forecast")
-        if self.with_bus_indices:
-            feature_names.append("bus_indices")
 
         return feature_names
 
@@ -437,6 +229,7 @@ def gym2pytorch_geometric_data(observation: dict[str, np.ndarray]) -> Data:
     :return: A pytorch geometric data object
     """
     node_features = observation[NODES]
-    edge_features = observation[EDGES] if EDGES in observation.keys() else None
+    edge_features = observation.get(EDGES)
+    global_features = observation.get(GLOBAL)
     edge_index = observation[EDGE_INDEX][:, observation[EDGE_MASK]]
-    return Data(x=node_features, edge_index=edge_index, edge_attr=edge_features)
+    return Data(x=node_features, edge_index=edge_index, edge_attr=edge_features, global_attr=global_features)
