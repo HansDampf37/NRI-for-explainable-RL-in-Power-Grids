@@ -3,6 +3,7 @@ This script contains code to generate a dataset containing trajectories of the e
 """
 import logging
 from datetime import datetime
+from pathlib import Path
 from typing import List, Dict
 
 import grid2op
@@ -17,6 +18,7 @@ from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 
 from baselines.train_stable_baseline import build_agent
+from common.constants import NRI_DATASETS_PATH
 from common.graph_structured_observation_space import EDGE_INDEX, EDGE_MASK, GraphObservationSpace
 from common.rewards import MazeRLReward
 
@@ -134,9 +136,9 @@ def main(cfg: DictConfig):
 
     timestamp = datetime.now().strftime("%Y-%m-%d_%H:%M")
     for grid_entity in train_data:
-        np.save(f'data/nri_dataset/train_{grid_entity}_{cfg.nri.dataset_creation.env_name}_{timestamp}_.npy', train_data[grid_entity])
-        np.save(f'data/nri_dataset/test_{grid_entity}_{cfg.nri.dataset_creation.env_name}_{timestamp}_.npy', test_data[grid_entity])
-        np.save(f'data/nri_dataset/val_{grid_entity}_{cfg.nri.dataset_creation.env_name}_{timestamp}_.npy', val_data[grid_entity])
+        np.save(Path(NRI_DATASETS_PATH, f'train_{grid_entity}_{cfg.nri.dataset_creation.env_name}_{timestamp}_.npy'), train_data[grid_entity])
+        np.save(Path(NRI_DATASETS_PATH, f'data/nri_dataset/test_{grid_entity}_{cfg.nri.dataset_creation.env_name}_{timestamp}_.npy'), test_data[grid_entity])
+        np.save(Path(NRI_DATASETS_PATH, f'data/nri_dataset/val_{grid_entity}_{cfg.nri.dataset_creation.env_name}_{timestamp}_.npy'), val_data[grid_entity])
 
 
 if __name__ == '__main__':

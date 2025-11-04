@@ -13,14 +13,15 @@ from stable_baselines3.common.base_class import BaseAlgorithm
 
 from baselines.baseline_agent import BaselineAgent, evaluate_agent
 from common import G2OpGymEnv
+from common.constants import MODELS_PATH, LOGS_PATH, EVAL_PATH
 from common.rewards import MazeRLReward
 
 logging.basicConfig(level=logging.WARN, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-base_path_models: Path = Path("data/models/stable-baselines/")
-base_path_logs: Path = Path("data/logs/stable-baselines/")
-base_path_evaluations: Path = Path("data/evaluations/stable-baselines/")
+base_path_models: Path = Path(MODELS_PATH, "stable-baselines/")
+base_path_logs: Path = Path(LOGS_PATH, "stable-baselines/")
+base_path_evaluations: Path = Path(EVAL_PATH, "stable-baselines/")
 
 
 def train(cfg: DictConfig):
@@ -78,8 +79,7 @@ def evaluate(cfg: DictConfig):
             }, f, indent=4)
 
     for dataset in ["train", "test", "val"]:
-        grid2op_env = grid2op.make(f"{cfg.env.env_name}_{dataset}", backend=LightSimBackend(),
-                                   reward_class=MazeRLReward)
+        grid2op_env = grid2op.make(f"{cfg.env.env_name}_{dataset}", backend=LightSimBackend(), reward_class=MazeRLReward)
         evaluate_agent(
             agent=build_agent(cfg, Path(base_path_models.joinpath(cfg.baseline.model.name))),
             env=grid2op_env,
@@ -98,7 +98,7 @@ def build_agent(cfg: DictConfig, load_weights_from: Optional[Path] = None) -> Ba
     """
     alg = model_setup(cfg, load_weights_from)
     return BaselineAgent(
-        grid2op.make(cfg.env.env_name).action_space,
+        grid2op.make(cfg.env.training_env.name).action_space,
         instantiate(cfg.baseline.model.topology_policy, alg=alg),
     )
 

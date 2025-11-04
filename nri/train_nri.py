@@ -1,4 +1,5 @@
 import logging
+import os
 import uuid
 from datetime import datetime
 from typing import Optional, List
@@ -15,6 +16,7 @@ from torch.utils.data import Dataset, DataLoader, TensorDataset
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
+from common.constants import LOGS_PATH, MODELS_PATH, EDGE_PROBS_PATH
 from common.graph_structured_observation_space import EDGE_INDEX, GraphObservationSpace
 from nri.ElboObjective import ElboLoss
 from common.mask_observations import get_feature_mask
@@ -165,7 +167,7 @@ def train(
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     nri_module.to(device=device, dtype=torch.float32)
     if feature_mask is not None:
-        feature_mask = torch.from_numpy(feature_mask).bool().to(device=device)
+        feature_mask = feature_mask.bool().to(device=device)
 
     dataloader_train = DataLoader(training_set, batch_size=batch_size, shuffle=True)
     criterion = criterion if criterion is not None else ElboLoss()
@@ -279,8 +281,10 @@ def evaluate_nri_module(
 def main(cfg: DictConfig):
     logger.info(OmegaConf.to_yaml(cfg))
     timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M')
+    group = "nri"
     name = f"{cfg.nri.name}_{timestamp}_{uuid.uuid4().hex}"
-    tensorboard_logger = SummaryWriter(f'data/logs/nri/exp/{name}')
+
+    tensorboard_logger = SummaryWriter(os.path.join(LOGS_PATH, group, name))
 
     # prepare training data
     train_data = np.load(cfg.nri.train.training_dataset_path)
@@ -301,7 +305,7 @@ def main(cfg: DictConfig):
     )
 
     # Prepare feature mask
-    feature_mask: np.ndarray = get_feature_mask(observation_space, cfg.nri.train.features_to_predict)
+    feature_mask = torch.from_numpy(get_feature_mask(observation_space, cfg.nri.train.features_to_predict))
 
     # prepare model
     nri_module: NRIModule = instantiate(cfg.nri.model, x_dim=train_data.shape[-1])
@@ -325,11 +329,11 @@ def main(cfg: DictConfig):
         plotting_args=plotting_args
     )
 
-    save_path = Path(f"data/models/nri/{name}.pt")
+    save_path = Path(MODELS_PATH, group, name + ".pt")
     save_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(nri_module.state_dict(), save_path)
-    save_edge_probs(nri_module, train_dataset, f"edges_training_{name}", cfg.nri.train.batch_size)
-    save_edge_probs(nri_module, test_dataset, f"edges_testing_{name}", cfg.nri.train.batch_size)
+    save_edge_probs(nri_module, train_dataset, cfg.nri.train.batch_size, save_path=Path(EDGE_PROBS_PATH, group, name + "_training.npy"))
+    save_edge_probs(nri_module, test_dataset, cfg.nri.train.batch_size, save_path=Path(EDGE_PROBS_PATH, group, name + "_testing.npy"))
     tensorboard_logger.close()
 
 

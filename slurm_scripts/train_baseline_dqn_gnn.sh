@@ -1,9 +1,9 @@
 sbatch <<'EOF'
 #!/bin/bash
 
-#SBATCH --job-name=train_baseline_gnn                                         # Name of the job
-#SBATCH --output=out/train_baseline_gnn_v2.%j.log                             # Output file
-#SBATCH --error=out/error_train_baseline_gnn_v2.%j.log                        # Error file
+#SBATCH --job-name=train_gnn_baseline                                         # Name of the job
+#SBATCH --output=out/gnn_baseline/train_baseline_gnn.%j.log                   # Output file
+#SBATCH --error=out/gnn_baseline/error_train_baseline_gnn_v2.%j.log           # Error file
 #SBATCH --ntasks=1                                                            # Number of tasks
 #SBATCH --gres=gpu:1                                                          # Request 1 GPU
 #SBATCH --time=24:00:00                                                       # Max wall time (HH:MM:SS)
@@ -15,5 +15,5 @@ cd ..
 module load devel/miniforge
 conda activate RL
 
-python test_cuda.py && PYTHONPATH=$(pwd) python baselines/train_stable_baseline.py baseline=gnn_dqn env.safe_max_rho=0.9 baseline.model.name=gnn-dqn-rho9-mazereward_uc3
+python test_cuda.py && PYTHONPATH=$(pwd) python nri/agent/dqn/train_GNN_baseline.py
 EOF
