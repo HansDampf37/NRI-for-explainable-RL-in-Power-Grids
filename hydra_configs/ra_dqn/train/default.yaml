@@ -1,1 +1,2 @@
 timesteps: 200_000
+log_interval: 100

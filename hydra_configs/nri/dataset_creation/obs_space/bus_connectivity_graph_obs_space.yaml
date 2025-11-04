@@ -1,3 +1,1 @@
 _target_: common.graph_structured_observation_space.BusConnectivityGraphObsSpace
-with_forecast: ${nri.train.with_forecast}
-with_bus_indices: ${nri.train.with_bus_indices}
