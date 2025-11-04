@@ -2,9 +2,9 @@ import unittest
 
 import numpy as np
 import torch
-from nri.agent.RA_FE import RAFeatureExtractor
+from nri.agent.RAFeatureExtractor import RAFeatureExtractor
 
-class TestRA_FE(unittest.TestCase):
+class TestRAFeatureExtractor(unittest.TestCase):
     def setUp(self):
         # Initialize parameters for NRIFeatureExtractor
         self.x_dim = 5
@@ -18,6 +18,7 @@ class TestRA_FE(unittest.TestCase):
             hidden_dim=self.hidden_dim,
             x_out_dim=self.x_out_dim,
             num_edge_types=self.num_edge_types,
+            num_layers=3,
             dropout_prob=self.dropout_prob
         )
 

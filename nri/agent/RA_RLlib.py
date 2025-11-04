@@ -32,11 +32,11 @@ from common import (
     G2OpGymEnv,
 )
 from nri.agent.HuberKLLoss import HuberKLLoss
-from nri.agent.RA_FE import RAFeatureExtractor
+from nri.agent.RAFeatureExtractor import RAFeatureExtractor
 from nri.utils import fully_connected_edge_index, _get_prior
 
 
-# --------- Env wrapper (same pattern as in RayWrapper.py) ---------
+# --------- Env wrapper ---------
 class RayEnv(G2OpGymEnv):
     def __init__(self, env_config: Dict):
         from grid2op.gym_compat import DiscreteActSpace

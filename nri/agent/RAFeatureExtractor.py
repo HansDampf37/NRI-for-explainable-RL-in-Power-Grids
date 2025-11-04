@@ -1,19 +1,19 @@
 """
-This script contains the relations aware FeatureExtractor (RAFeatureExtractor).
+This script contains the relations aware FeatureExtractor (RAFeatureExtractor) and a relations unaware BaselineFeatureExtractor
+with sb3 compatible APIs.
 """
-from typing import Optional
+from typing import Optional, Tuple
 
 import torch
 import torch.nn.functional as f
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from torch import nn, Tensor
-from torch_geometric.data import Data, Batch
 from torch_geometric.utils import to_dense_batch
 
-from common import GraphObservationSpace, NODES
+from common import GraphObservationSpace, NODES, EDGE_INDEX, EDGE_MASK
 from nri.Sampling import GumbelSoftmax
 from nri.agent.Encoder import Encoder
-from nri.agent.RA_GNN import RA_GNN
+from nri.agent.RAGNN import RAGNN, BaselineGNN
 from nri.utils import fully_connected_edge_index_per_batch
 
 
@@ -45,6 +45,7 @@ class RAFeatureExtractor(nn.Module):
         x_dim: int,
         hidden_dim: int,
         x_out_dim: int,
+        num_layers: int,
         num_edge_types: int,
         dropout_prob: float,
     ) -> None:
@@ -56,11 +57,11 @@ class RAFeatureExtractor(nn.Module):
             dropout_prob=dropout_prob,
         )
         self.gumbel_softmax = GumbelSoftmax()
-        self.gnn: RA_GNN = RA_GNN(
+        self.gnn: RAGNN = RAGNN(
             x_dim=x_dim,
             hidden_dim=hidden_dim,
             x_out_dim=x_out_dim,
-            n_layers=2,
+            num_layers=num_layers,
             num_edge_types=num_edge_types,
             dropout_prob=dropout_prob,
             residual=True,
@@ -69,7 +70,7 @@ class RAFeatureExtractor(nn.Module):
         self.x_out_dim = x_out_dim
 
     def forward(self, x: Tensor, batch: Optional[Tensor] = None,
-                edge_index: Optional[Tensor] = None) -> tuple[Tensor, Tensor]:
+                edge_index: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
         """
         Forward pass.
 
@@ -113,6 +114,7 @@ class RAFeatureExtractorSB3(BaseFeaturesExtractor):
             observation_space: GraphObservationSpace,
             hidden_dim: int,
             out_dim: int,
+            num_layers: int,
             num_edge_types: int,
             dropout_prob: float = 0.0,
     ):
@@ -121,6 +123,7 @@ class RAFeatureExtractorSB3(BaseFeaturesExtractor):
             x_dim=observation_space.x_dim,
             hidden_dim=hidden_dim,
             x_out_dim=out_dim,
+            num_layers=num_layers,
             num_edge_types=num_edge_types,
             dropout_prob=dropout_prob,
         )
@@ -128,12 +131,59 @@ class RAFeatureExtractorSB3(BaseFeaturesExtractor):
     def forward(self, observations: dict[str, torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor]:
         node_features_batch = observations[NODES]  # [B, N, node_in_dim]
 
-        data_list = []
-        batch_size = node_features_batch.size(0)
+        B, N, _ = node_features_batch.shape
+        device = node_features_batch.device
 
-        for b in range(batch_size):
-            node_features = node_features_batch[b]
-            data_list.append(Data(x=node_features))
+        # Flatten nodes
+        x = node_features_batch.reshape(B * N, -1)
+        batch = torch.arange(B, device=device).repeat_interleave(N)
 
-        batch: Batch = Batch.from_data_list(data_list)
-        return self.gnn_feature_extractor(x=batch.x, batch=batch.batch)
+        return self.gnn_feature_extractor(x=x, batch=batch)
+
+
+class BaselineFeatureExtractorSB3(BaseFeaturesExtractor):
+    """
+    Wraps the BaselineGNN to be compatible with the sb3 API.
+    """
+
+    def __init__(
+            self,
+            observation_space: GraphObservationSpace,
+            hidden_dim: int,
+            out_dim: int,
+            num_layers: int = 2,
+            dropout_prob: float = 0.0,
+    ):
+        BaseFeaturesExtractor.__init__(self, observation_space, features_dim=out_dim)
+        self.gnn: BaselineGNN = BaselineGNN(
+            x_dim=observation_space.x_dim,
+            hidden_dim=hidden_dim,
+            x_out_dim=out_dim,
+            num_layers=num_layers,
+            dropout_prob=dropout_prob,
+            residual=True,
+        )
+
+    def forward(self, observations: dict[str, Tensor]) -> Tensor:
+        node_features_batch = observations[NODES]  # [B, N, node_in_dim]
+        edge_index_batch = observations[EDGE_INDEX]  # [B, 2, E_max]
+        edge_mask = observations[EDGE_MASK]  # [B, E_max]
+
+        B, N, _ = node_features_batch.shape
+        device = node_features_batch.device
+
+        # Flatten nodes
+        x = node_features_batch.reshape(B * N, -1)
+        batch = torch.arange(B, device=device).repeat_interleave(N)
+
+        # Mask edges
+        valid_edges = edge_mask.bool()
+        edge_index_batch = edge_index_batch.permute(1, 0, 2)  # [2, B, E_max]
+        edge_index_batch = edge_index_batch[:, valid_edges]  # [2, total_E]
+
+        # Add per-graph node offsets
+        offsets = (torch.arange(B, device=device) * N).repeat_interleave(valid_edges.sum(1))
+        edge_index_batch += offsets.unsqueeze(0)
+
+        return self.gnn(x=x, batch=batch, edge_index=edge_index_batch)
+

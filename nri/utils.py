@@ -2,6 +2,7 @@ import logging
 from typing import Union
 
 import numpy as np
+import numpy.typing as npt
 import torch
 from torch import Tensor, nn
 from torch_geometric.utils import dense_to_sparse
@@ -25,7 +26,7 @@ def fully_connected_edge_index(num_nodes: int, device: str = "cpu", self_loops: 
     return edge_index.to(device=device)
 
 
-def fully_connected_edge_index_per_batch(batch: Tensor, device: str = "cpu", self_loops: bool = False) -> Tensor:
+def fully_connected_edge_index_per_batch(batch: Tensor, device: Union[str, torch.device, int] = "cpu", self_loops: bool = False) -> Tensor:
     """
     Create an edge index representing batch of fully connected edge indices.
     :param batch: graph index per node.
@@ -194,9 +195,9 @@ class EdgeNode2Node(nn.Module):
         return self.phi(torch.cat([agg, x], dim=-1))
 
 
-def warn_large_loss(logger: logging.Logger, predictions: Tensor, target: Tensor) -> Tensor:
+def warn_large_loss(logger: logging.Logger, predictions: Tensor, target: Tensor) -> npt.NDArray[np.float32]:
     with torch.no_grad():
-        per_feature_mse: Tensor = ((target - predictions).pow(2)).mean(dim=(0, 1, 2)).cpu().numpy()
+        per_feature_mse = ((target - predictions).pow(2)).mean(dim=(0, 1, 2)).cpu().numpy()
         logger.warning(f"Large Loss: {per_feature_mse.mean()}\n"
                        f"The loss per feature is:\n{per_feature_mse}")
         return per_feature_mse
