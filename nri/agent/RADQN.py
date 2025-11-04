@@ -167,7 +167,7 @@ class RADQN(DQN):
             )
             if tb_formatter is not None:
                 writer = tb_formatter.writer  # this is the SummaryWriter
-                writer.add_figure("train/image", mean_latent_edges_image, global_step=self._n_updates)
+                writer.add_figure("train/image", mean_latent_edges_image, global_step=self._total_timesteps)
 
 
 class RAQNetwork(QNetwork):
@@ -294,7 +294,7 @@ def main(cfg: DictConfig):
         batch_size=cfg.ra_dqn.model.sb3.batch_size,
         learning_rate=cfg.ra_dqn.model.sb3.learning_rate,
     )
-    algorithm.learn(total_timesteps=int(1e6), tb_log_name=name)
+    algorithm.learn(total_timesteps=int(1e6), tb_log_name=name, log_interval=cfg.ra_dqn.train.log_interval)
 
 
 if __name__ == "__main__":
