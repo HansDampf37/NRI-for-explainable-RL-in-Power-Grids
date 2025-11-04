@@ -1,3 +1,4 @@
+import os
 import uuid
 from datetime import datetime
 
@@ -8,8 +9,9 @@ from omegaconf import DictConfig, OmegaConf
 from torch import Tensor
 
 from common import G2OpGymEnv, EDGE_INDEX, BusConnectivityGraphObsSpace
+from common.constants import LOGS_PATH
 from nri.agent.HuberKLLoss import HuberKLLoss
-from nri.agent.RADQN import RADQN
+from nri.agent.dqn.RADQN import RADQN
 from nri.agent.RAFeatureExtractor import RAFeatureExtractorSB3
 from nri.utils import fully_connected_edge_index, _get_prior
 from visualization.utils import PlottingArgs, get_node_styles
@@ -17,24 +19,25 @@ from visualization.utils import PlottingArgs, get_node_styles
 
 def get_env(cfg) -> G2OpGymEnv:
     """
-    Creates a Grid2opWrapperEnvironment from hydra config using action and observation spaces from the configs baseline
+    Creates a Grid2opWrapperEnvironment with fitting action and observation spaces from hydra config.
 
     :param cfg: The hydra config
     :return: The environment
     """
     env: G2OpGymEnv = instantiate(
-        cfg.env,
+        cfg.env.training_env,
         obs_space_creation=lambda e: instantiate(cfg.ra_dqn.obs_space, grid2op_observation_space=e.observation_space),
         act_space_creation=lambda e: instantiate(cfg.ra_dqn.act_space, grid2op_action_space=e.action_space)
     )
     return env
 
 
-@hydra.main(config_path="../../hydra_configs", config_name="config", version_base="1.3")
+@hydra.main(config_path="../../../hydra_configs", config_name="config", version_base="1.3")
 def main(cfg: DictConfig):
     print(OmegaConf.to_yaml(cfg))
     timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M')
-    name = f"ra_dqn_{timestamp}_{uuid.uuid4().hex}"
+    group = "relations-aware"
+    name = f"radqn_{timestamp}_{uuid.uuid4().hex}"
     env = get_env(cfg)
 
     policy_kwargs = {
@@ -67,7 +70,7 @@ def main(cfg: DictConfig):
 
     algorithm = RADQN(
         env=env,
-        tensorboard_log="data/logs/radqn",
+        tensorboard_log=os.path.join(LOGS_PATH, group),
         plotting_args=plotting_args,
         loss_fn=loss_fn,
         policy_kwargs=policy_kwargs,
@@ -84,6 +87,7 @@ def main(cfg: DictConfig):
         learning_rate=cfg.ra_dqn.model.sb3.learning_rate,
     )
     algorithm.learn(total_timesteps=int(1e6), tb_log_name=name, log_interval=cfg.ra_dqn.train.log_interval)
+    algorithm.save(os.path.join(LOGS_PATH, group, name))
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ The final edge type probabilities are averaged for each edge-type combination ac
 import logging
 import os
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 import hydra
@@ -16,6 +17,7 @@ from torch import Tensor
 from torch.utils.data import DataLoader, TensorDataset, Dataset
 from tqdm import tqdm
 
+from common.constants import MODELS_PATH, EDGE_PROBS_PATH
 from .NRI import NRIModule
 
 logger = logging.getLogger(__name__)
@@ -82,19 +84,17 @@ def get_edge_type_probabilities(
 def save_edge_probs(
         nri_module: NRIModule,
         dataset: Dataset,
-        file_name: Optional[str] = None,
         batch_size: int = 64,
         edge_index: Optional[Tensor] = None,
-        out_dir: Optional[str] = None,
+        save_path: Optional[Path] = None,
 ) -> np.ndarray:
     """
     Runs the specified nri module on the specified dataset and saves the averaged edge type probabilities.
     :param nri_module: the NRI module to run
     :param dataset: the dataset to run the module on
-    :param file_name: the name of the file to save the averaged edge type probabilities to (without extension)
     :param batch_size: the batch size
     :param edge_index: optional edge index [2, E] to restrict latent edges considered
-    :param out_dir: optional output directory. If None, uses data/edge_probabilities if it exists, otherwise data/edge_probs
+    :param save_path: optional output path. If None, uses data/edge_probabilities if it exists, otherwise data/edge_probs
     :return: the averaged edge type probabilities as numpy array of shape [E, NUM_EDGE_TYPES]
     """
     edge_probs = get_edge_type_probabilities(
@@ -104,20 +104,15 @@ def save_edge_probs(
         verbose=True,
         edge_index=edge_index,
     )
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
-    file_name = (file_name or "edge_probs") + f"_{timestamp}.npy"
 
     # Smart default for output directory
-    if out_dir is None:
-        preferred = to_absolute_path('data/edge_probabilities')
-        fallback = to_absolute_path('data/edge_probs')
-        out_dir = preferred if os.path.isdir(preferred) else fallback
-    else:
-        out_dir = to_absolute_path(out_dir)
+    if save_path is None:
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+        file_name = f"edge_probs_{timestamp}.npy"
+        save_path = Path(EDGE_PROBS_PATH, file_name)
 
-    os.makedirs(out_dir, exist_ok=True)
-    out_path = os.path.join(out_dir, file_name)
-    np.save(out_path, edge_probs)
+    os.makedirs(save_path, exist_ok=True)
+    np.save(save_path, edge_probs)
     return edge_probs
 
 
@@ -126,7 +121,7 @@ def _find_latest_checkpoint_by_name(name_prefix: str) -> Optional[str]:
     Finds the newest checkpoint file in data/models/nri whose filename starts with the given name_prefix.
     Returns absolute path or None if not found.
     """
-    base_dir = to_absolute_path('data/models/nri')
+    base_dir = to_absolute_path(os.path.join(MODELS_PATH, "nri"))
     if not os.path.isdir(base_dir):
         return None
 
@@ -176,8 +171,8 @@ def main(cfg: DictConfig):
     nri_module.load_state_dict(nri_weights)
 
     # determine and save edge probs
-    save_edge_probs(nri_module=nri_module, dataset=test_dataset, file_name="test_edges", batch_size=cfg.nri.train.batch_size)
-    save_edge_probs(nri_module=nri_module, dataset=train_dataset, file_name="training_edges", batch_size=cfg.nri.train.batch_size)
+    save_edge_probs(nri_module=nri_module, dataset=test_dataset, batch_size=cfg.nri.train.batch_size)
+    save_edge_probs(nri_module=nri_module, dataset=train_dataset, batch_size=cfg.nri.train.batch_size)
 
 
 if __name__ == "__main__":
