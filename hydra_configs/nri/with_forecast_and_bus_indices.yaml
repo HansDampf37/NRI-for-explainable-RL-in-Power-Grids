@@ -1,6 +1,0 @@
-defaults:
-    -   dataset_creation: default
-    -   model: default
-    -   train: with_forecast_and_bus_indices
-
-name: NRI_with_forecast_and_bus_indices

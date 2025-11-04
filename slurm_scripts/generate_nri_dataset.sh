@@ -2,8 +2,8 @@ sbatch <<'EOF'
 #!/bin/bash
 
 #SBATCH --job-name=gen_nri_dataset                                             # Name of the job
-#SBATCH --output=out/gen_nri_dataset.%j.log                                    # Output file
-#SBATCH --error=out/error_gen_nri_dataset.%j.log                               # Error file
+#SBATCH --output=out/gen_ds/gen_nri_dataset.%j.log                             # Output file
+#SBATCH --error=out/gen_ds/error_gen_nri_dataset.%j.log                        # Error file
 #SBATCH --ntasks=1                                                             # Number of tasks
 #SBATCH --gres=gpu:1                                                           # Request 1 GPU
 #SBATCH --time=03:00:00                                                        # Max wall time (HH:MM:SS)
