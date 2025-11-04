@@ -207,6 +207,15 @@ class RAQNetwork(QNetwork):
         x, p_x_given_z = self.extract_features(obs, self.features_extractor)
         return self.q_net(x), p_x_given_z
 
+    def _predict(self, observation: PyTorchObs, deterministic: bool = True) -> Tensor:
+        """
+        In order to make a prediction we just need the q-values and ignore the posterior
+        """
+        q_values, _ = self(observation)
+        # Greedy action
+        action = q_values.argmax(dim=1).reshape(-1)
+        return action
+
 
 class RADQNPolicy(DQNPolicy):
     """
@@ -254,7 +263,7 @@ def main(cfg: DictConfig):
     prior_for_graph_edges = Tensor(cfg.ra_dqn.model.loss.prior_for_graph_edges).to(dtype=torch.float32)
     prior_for_non_graph_edges = Tensor(cfg.ra_dqn.model.loss.prior_for_non_graph_edges).to(dtype=torch.float32)
     powergrid_edge_index = torch.from_numpy(env.reset()[0][EDGE_INDEX]) # [2, E]
-    N = powergrid_edge_index.max() + 1
+    N = powergrid_edge_index.max().item() + 1
     all_edges = fully_connected_edge_index(N) # [2, E']
     prior = _get_prior(powergrid_edge_index, all_edges, prior_for_graph_edges, prior_for_non_graph_edges)
     loss_fn = HuberKLLoss(prior=prior, alpha=cfg.ra_dqn.model.loss.alpha, beta=cfg.ra_dqn.model.loss.beta)
@@ -263,7 +272,7 @@ def main(cfg: DictConfig):
     plotting_args = PlottingArgs(
         N,
         get_node_styles(env._g2op_env, BusConnectivityGraphObsSpace),
-        powerline_edge_index=powergrid_edge_index,
+        powerline_edge_index=powergrid_edge_index.cpu().numpy(),
         skip_last_edge_type=True,
     )
 

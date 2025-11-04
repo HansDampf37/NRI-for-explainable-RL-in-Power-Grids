@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from typing import Optional, List
 
-import networkx
 import networkx as nx
 import numpy as np
 import pandas as pd
@@ -91,7 +90,7 @@ def visualize_graph(args: PlottingArgs) -> Figure:
     return fig
 
 
-def _create_legend(args: PlottingArgs, G: networkx.Graph) -> None:
+def _create_legend(args: PlottingArgs, G: nx.Graph) -> None:
     # --- Node legend ---
     unique_labels = {}
     for ns in args.node_styles:
