@@ -185,5 +185,5 @@ class BaselineFeatureExtractorSB3(BaseFeaturesExtractor):
         offsets = (torch.arange(B, device=device) * N).repeat_interleave(valid_edges.sum(1))
         edge_index_batch += offsets.unsqueeze(0)
 
-        return self.gnn(x=x, batch=batch, edge_index=edge_index_batch)
+        return self.gnn(x=x, batch=batch, edge_index=edge_index_batch.to(dtype=torch.int32))
 
