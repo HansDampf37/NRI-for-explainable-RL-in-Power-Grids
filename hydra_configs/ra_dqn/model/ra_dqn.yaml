@@ -21,7 +21,7 @@ sb3:
             dropout_prob: 0.1
 
 loss:
-    alpha: 1.0
+    alpha: 0.1
     beta: 1.0
     prior_for_graph_edges: [0.9, 0.1]
     prior_for_non_graph_edges: [0.1, 0.9]
