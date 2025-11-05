@@ -87,7 +87,7 @@ def main(cfg: DictConfig):
         batch_size=cfg.ra_dqn.model.sb3.batch_size,
         learning_rate=cfg.ra_dqn.model.sb3.learning_rate,
     )
-    algorithm.learn(total_timesteps=int(1e6), tb_log_name=name, log_interval=cfg.ra_dqn.train.log_interval)
+    algorithm.learn(total_timesteps=cfg.ra_dqn.train.timesteps, tb_log_name=name, log_interval=cfg.ra_dqn.train.log_interval)
     algorithm.save(os.path.join(LOGS_PATH, group, name))
 
 

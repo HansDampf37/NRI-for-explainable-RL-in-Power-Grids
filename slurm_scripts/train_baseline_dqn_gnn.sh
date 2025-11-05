@@ -3,7 +3,7 @@ sbatch <<'EOF'
 
 #SBATCH --job-name=train_gnn_baseline                                         # Name of the job
 #SBATCH --output=out/gnn_baseline/train_baseline_gnn.%j.log                   # Output file
-#SBATCH --error=out/gnn_baseline/error_train_baseline_gnn_v2.%j.log           # Error file
+#SBATCH --error=out/gnn_baseline/error_train_baseline_gnn.%j.log              # Error file
 #SBATCH --ntasks=1                                                            # Number of tasks
 #SBATCH --gres=gpu:1                                                          # Request 1 GPU
 #SBATCH --time=24:00:00                                                       # Max wall time (HH:MM:SS)
