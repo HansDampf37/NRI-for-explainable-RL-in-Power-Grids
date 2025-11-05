@@ -55,7 +55,7 @@ class HuberKLLoss(nn.Module):
 
     def kl_divergence_to_prior(self, posterior_probs: Tensor) -> Tensor:
         """
-        Computes the kl divergence of the specified tensor to a uniform distribution.
+        Computes the kl divergence of the specified tensor to the prior.
         :param posterior_probs: posterior distribution(s)
         """
         if self.prior is None:

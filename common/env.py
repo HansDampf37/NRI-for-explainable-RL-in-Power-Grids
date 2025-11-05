@@ -26,7 +26,7 @@ class G2OpGymEnv(Env):
                  env_name: str = "l2rpn_case14_sandbox",
                  safe_max_rho: float = 0.95,
                  act_space_creation=lambda env: DiscreteActSpace(env.action_space, attr_to_keep=["set_bus"]),
-                 obs_space_creation=lambda env: BoxGymObsSpace(grid2op_observation_space=env.observation_space)):
+                 obs_space_creation=lambda env: BoxGymObsSpace(grid2op_observation_space=env.observation_space, attr_to_keep=["rho", "p_or", "gen_p", "load_p"])):
         """
         Constructor.
         @param env_name: the name of the grid2op environment
