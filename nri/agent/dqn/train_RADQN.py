@@ -10,7 +10,7 @@ from torch import Tensor
 
 from common import G2OpGymEnv, EDGE_INDEX, BusConnectivityGraphObsSpace
 from common.constants import LOGS_PATH
-from nri.agent.HuberKLLoss import HuberKLLoss
+from nri.agent.dqn.HuberKLLoss import HuberKLLoss
 from nri.agent.dqn.RADQN import RADQN
 from nri.agent.RAFeatureExtractor import RAFeatureExtractorSB3
 from nri.utils import fully_connected_edge_index, _get_prior
@@ -36,7 +36,7 @@ def get_env(cfg) -> G2OpGymEnv:
 def main(cfg: DictConfig):
     print(OmegaConf.to_yaml(cfg))
     timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M')
-    group = "relations-aware"
+    group = "relation-aware/dqn"
     name = f"radqn_{timestamp}_{uuid.uuid4().hex}"
     env = get_env(cfg)
 

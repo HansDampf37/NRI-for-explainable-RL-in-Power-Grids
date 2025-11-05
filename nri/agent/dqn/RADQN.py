@@ -14,7 +14,7 @@ from stable_baselines3.dqn.policies import DQNPolicy, QNetwork
 from torch import nn, Tensor
 
 from common import GraphObservationSpace
-from nri.agent.HuberKLLoss import HuberKLLoss
+from .HuberKLLoss import HuberKLLoss
 from nri.agent.RAFeatureExtractor import RAFeatureExtractorSB3
 from visualization.utils import visualize_graph, PlottingArgs
 

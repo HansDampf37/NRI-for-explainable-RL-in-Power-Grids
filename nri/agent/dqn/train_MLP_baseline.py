@@ -37,7 +37,7 @@ def get_env(cfg) -> G2OpGymEnv:
 @hydra.main(config_path="../../../hydra_configs", config_name="config", version_base="1.3")
 def main(cfg: DictConfig):
     print(OmegaConf.to_yaml(cfg))
-    group = "relation-unaware-baselines"
+    group = "relation-unaware-baselines/dqn"
     timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M')
     name = f"mlp_{timestamp}_{uuid.uuid4().hex}"
     env = get_env(cfg)

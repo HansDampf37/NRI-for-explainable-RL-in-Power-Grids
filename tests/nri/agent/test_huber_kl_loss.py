@@ -1,7 +1,7 @@
 # ...existing code...
 import unittest
 import torch
-from nri.agent.HuberKLLoss import HuberKLLoss
+from nri.agent.dqn.HuberKLLoss import HuberKLLoss
 
 
 class TestHuberKLLoss(unittest.TestCase):
