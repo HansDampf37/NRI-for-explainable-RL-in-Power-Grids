@@ -49,6 +49,7 @@ def main(cfg: DictConfig):
             "hidden_dim": cfg.ra_dqn.model.sb3.policy_kwargs.features_extractor_kwargs.hidden_dim,
             "out_dim": cfg.ra_dqn.model.sb3.policy_kwargs.features_extractor_kwargs.out_dim,
             "dropout_prob": cfg.ra_dqn.model.sb3.policy_kwargs.features_extractor_kwargs.dropout_prob,
+            "num_layers": cfg.ra_dqn.model.sb3.policy_kwargs.features_extractor_kwargs.num_layers,
         }
     }
 

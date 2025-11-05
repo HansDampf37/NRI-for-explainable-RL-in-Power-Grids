@@ -2,5 +2,5 @@ name: "l2rpn_case14_sandbox"
 
 training_env:
   _target_: common.env.G2OpGymEnv
-  env_name: "${env_name}_train"
+  env_name: "${env.name}_train"
   safe_max_rho: 0.95

@@ -17,6 +17,7 @@ sb3:
             hidden_dim: 32
             out_dim: 32
             num_edge_types: 2
+            num_layers: 3
             dropout_prob: 0.1
 
 loss:
