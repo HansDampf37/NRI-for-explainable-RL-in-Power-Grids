@@ -36,7 +36,7 @@ class TestHydra(unittest.TestCase):
             obs_cfg = hydra.compose(config_name="baseline/obs_space/box_obs_space")
             act_cfg = hydra.compose(config_name="baseline/act_space/discrete_set_bus")
             env = instantiate(
-                env_cfg.env,
+                env_cfg.env.training_env,
                 obs_space_creation = lambda e: instantiate(obs_cfg.baseline.obs_space, grid2op_observation_space=e.observation_space),
                 act_space_creation = lambda e: instantiate(act_cfg.baseline.act_space, grid2op_action_space=e.action_space)
             )

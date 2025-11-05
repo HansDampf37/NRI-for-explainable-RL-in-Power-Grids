@@ -98,7 +98,7 @@ def build_agent(cfg: DictConfig, load_weights_from: Optional[Path] = None) -> Ba
     """
     alg = model_setup(cfg, load_weights_from)
     return BaselineAgent(
-        grid2op.make(cfg.env.training_env.name).action_space,
+        grid2op.make(cfg.env.training_env.env_name).action_space,
         instantiate(cfg.baseline.model.topology_policy, alg=alg),
     )
 
@@ -145,7 +145,7 @@ def get_env(cfg):
     :return: The environment
     """
     env: G2OpGymEnv = instantiate(
-        cfg.env,
+        cfg.env.training_env,
         obs_space_creation=lambda e: instantiate(cfg.baseline.obs_space, grid2op_observation_space=e.observation_space),
         act_space_creation=lambda e: instantiate(cfg.baseline.act_space, grid2op_action_space=e.action_space)
     )
