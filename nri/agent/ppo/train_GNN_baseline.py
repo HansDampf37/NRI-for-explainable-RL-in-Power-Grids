@@ -47,7 +47,6 @@ def main(cfg: DictConfig):
         "features_extractor_kwargs": {
             "hidden_dim": cfg.rl.ppo.sb3.policy_kwargs.features_extractor_kwargs.hidden_dim,
             "out_dim": cfg.rl.ppo.sb3.policy_kwargs.features_extractor_kwargs.out_dim,
-            "num_edge_types": cfg.rl.ppo.sb3.policy_kwargs.features_extractor_kwargs.num_edge_types,
             "num_layers": cfg.rl.ppo.sb3.policy_kwargs.features_extractor_kwargs.num_layers,
             "dropout_prob": cfg.rl.ppo.sb3.policy_kwargs.features_extractor_kwargs.dropout_prob,
             # TODO optionally include edge index here to restrict edges for nri

@@ -8,7 +8,7 @@ sb3:
     gamma: 0.99
     gae_lambda: 0.95
     clip_range: 0.2
-    clip_range_vf: None
+    clip_range_vf: ~
     normalize_advantage: true
     ent_coef: 0.05
     vf_coef: 0.5
@@ -25,6 +25,10 @@ sb3:
             num_edge_types: 2
             num_layers: 2
             dropout_prob: 0
+
+loss:
+    prior_for_graph_edges: [0.9, 0.1]
+    prior_for_non_graph_edges: [0.1, 0.9]
 
 topology_policy:
     _target_: baselines.topo_policies_sb3.TopoPolicyStablePPO

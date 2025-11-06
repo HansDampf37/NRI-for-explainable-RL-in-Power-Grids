@@ -43,13 +43,13 @@ def main(cfg: DictConfig):
     env = get_env(cfg)
 
     policy_kwargs = {
-        "net_arch": cfg.rl.ppo.sb3.policy_kwargs.net_arch,
+        "net_arch": cfg.rl.dqn.sb3.policy_kwargs.net_arch,
         "features_extractor_class": BaselineFeatureExtractorSB3,
         "features_extractor_kwargs": {
-            "hidden_dim": cfg.rl.ppo.sb3.policy_kwargs.features_extractor_kwargs.hidden_dim,
-            "out_dim": cfg.rl.ppo.sb3.policy_kwargs.features_extractor_kwargs.out_dim,
-            "dropout_prob": cfg.rl.ppo.sb3.policy_kwargs.features_extractor_kwargs.dropout_prob,
-            "num_layers": cfg.rl.ppo.sb3.policy_kwargs.features_extractor_kwargs.num_layers,
+            "hidden_dim": cfg.rl.dqn.sb3.policy_kwargs.features_extractor_kwargs.hidden_dim,
+            "out_dim": cfg.rl.dqn.sb3.policy_kwargs.features_extractor_kwargs.out_dim,
+            "dropout_prob": cfg.rl.dqn.sb3.policy_kwargs.features_extractor_kwargs.dropout_prob,
+            "num_layers": cfg.rl.dqn.sb3.policy_kwargs.features_extractor_kwargs.num_layers,
         }
     }
 
@@ -59,17 +59,17 @@ def main(cfg: DictConfig):
         policy="MultiInputPolicy",
         tensorboard_log=os.path.join(LOGS_PATH, group),
         policy_kwargs=policy_kwargs,
-        verbose=cfg.rl.ppo.sb3.verbose,
-        train_freq=cfg.rl.ppo.sb3.train_freq,
-        gradient_steps=cfg.rl.ppo.sb3.gradient_steps,
-        gamma=cfg.rl.ppo.sb3.gamma,
-        exploration_fraction=cfg.rl.ppo.sb3.exploration_fraction,
-        exploration_final_eps=cfg.rl.ppo.sb3.exploration_final_eps,
-        target_update_interval=cfg.rl.ppo.sb3.target_update_interval,
-        learning_starts=cfg.rl.ppo.sb3.learning_starts,
-        buffer_size=cfg.rl.ppo.sb3.buffer_size,
-        batch_size=cfg.rl.ppo.sb3.batch_size,
-        learning_rate=cfg.rl.ppo.sb3.learning_rate,
+        verbose=cfg.rl.dqn.sb3.verbose,
+        train_freq=cfg.rl.dqn.sb3.train_freq,
+        gradient_steps=cfg.rl.dqn.sb3.gradient_steps,
+        gamma=cfg.rl.dqn.sb3.gamma,
+        exploration_fraction=cfg.rl.dqn.sb3.exploration_fraction,
+        exploration_final_eps=cfg.rl.dqn.sb3.exploration_final_eps,
+        target_update_interval=cfg.rl.dqn.sb3.target_update_interval,
+        learning_starts=cfg.rl.dqn.sb3.learning_starts,
+        buffer_size=cfg.rl.dqn.sb3.buffer_size,
+        batch_size=cfg.rl.dqn.sb3.batch_size,
+        learning_rate=cfg.rl.dqn.sb3.learning_rate,
     )
     algorithm.learn(total_timesteps=cfg.rl.train.timesteps, tb_log_name=name, log_interval=cfg.rl.train.log_interval)
     algorithm.save(os.path.join(MODELS_PATH, group, name))

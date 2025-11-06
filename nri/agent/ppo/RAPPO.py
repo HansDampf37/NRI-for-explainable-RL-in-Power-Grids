@@ -7,16 +7,19 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from gymnasium import spaces
+from gymnasium.spaces import Discrete
 from stable_baselines3 import PPO
 from stable_baselines3.common.buffers import RolloutBuffer
+from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.distributions import Distribution
 from stable_baselines3.common.logger import TensorBoardOutputFormat
 from stable_baselines3.common.policies import ActorCriticPolicy
 from stable_baselines3.common.type_aliases import GymEnv, Schedule, PyTorchObs
-from stable_baselines3.common.utils import explained_variance
+from stable_baselines3.common.utils import explained_variance, obs_as_tensor
+from stable_baselines3.common.vec_env import VecEnv
 from torch import Tensor
 
-from common import GraphObservationSpace
+from common import GraphObservationSpace, BusConnectivityGraphObsSpace
 from visualization.utils import visualize_graph, PlottingArgs
 
 
@@ -233,13 +236,25 @@ class RAPPOPolicy(ActorCriticPolicy):
     This Policy is just like the ActorCriticPolicy with the difference that it also passes the predicted posterior edge types
     """
 
-    def __init__(self, **kwargs):
-        share = kwargs.get("share_features_extractor", None)
+    def __init__(
+        self,
+        observation_space: BusConnectivityGraphObsSpace,
+        action_space: Discrete,
+        lr_schedule: Schedule,
+        **kwargs,
+    ):
+        share = kwargs.get("share_features_extractor", True)
         if share is not True:
             raise NotImplementedError("This Policy requires share_features_extractor=True")
-        super().__init__(**kwargs)
 
-    def forward(self, obs: Tensor, deterministic: bool = False) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+        super().__init__(
+            observation_space=observation_space,
+            action_space=action_space,
+            lr_schedule=lr_schedule,
+            **kwargs,
+        )
+
+    def forward(self, obs: Tensor, deterministic: bool = False) -> tuple[Tensor, Tensor, Tensor]:
         """
         Forward pass in all the networks (actor and critic)
 
@@ -256,7 +271,7 @@ class RAPPOPolicy(ActorCriticPolicy):
         actions = distribution.get_actions(deterministic=deterministic)
         log_prob = distribution.log_prob(actions)
         actions = actions.reshape((-1, *self.action_space.shape))  # type: ignore[misc]
-        return actions, values, log_prob, posterior_edge_types
+        return actions, values, log_prob
 
     def get_distribution(self, obs: PyTorchObs) -> Distribution:
         features, _ = super().extract_features(obs, self.pi_features_extractor)
