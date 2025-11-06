@@ -41,7 +41,7 @@ def get_env(cfg) -> G2OpGymEnv:
 def main(cfg: DictConfig):
     print(OmegaConf.to_yaml(cfg))
     timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M')
-    group = "relations-aware/ppo"
+    group = "relation-aware/ppo"
     name = f"radqn_{timestamp}_{uuid.uuid4().hex}"
     env = get_env(cfg)
 
