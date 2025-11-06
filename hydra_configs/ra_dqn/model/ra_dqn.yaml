@@ -20,6 +20,21 @@ sb3:
             num_layers: 3
             dropout_prob: 0.1
 
+ray:
+    exploration_fraction: ${ra_dqn.model.sb3.exploration_fraction}
+    exploration_final_eps: ${ra_dqn.model.sb3.exploration_final_eps}
+    target_network_update_freq: ${ra_dqn.model.sb3.target_update_interval}
+    num_steps_sampled_before_learning_starts: ${ra_dqn.model.sb3.learning_starts}
+    lr: ${ra_dqn.model.sb3.learning_rate}
+    double_q: true
+    dueling: true
+    train_batch_size_per_learner: ${ra_dqn.model.sb3.batch_size}
+    replay_buffer_config:
+        type: PrioritizedEpisodeReplayBuffer
+        capacity: ${ra_dqn.model.sb3.buffer_size}
+        alpha: 0.5,
+        beta: 0.5,
+
 loss:
     alpha: 0.1
     beta: 1.0

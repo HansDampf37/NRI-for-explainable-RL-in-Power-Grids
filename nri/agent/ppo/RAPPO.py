@@ -22,8 +22,8 @@ from visualization.utils import visualize_graph, PlottingArgs
 
 class RAPPO(PPO):
     """
-    This class implements the PPO interface from sb3. It uses the RA-GNN to predict the action_probabilities.
-     The loss is extended, to include the distance between posterior p(z|x) to the prior p(z).
+    This class implements the PPO interface from sb3. It uses an Encoder + downstream RA-GNN to predict the action probabilities + q-value.
+    The loss is extended, to include the distance between posterior p(z|x) to the prior p(z).
     """
 
     def __init__(self,
