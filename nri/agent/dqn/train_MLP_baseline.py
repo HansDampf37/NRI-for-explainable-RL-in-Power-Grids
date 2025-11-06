@@ -29,7 +29,7 @@ def get_env(cfg) -> G2OpGymEnv:
     env: G2OpGymEnv = instantiate(
         cfg.env.training_env,
         obs_space_creation=lambda e: BoxGymObsSpace(grid2op_observation_space=e.observation_space),
-        act_space_creation=lambda e: instantiate(cfg.ra_dqn.act_space, grid2op_action_space=e.action_space)
+        act_space_creation=lambda e: instantiate(cfg.rl.act_space, grid2op_action_space=e.action_space)
     )
     return env
 
@@ -46,24 +46,29 @@ def main(cfg: DictConfig):
         env=env,
         policy="MlpPolicy",
         tensorboard_log=os.path.join(LOGS_PATH, group),
-        verbose=cfg.ra_dqn.model.sb3.verbose,
-        train_freq=cfg.ra_dqn.model.sb3.train_freq,
-        gradient_steps=cfg.ra_dqn.model.sb3.gradient_steps,
-        gamma=cfg.ra_dqn.model.sb3.gamma,
-        exploration_fraction=cfg.ra_dqn.model.sb3.exploration_fraction,
-        exploration_final_eps=cfg.ra_dqn.model.sb3.exploration_final_eps,
-        target_update_interval=cfg.ra_dqn.model.sb3.target_update_interval,
-        learning_starts=cfg.ra_dqn.model.sb3.learning_starts,
-        buffer_size=cfg.ra_dqn.model.sb3.buffer_size,
-        batch_size=cfg.ra_dqn.model.sb3.batch_size,
-        learning_rate=cfg.ra_dqn.model.sb3.learning_rate,
+        verbose=cfg.rl.ppo.sb3.verbose,
+        train_freq=cfg.rl.ppo.sb3.train_freq,
+        gradient_steps=cfg.rl.ppo.sb3.gradient_steps,
+        gamma=cfg.rl.ppo.sb3.gamma,
+        exploration_fraction=cfg.rl.ppo.sb3.exploration_fraction,
+        exploration_final_eps=cfg.rl.ppo.sb3.exploration_final_eps,
+        target_update_interval=cfg.rl.ppo.sb3.target_update_interval,
+        learning_starts=cfg.rl.ppo.sb3.learning_starts,
+        buffer_size=cfg.rl.ppo.sb3.buffer_size,
+        batch_size=cfg.rl.ppo.sb3.batch_size,
+        learning_rate=cfg.rl.ppo.sb3.learning_rate,
+        policy_kwargs={
+            "net_arch": cfg.rl.ppo.sb3.policy_kwargs.net_arch,
+        }
     )
-    algorithm.learn(total_timesteps=cfg.ra_dqn.train.timesteps, tb_log_name=name, log_interval=cfg.ra_dqn.train.log_interval)
+    algorithm.learn(total_timesteps=cfg.rl.train.timesteps, tb_log_name=name, log_interval=cfg.rl.train.log_interval)
     algorithm.save(os.path.join(MODELS_PATH, group, name))
 
+    # evaluate
     agent = BaselineAgent(
         env.g2op_action_space,
-        Sb3DQNTopologyPolicy(algorithm)
+        Sb3DQNTopologyPolicy(algorithm),
+        safe_max_rho=cfg.env.safe_max_rho,
     )
     for dataset in ["train", "test", "val"]:
         grid2op_env = grid2op.make(f"{cfg.env.env_name}_{dataset}", backend=LightSimBackend(), reward_class=MazeRLReward)

@@ -1,0 +1,30 @@
+sb3:
+    _target_: nri/agent/RAPPO
+    verbose: 1
+    learning_rate: 0.0003
+    n_steps: 2048  # number of steps to run per update
+    batch_size: 64 # batch size when optimizing the surrogate loss
+    n_epochs: 10   # number of epochs when optimizing the surrogate loss
+    gamma: 0.99
+    gae_lambda: 0.95
+    clip_range: 0.2
+    clip_range_vf: None
+    normalize_advantage: true
+    ent_coef: 0.05
+    vf_coef: 0.5
+    kl_coef: 1.0
+    max_grad_norm: 0.5
+    use_sde: false
+    sde_sample_freq: -1
+
+    policy_kwargs:
+        net_arch: [ 100, 100, 100 ]
+        features_extractor_kwargs:
+            hidden_dim: 64
+            out_dim: 64
+            num_edge_types: 2
+            num_layers: 2
+            dropout_prob: 0
+
+topology_policy:
+    _target_: baselines.topo_policies_sb3.TopoPolicyStablePPO

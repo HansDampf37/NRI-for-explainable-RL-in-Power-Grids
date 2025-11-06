@@ -29,12 +29,12 @@ def main(cfg: DictConfig):
     env_config = OmegaConf.to_container(cfg.env.training_env, resolve=True)
     env_config["hydra"] = cfg
 
-    ray_conf = cfg.ra_dqn.model.ray
+    ray_conf = cfg.rl.ppo.ray
     config = (
         DQNConfig()
         .environment(env=RayEnv, env_config=env_config)
         .training(
-            epsilon=[[0, 1.0], [ray_conf.exploration_fraction * cfg.ra_dqn.train.timesteps, ray_conf.exploration_final_eps]],
+            epsilon=[[0, 1.0], [ray_conf.exploration_fraction * cfg.rl.train.timesteps, ray_conf.exploration_final_eps]],
             target_network_update_freq=ray_conf.target_network_update_freq,
             num_steps_sampled_before_learning_starts=ray_conf.num_steps_sampled_before_learning_starts,
             lr=ray_conf.lr,

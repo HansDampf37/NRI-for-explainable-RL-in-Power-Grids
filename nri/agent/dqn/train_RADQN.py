@@ -1,15 +1,21 @@
 import os
 import uuid
 from datetime import datetime
+from pathlib import Path
 
+import grid2op
 import hydra
 import torch
 from hydra.utils import instantiate
+from lightsim2grid import LightSimBackend
 from omegaconf import DictConfig, OmegaConf
 from torch import Tensor
 
+from baselines.baseline_agent import BaselineAgent, evaluate_agent
 from common import G2OpGymEnv, EDGE_INDEX, BusConnectivityGraphObsSpace
-from common.constants import LOGS_PATH
+from common.constants import LOGS_PATH, MODELS_PATH, EVAL_PATH
+from common.rewards import MazeRLReward
+from nri.agent import Sb3DQNTopologyPolicy
 from nri.agent.dqn.HuberKLLoss import HuberKLLoss
 from nri.agent.dqn.RADQN import RADQN
 from nri.agent.RAFeatureExtractor import RAFeatureExtractorSB3
@@ -26,8 +32,8 @@ def get_env(cfg) -> G2OpGymEnv:
     """
     env: G2OpGymEnv = instantiate(
         cfg.env.training_env,
-        obs_space_creation=lambda e: instantiate(cfg.ra_dqn.obs_space, grid2op_observation_space=e.observation_space),
-        act_space_creation=lambda e: instantiate(cfg.ra_dqn.act_space, grid2op_action_space=e.action_space)
+        obs_space_creation=lambda e: instantiate(cfg.rl.obs_space, grid2op_observation_space=e.observation_space),
+        act_space_creation=lambda e: instantiate(cfg.rl.act_space, grid2op_action_space=e.action_space)
     )
     return env
 
@@ -41,25 +47,25 @@ def main(cfg: DictConfig):
     env = get_env(cfg)
 
     policy_kwargs = {
-        "net_arch": cfg.ra_dqn.model.sb3.policy_kwargs.net_arch,
+        "net_arch": cfg.rl.ppo.sb3.policy_kwargs.net_arch,
         "features_extractor_class": RAFeatureExtractorSB3,
         "features_extractor_kwargs": {
-            "hidden_dim": cfg.ra_dqn.model.sb3.policy_kwargs.features_extractor_kwargs.hidden_dim,
-            "out_dim": cfg.ra_dqn.model.sb3.policy_kwargs.features_extractor_kwargs.out_dim,
-            "num_edge_types": cfg.ra_dqn.model.sb3.policy_kwargs.features_extractor_kwargs.num_edge_types,
-            "num_layers": cfg.ra_dqn.model.sb3.policy_kwargs.features_extractor_kwargs.num_layers,
-            "dropout_prob": cfg.ra_dqn.model.sb3.policy_kwargs.features_extractor_kwargs.dropout_prob, #TODO optionally include edge index here to restrict edges for nri
+            "hidden_dim": cfg.rl.ppo.sb3.policy_kwargs.features_extractor_kwargs.hidden_dim,
+            "out_dim": cfg.rl.ppo.sb3.policy_kwargs.features_extractor_kwargs.out_dim,
+            "num_edge_types": cfg.rl.ppo.sb3.policy_kwargs.features_extractor_kwargs.num_edge_types,
+            "num_layers": cfg.rl.ppo.sb3.policy_kwargs.features_extractor_kwargs.num_layers,
+            "dropout_prob": cfg.rl.ppo.sb3.policy_kwargs.features_extractor_kwargs.dropout_prob, #TODO optionally include edge index here to restrict edges for nri
         }
     }
 
     # create loss function
-    prior_for_graph_edges = Tensor(cfg.ra_dqn.model.loss.prior_for_graph_edges).to(dtype=torch.float32)
-    prior_for_non_graph_edges = Tensor(cfg.ra_dqn.model.loss.prior_for_non_graph_edges).to(dtype=torch.float32)
+    prior_for_graph_edges = Tensor(cfg.rl.ppo.loss.prior_for_graph_edges).to(dtype=torch.float32)
+    prior_for_non_graph_edges = Tensor(cfg.rl.ppo.loss.prior_for_non_graph_edges).to(dtype=torch.float32)
     powergrid_edge_index = torch.from_numpy(env.reset()[0][EDGE_INDEX]) # [2, E]
     N = powergrid_edge_index.max().item() + 1
     all_edges = fully_connected_edge_index(N) # [2, E']
     prior = _get_prior(powergrid_edge_index, all_edges, prior_for_graph_edges, prior_for_non_graph_edges)
-    loss_fn = HuberKLLoss(prior=prior, alpha=cfg.ra_dqn.model.loss.alpha, beta=cfg.ra_dqn.model.loss.beta)
+    loss_fn = HuberKLLoss(prior=prior, alpha=cfg.rl.ppo.loss.alpha, beta=cfg.rl.ppo.loss.beta)
 
     # create plotting args
     plotting_args = PlottingArgs(
@@ -75,20 +81,35 @@ def main(cfg: DictConfig):
         plotting_args=plotting_args,
         loss_fn=loss_fn,
         policy_kwargs=policy_kwargs,
-        verbose=cfg.ra_dqn.model.sb3.verbose,
-        train_freq=cfg.ra_dqn.model.sb3.train_freq,
-        gradient_steps=cfg.ra_dqn.model.sb3.gradient_steps,
-        gamma=cfg.ra_dqn.model.sb3.gamma,
-        exploration_fraction=cfg.ra_dqn.model.sb3.exploration_fraction,
-        exploration_final_eps=cfg.ra_dqn.model.sb3.exploration_final_eps,
-        target_update_interval=cfg.ra_dqn.model.sb3.target_update_interval,
-        learning_starts=cfg.ra_dqn.model.sb3.learning_starts,
-        buffer_size=cfg.ra_dqn.model.sb3.buffer_size,
-        batch_size=cfg.ra_dqn.model.sb3.batch_size,
-        learning_rate=cfg.ra_dqn.model.sb3.learning_rate,
+        verbose=cfg.rl.ppo.sb3.verbose,
+        train_freq=cfg.rl.ppo.sb3.train_freq,
+        gradient_steps=cfg.rl.ppo.sb3.gradient_steps,
+        gamma=cfg.rl.ppo.sb3.gamma,
+        exploration_fraction=cfg.rl.ppo.sb3.exploration_fraction,
+        exploration_final_eps=cfg.rl.ppo.sb3.exploration_final_eps,
+        target_update_interval=cfg.rl.ppo.sb3.target_update_interval,
+        learning_starts=cfg.rl.ppo.sb3.learning_starts,
+        buffer_size=cfg.rl.ppo.sb3.buffer_size,
+        batch_size=cfg.rl.ppo.sb3.batch_size,
+        learning_rate=cfg.rl.ppo.sb3.learning_rate,
     )
-    algorithm.learn(total_timesteps=cfg.ra_dqn.train.timesteps, tb_log_name=name, log_interval=cfg.ra_dqn.train.log_interval)
-    algorithm.save(os.path.join(LOGS_PATH, group, name))
+    algorithm.learn(total_timesteps=cfg.rl.train.timesteps, tb_log_name=name, log_interval=cfg.rl.train.log_interval)
+    algorithm.save(os.path.join(MODELS_PATH, group, name))
+
+    # evaluate
+    agent = BaselineAgent(
+        env.g2op_action_space,
+        Sb3DQNTopologyPolicy(algorithm),
+        safe_max_rho=cfg.env.safe_max_rho,
+    )
+    for dataset in ["train", "test", "val"]:
+        grid2op_env = grid2op.make(f"{cfg.env.env_name}_{dataset}", backend=LightSimBackend(), reward_class=MazeRLReward)
+        evaluate_agent(
+            agent=agent,
+            env=grid2op_env,
+            num_episodes=cfg.baseline.eval.nb_episodes,
+            path_results=Path(os.path.join(EVAL_PATH, group, name + "_" + dataset))
+        )
 
 
 if __name__ == "__main__":
