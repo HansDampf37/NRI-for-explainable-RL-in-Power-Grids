@@ -10,13 +10,11 @@ from gymnasium import spaces
 from gymnasium.spaces import Discrete
 from stable_baselines3 import PPO
 from stable_baselines3.common.buffers import RolloutBuffer
-from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.distributions import Distribution
 from stable_baselines3.common.logger import TensorBoardOutputFormat
 from stable_baselines3.common.policies import ActorCriticPolicy
 from stable_baselines3.common.type_aliases import GymEnv, Schedule, PyTorchObs
-from stable_baselines3.common.utils import explained_variance, obs_as_tensor
-from stable_baselines3.common.vec_env import VecEnv
+from stable_baselines3.common.utils import explained_variance
 from torch import Tensor
 
 from common import GraphObservationSpace, BusConnectivityGraphObsSpace
@@ -93,7 +91,7 @@ class RAPPO(PPO):
             _init_setup_model)
         assert isinstance(env.observation_space, GraphObservationSpace), "RADQN requires a graph observation space"
         self.plotting_args = plotting_args
-        self.prior = prior
+        self.prior = prior.to(device=self.device, dtype=torch.float32)
         self.kl_coef = kl_coef
         self.eps = 1e-10
         if seed is not None:
@@ -114,6 +112,7 @@ class RAPPO(PPO):
         entropy_losses = []
         pg_losses, value_losses = [], []
         clip_fractions = []
+        mean_posteriors = []
 
         continue_training = True
         # train for n_epochs epochs
@@ -127,7 +126,7 @@ class RAPPO(PPO):
                     actions = rollout_data.actions.long().flatten()
 
                 values, log_prob, entropy = self.policy.evaluate_actions(rollout_data.observations, actions)
-                edge_type_posterior = self.policy.get_edge_type_posterior(rollout_data.observations)
+                posterior_distributions = self.policy.get_edge_type_posterior(rollout_data.observations)
                 values = values.flatten()
                 # Normalize advantage
                 advantages = rollout_data.advantages
@@ -147,6 +146,7 @@ class RAPPO(PPO):
                 pg_losses.append(policy_loss.item())
                 clip_fraction = torch.mean((torch.abs(ratio - 1) > clip_range).float()).item()
                 clip_fractions.append(clip_fraction)
+                mean_posteriors.append(posterior_distributions.mean(dim=0).detach().cpu().numpy())  # mean over batch dim -> [E, K]
 
                 if self.clip_range_vf is None:
                     # No clipping
@@ -170,8 +170,8 @@ class RAPPO(PPO):
 
                 entropy_losses.append(entropy_loss.item())
 
-                kl_edge_type = (edge_type_posterior * (torch.log(edge_type_posterior + self.eps) - torch.log(self.prior + self.eps))).sum(dim=-1)
-                kl_loss = kl_edge_type.mean()
+                kl_loss = (posterior_distributions * (torch.log(posterior_distributions + self.eps) - torch.log(self.prior + self.eps))).sum(dim=-1)
+                kl_loss = kl_loss.mean()
 
                 loss = policy_loss + self.ent_coef * entropy_loss + self.vf_coef * value_loss + self.kl_coef * kl_loss
 
@@ -220,7 +220,7 @@ class RAPPO(PPO):
             self.logger.record("train/clip_range_vf", clip_range_vf)
         # visualize and plot images
         if self.plotting_args is not None:
-            self.plotting_args.latent_edge_probs = np.mean(kl_loss, axis=0)
+            self.plotting_args.latent_edge_probs = np.mean(mean_posteriors, axis=0) # mean over iterations -> [E, K]
             mean_latent_edges_image = visualize_graph(self.plotting_args)
             tb_formatter = next(
                 (fmt for fmt in self.logger.output_formats if isinstance(fmt, TensorBoardOutputFormat)),
@@ -228,7 +228,7 @@ class RAPPO(PPO):
             )
             if tb_formatter is not None:
                 writer = tb_formatter.writer  # this is the SummaryWriter
-                writer.add_figure("train/image", mean_latent_edges_image, global_step=self._total_timesteps)
+                writer.add_figure("train/image", mean_latent_edges_image, global_step=self.num_timesteps)
 
 
 class RAPPOPolicy(ActorCriticPolicy):
