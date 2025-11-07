@@ -3,10 +3,11 @@ import unittest
 from unittest.mock import create_autospec
 
 import torch
+from torch import Tensor
 from torch_geometric.utils import to_dense_adj
 
 from nri.utils import fully_connected_edge_index, Edge2Node, Node2Edge, EdgeNode2Node, warn_large_loss, \
-    fully_connected_edge_index_per_batch
+    fully_connected_edge_index_per_batch, get_prior_tensor, get_priors
 
 
 class TestNRIUtils(unittest.TestCase):
@@ -66,6 +67,49 @@ class TestNRIUtils(unittest.TestCase):
         per_feature_mse = warn_large_loss(logger, nri_prediction, nri_target)
         self.assertEqual(per_feature_mse.shape, (num_features,))
 
+
+class TestGetPriors(unittest.TestCase):
+    def test_shapes(self):
+        p1, p2 = get_priors(prob_graph_edges_exist=0.7,
+                            num_graph_edges=10,
+                            num_non_graph_edges=20)
+        self.assertIsInstance(p1, Tensor)
+        self.assertIsInstance(p2, Tensor)
+        self.assertEqual(p1.shape, (2,))
+        self.assertEqual(p2.shape, (2,))
+
+    def test_values_consistency(self):
+        p1, p2 = get_priors(0.5, 4, 6)
+        # p1 should be [0.5, 0.5]
+        self.assertTrue(torch.allclose(p1, torch.tensor([0.5, 0.5], dtype=torch.float32)))
+        # Check mixture consistency
+        mix = (4 * p1 + 6 * p2) / 10
+        expected = torch.tensor([4 / 10, 6 / 10], dtype=torch.float32)
+        self.assertTrue(torch.allclose(mix, expected))
+
+    def test_assignment(self):
+        # Define two edges in graph
+        graph_edges = torch.tensor([[0, 1], [1, 2]])  # shape [2,2]
+
+        # Define all edges including non-graph ones
+        all_edges = torch.tensor([[0, 1, 2], [1, 2, 3]])  # shape [2,3]
+
+        prior_graph = torch.tensor([0.7, 0.3], dtype=torch.float32)
+        prior_non_graph = torch.tensor([0.4, 0.6], dtype=torch.float32)
+
+        prior = get_prior_tensor(graph_edges, all_edges, prior_graph, prior_non_graph)
+
+        # Result shape should be [num_edges, edge_types]
+        self.assertEqual(prior.shape, (3, 2))
+
+        # First two edges (0->1 and 1->2) are graph edges
+        self.assertTrue(torch.allclose(prior[0], prior_graph))
+        self.assertTrue(torch.allclose(prior[1], prior_graph))
+
+        # Last edge (2->3) not listed → non-graph
+        self.assertTrue(torch.allclose(prior[2], prior_non_graph))
+
+
 class TestEdge2Node(unittest.TestCase):
     def setUp(self):
         self.num_nodes = 10
@@ -96,6 +140,7 @@ class TestEdge2Node(unittest.TestCase):
         self.assertIsNotNone(e.grad)
         self.assertEqual(e.grad.shape, e.shape)
 
+
 class TestNode2Edge(unittest.TestCase):
     def setUp(self):
         self.num_nodes = 10
@@ -125,6 +170,7 @@ class TestNode2Edge(unittest.TestCase):
         loss.backward()
         self.assertIsNotNone(x.grad)
         self.assertEqual(x.grad.shape, x.shape)
+
 
 class TestEdgeNode2Node(unittest.TestCase):
     def setUp(self):
@@ -161,4 +207,3 @@ class TestEdgeNode2Node(unittest.TestCase):
         self.assertIsNotNone(x.grad)
         self.assertEqual(e.grad.shape, e.shape)
         self.assertEqual(x.grad.shape, x.shape)
-

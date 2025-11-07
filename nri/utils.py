@@ -8,8 +8,10 @@ from omegaconf import DictConfig
 from torch import Tensor, nn
 from torch_geometric.utils import dense_to_sparse
 
-from common import G2OpGymEnv
+from common import G2OpGymEnv, GraphObservationSpace, EDGE_INDEX
 from common.MLP import MLP
+
+logger = logging.Logger(__name__)
 
 
 def fully_connected_edge_index(num_nodes: int, device: str = "cpu", self_loops: bool = False) -> Tensor:
@@ -28,7 +30,8 @@ def fully_connected_edge_index(num_nodes: int, device: str = "cpu", self_loops: 
     return edge_index.to(device=device)
 
 
-def fully_connected_edge_index_per_batch(batch: Tensor, device: Union[str, torch.device, int] = "cpu", self_loops: bool = False) -> Tensor:
+def fully_connected_edge_index_per_batch(batch: Tensor, device: Union[str, torch.device, int] = "cpu",
+                                         self_loops: bool = False) -> Tensor:
     """
     Create an edge index representing batch of fully connected edge indices.
     :param batch: graph index per node.
@@ -74,6 +77,7 @@ def get_priors(prob_graph_edges_exist: float, num_graph_edges: int, num_non_grap
     p2 = (num_total_edges * p_hat - num_graph_edges * p1) / num_non_graph_edges
     return Tensor(p1), Tensor(p2)
 
+
 def prior_from_env_and_config(cfg: DictConfig, env: G2OpGymEnv) -> Tensor:
     """
     Create prior distributions given the environment and hydra config. These priors are used to condition the relation
@@ -88,8 +92,9 @@ def prior_from_env_and_config(cfg: DictConfig, env: G2OpGymEnv) -> Tensor:
     num_graph_edges = obs_space.max_num_edges
     num_non_graph_edges = N * (N - 1) // 2 - num_graph_edges
     prob_graph_edge_exists = cfg.rl.model.prior_for_graph_edges_existing
-    prior_for_graph_edges, prior_for_non_graph_edges = get_priors(prob_graph_edge_exists, num_graph_edges,
-                                                                  num_non_graph_edges)
+    prior_for_graph_edges, prior_for_non_graph_edges = get_priors(prob_graph_edge_exists, num_graph_edges, num_non_graph_edges)
+    logger.info(f"Prior for graph edges: {prior_for_graph_edges}\n"
+                f"Prior for graph edges: {prior_for_non_graph_edges}")
     powergrid_edge_index = torch.from_numpy(env.reset()[0][EDGE_INDEX])  # [2, E]
     all_edges = fully_connected_edge_index(N)  # [2, E']
     prior = get_prior_tensor(powergrid_edge_index, all_edges, prior_for_graph_edges, prior_for_non_graph_edges)

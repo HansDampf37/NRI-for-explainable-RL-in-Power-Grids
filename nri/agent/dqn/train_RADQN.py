@@ -9,16 +9,14 @@ from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
 
 from baselines.baseline_agent import evaluate_topology_policy
-from common import G2OpGymEnv, EDGE_INDEX, BusConnectivityGraphObsSpace, GraphObservationSpace
+from common import G2OpGymEnv, EDGE_INDEX, BusConnectivityGraphObsSpace
 from common.constants import LOGS_PATH, MODELS_PATH
 from nri.agent.RAFeatureExtractor import RAFeatureExtractorSB3
 from nri.agent.dqn.DQNTopoPolicy import Sb3DQNTopologyPolicy
 from nri.agent.dqn.HuberKLLoss import HuberKLLoss
 from nri.agent.dqn.RADQN import RADQN
-from nri.utils import fully_connected_edge_index, get_prior_tensor, get_priors
+from nri.utils import prior_from_env_and_config
 from visualization.utils import PlottingArgs, get_node_styles
-
-logger = logging.Logger(__name__)
 
 
 def get_env(cfg) -> G2OpGymEnv:
@@ -65,24 +63,14 @@ def main(cfg: DictConfig):
     }
 
     # create loss function
-    obs_space: GraphObservationSpace = env.observation_space
-    N = obs_space.num_nodes
-    num_graph_edges = obs_space.max_num_edges
-    num_non_graph_edges = N * (N - 1) // 2 - num_graph_edges
-    prob_graph_edge_exists = cfg.rl.model.prior_for_graph_edges_existing
-    prior_for_graph_edges, prior_for_non_graph_edges = get_priors(prob_graph_edge_exists, num_graph_edges, num_non_graph_edges)
-    logger.info(f"Prior for graph edges: {prior_for_graph_edges}\n"
-                f"Prior for graph edges: {prior_for_non_graph_edges}")
-    powergrid_edge_index = torch.from_numpy(env.reset()[0][EDGE_INDEX])  # [2, E]
-    all_edges = fully_connected_edge_index(N)  # [2, E']
-    prior = get_prior_tensor(powergrid_edge_index, all_edges, prior_for_graph_edges, prior_for_non_graph_edges)
+    prior = prior_from_env_and_config(cfg, env)
     loss_fn = HuberKLLoss(prior=prior, alpha=cfg.rl.dqn.loss.alpha, beta=cfg.rl.dqn.loss.beta)
 
-    # create plotting args
+    # create plotting args (for logging)
     plotting_args = PlottingArgs(
-        N,
-        get_node_styles(env._g2op_env, BusConnectivityGraphObsSpace),
-        powerline_edge_index=powergrid_edge_index.cpu().numpy(),
+        num_nodes=env.observation_space.num_nodes,
+        node_styles=get_node_styles(env._g2op_env, BusConnectivityGraphObsSpace),
+        powerline_edge_index=torch.from_numpy(env.reset()[0][EDGE_INDEX]).cpu().numpy(),
         skip_last_edge_type=True,
     )
 
@@ -105,6 +93,8 @@ def main(cfg: DictConfig):
         batch_size=cfg.rl.dqn.sb3.batch_size,
         learning_rate=cfg.rl.dqn.sb3.learning_rate,
     )
+
+    # train
     algorithm.learn(total_timesteps=cfg.rl.train.timesteps, tb_log_name=name, log_interval=cfg.rl.train.log_interval)
     algorithm.save(os.path.join(MODELS_PATH, group, name))
     topology_policy = Sb3DQNTopologyPolicy(algorithm)
