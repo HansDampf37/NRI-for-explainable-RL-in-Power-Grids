@@ -1,0 +1,9 @@
+net_arch: [ 100, 100, 100 ]
+prior_for_graph_edges_existing: 0.9
+name_suffix: ~
+features_extractor_kwargs:
+    hidden_dim: 64
+    out_dim: 64
+    num_edge_types: 2
+    num_layers: 2
+    dropout_prob: 0

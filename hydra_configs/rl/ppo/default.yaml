@@ -18,17 +18,13 @@ sb3:
     sde_sample_freq: -1
 
     policy_kwargs:
-        net_arch: [ 100, 100, 100 ]
+        net_arch: ${rl.model.net_arch}
         features_extractor_kwargs:
-            hidden_dim: 64
-            out_dim: 64
-            num_edge_types: 2
-            num_layers: 2
-            dropout_prob: 0
-
-loss:
-    prior_for_graph_edges: [0.9, 0.1]
-    prior_for_non_graph_edges: [0.1, 0.9]
+            hidden_dim: ${rl.model.features_extractor_kwargs.hidden_dim}
+            out_dim: ${rl.model.features_extractor_kwargs.out_dim}
+            num_edge_types: ${rl.model.features_extractor_kwargs.num_edge_types}
+            num_layers: ${rl.model.features_extractor_kwargs.num_layers}
+            dropout_prob: ${rl.model.features_extractor_kwargs.dropout_prob}
 
 topology_policy:
     _target_: baselines.topo_policies_sb3.TopoPolicyStablePPO
