@@ -79,7 +79,7 @@ def evaluate(cfg: DictConfig):
             }, f, indent=4)
 
     for dataset in ["train", "test", "val"]:
-        grid2op_env = grid2op.make(f"{cfg.env.env_name}_{dataset}", backend=LightSimBackend(), reward_class=MazeRLReward)
+        grid2op_env = grid2op.make(f"{cfg.env.name}_{dataset}", backend=LightSimBackend(), reward_class=MazeRLReward)
         evaluate_agent(
             agent=build_agent(cfg, Path(base_path_models.joinpath(cfg.baseline.model.name))),
             env=grid2op_env,
