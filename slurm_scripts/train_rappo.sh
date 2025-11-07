@@ -1,9 +1,9 @@
 sbatch << 'EOF'
 #!/bin/bash
 
-#SBATCH --job-name=train_ra_ppo                                          # Name of the job
-#SBATCH --output=out/ra/train_ra_ppo.%j.log                              # Output file
-#SBATCH --error=out/ra/error_train_ra_ppo.%j.log                         # Error file
+#SBATCH --job-name=rappo                                                 # Name of the job
+#SBATCH --output=out/relations_aware/rappo.%j.log                        # Output file
+#SBATCH --error=out/relations_aware/error_rappo.%j.log                   # Error file
 #SBATCH --ntasks=1                                                       # Number of tasks
 #SBATCH --gres=gpu:1                                                     # Request 1 GPU
 #SBATCH --time=48:00:00                                                  # Max wall time (HH:MM:SS)
