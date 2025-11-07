@@ -13,6 +13,9 @@ from grid2op.Agent import RecoPowerlineAgent, BaseAgent
 from grid2op.Environment import Environment
 from grid2op.Observation import BaseObservation
 from grid2op.Runner import Runner
+from omegaconf import DictConfig
+
+from common.constants import EVAL_PATH
 
 logger = logging.getLogger(__name__)
 
@@ -106,3 +109,31 @@ def evaluate_agent(agent: BaseAgent, env: Environment, path_results: Path, num_e
         print(msg_tmp)
 
     print("Evaluation finished. To plot evaluation results use the notebook in the visualization folder.")
+
+
+def evaluate_topology_policy(topology_policy: TopologyPolicy, group: str, name: str, cfg: DictConfig):
+    """
+    This method evaluates a topology policy by creating a BaselineAgent using it and evaluating it on train, test and val
+    The evaluation results are stored in under EVAL_PATH/group/name
+
+    :param topology_policy: The topology policy to evaluate
+    :param group: The group name for storing results
+    :param name: The name for storing results
+    :param cfg: The hydra config
+    """
+    import grid2op
+    from lightsim2grid import LightSimBackend
+    for dataset in ["train", "test", "val"]:
+        from common.rewards import MazeRLReward
+        grid2op_env = grid2op.make(f"{cfg.env.name}_{dataset}", backend=LightSimBackend(), reward_class=MazeRLReward)
+        agent = BaselineAgent(
+            grid2op_env.action_space,
+            topology_policy,
+            safe_max_rho=cfg.env.safe_max_rho,
+        )
+        evaluate_agent(
+            agent=agent,
+            env=grid2op_env,
+            num_episodes=cfg.baseline.eval.nb_episodes,
+            path_results=Path(EVAL_PATH, group, name + "_" + dataset)
+        )
