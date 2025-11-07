@@ -134,7 +134,7 @@ class RADQN(DQN):
             losses.append(loss.item())
             huber_losses.append(huber.item())
             kl_divs.append(kl.item())
-            mean_posteriors.append(posterior_distributions.mean(dim=0).detach().cpu().numpy())
+            mean_posteriors.append(posterior_distributions.mean(dim=0).detach().cpu().numpy()) # mean over batch dim -> [E, K]
 
             # Optimize the policy
             self.policy.optimizer.zero_grad()
@@ -153,7 +153,7 @@ class RADQN(DQN):
 
         # visualize and plot images
         if self.plotting_args is not None:
-            self.plotting_args.latent_edge_probs = np.mean(mean_posteriors, axis=0)
+            self.plotting_args.latent_edge_probs = np.mean(mean_posteriors, axis=0) # mean over iterations -> [E, K]
             mean_latent_edges_image = visualize_graph(self.plotting_args)
             tb_formatter = next(
                 (fmt for fmt in self.logger.output_formats if isinstance(fmt, TensorBoardOutputFormat)),
@@ -161,7 +161,7 @@ class RADQN(DQN):
             )
             if tb_formatter is not None:
                 writer = tb_formatter.writer  # this is the SummaryWriter
-                writer.add_figure("train/image", mean_latent_edges_image, global_step=self._total_timesteps)
+                writer.add_figure("train/image", mean_latent_edges_image, global_step=self.num_timesteps)
 
 
 class RAQNetwork(QNetwork):
