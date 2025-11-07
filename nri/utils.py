@@ -1,18 +1,20 @@
 import logging
-from typing import Union
+from typing import Union, Tuple
 
 import numpy as np
 import numpy.typing as npt
 import torch
+from omegaconf import DictConfig
 from torch import Tensor, nn
 from torch_geometric.utils import dense_to_sparse
 
+from common import G2OpGymEnv
 from common.MLP import MLP
 
 
 def fully_connected_edge_index(num_nodes: int, device: str = "cpu", self_loops: bool = False) -> Tensor:
     """
-    Create an edge index representing a fully connected graph with num_nodes nodes.
+    Create an edge index representing a fully connected (directed) graph with num_nodes nodes.
     :param num_nodes: Number of nodes in the graph.
     :param self_loops: If true, create self-loops.
     :param device: Device to use.
@@ -50,8 +52,52 @@ def fully_connected_edge_index_per_batch(batch: Tensor, device: Union[str, torch
     return torch.cat(edge_indices, dim=1)
 
 
-def _get_prior(graph_edges: Tensor, all_edges: Tensor, prior_for_graph_edges: Tensor,
-               prior_for_non_graph_edges: Tensor) -> Tensor:
+def get_priors(prob_graph_edges_exist: float, num_graph_edges: int, num_non_graph_edges: int) -> Tuple[Tensor, Tensor]:
+    """
+    Creates the two prior distributions for graph edges and non-graph edges respectively while ensuring that the average
+    distributions remains constant. The average distribution is defined as:
+
+    num_graph_edges * p1 + num_non_graph_edges * p2 / (num_graph_edges + num_non_graph_edges)
+
+    where p1 is the prior for graph edges and p2 for non-graph edges.
+    @param prob_graph_edges_exist: Probability that a graph edge exists.
+    @param num_graph_edges: Number of graph edges.
+    @param num_non_graph_edges: Number of non-graph edges.
+    @return: prior distribution for graph edges, prior distribution for non-graph edges
+    """
+    num_total_edges = num_graph_edges + num_non_graph_edges
+    # Average prior over all edges
+    p_hat = np.array([num_graph_edges / num_total_edges, num_non_graph_edges / num_total_edges], dtype=np.float32)
+    # Prior for true graph edges
+    p1 = np.array([prob_graph_edges_exist, 1 - prob_graph_edges_exist], dtype=np.float32)
+    # Solve for prior for non-graph edges
+    p2 = (num_total_edges * p_hat - num_graph_edges * p1) / num_non_graph_edges
+    return Tensor(p1), Tensor(p2)
+
+def prior_from_env_and_config(cfg: DictConfig, env: G2OpGymEnv) -> Tensor:
+    """
+    Create prior distributions given the environment and hydra config. These priors are used to condition the relation
+    aware agents in their edge type predictions.
+
+    :param cfg: Hydra config
+    :param env: The environment
+    :return: prior distributions
+    """
+    obs_space: GraphObservationSpace = env.observation_space
+    N = obs_space.num_nodes
+    num_graph_edges = obs_space.max_num_edges
+    num_non_graph_edges = N * (N - 1) // 2 - num_graph_edges
+    prob_graph_edge_exists = cfg.rl.model.prior_for_graph_edges_existing
+    prior_for_graph_edges, prior_for_non_graph_edges = get_priors(prob_graph_edge_exists, num_graph_edges,
+                                                                  num_non_graph_edges)
+    powergrid_edge_index = torch.from_numpy(env.reset()[0][EDGE_INDEX])  # [2, E]
+    all_edges = fully_connected_edge_index(N)  # [2, E']
+    prior = get_prior_tensor(powergrid_edge_index, all_edges, prior_for_graph_edges, prior_for_non_graph_edges)
+    return prior
+
+
+def get_prior_tensor(graph_edges: Tensor, all_edges: Tensor, prior_for_graph_edges: Tensor,
+                     prior_for_non_graph_edges: Tensor) -> Tensor:
     """
     Given edge indices for graph edges [2,E] and all considered edges [2, E'] return a tensor of shape [E', K] containing
     prior distribution for each considered edge in E'. If the edge exists as part of the graph it receives the distribution
@@ -66,11 +112,11 @@ def _get_prior(graph_edges: Tensor, all_edges: Tensor, prior_for_graph_edges: Te
     all_edges = all_edges.T
     E, _ = all_edges.shape
     mask = torch.zeros((E,), dtype=torch.bool)
+    reversed_graph_edges = graph_edges[[1, 0], :]
     for e in range(graph_edges.shape[1]):
-        mask = torch.logical_or(
-            torch.all(all_edges == graph_edges[:, e].unsqueeze(0), dim=1),
-            mask
-        )
+        mask = torch.logical_or(torch.all(all_edges == graph_edges[:, e].unsqueeze(0), dim=1), mask)
+        mask = torch.logical_or(torch.all(all_edges == reversed_graph_edges[:, e].unsqueeze(0), dim=1), mask)
+
     num_edge_types = prior_for_graph_edges.shape[0]
     prior = torch.zeros((E, num_edge_types), dtype=torch.float32)
     prior[mask] = prior_for_graph_edges

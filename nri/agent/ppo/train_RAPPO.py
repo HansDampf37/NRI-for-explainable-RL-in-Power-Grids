@@ -1,24 +1,19 @@
 import os
 import uuid
 from datetime import datetime
-from pathlib import Path
 
-import grid2op
 import hydra
 import torch
 from hydra.utils import instantiate
-from lightsim2grid import LightSimBackend
 from omegaconf import DictConfig, OmegaConf
-from torch import Tensor
 
-from baselines.baseline_agent import BaselineAgent, evaluate_agent
+from baselines.baseline_agent import evaluate_topology_policy
 from common import G2OpGymEnv, EDGE_INDEX, BusConnectivityGraphObsSpace
-from common.constants import LOGS_PATH, MODELS_PATH, EVAL_PATH
-from common.rewards import MazeRLReward
+from common.constants import LOGS_PATH, MODELS_PATH
 from nri.agent.RAFeatureExtractor import RAFeatureExtractorSB3
 from nri.agent.ppo.PPOTopoPolicy import Sb3PPOTopologyPolicy
 from nri.agent.ppo.RAPPO import RAPPO
-from nri.utils import fully_connected_edge_index, _get_prior
+from nri.utils import prior_from_env_and_config
 from visualization.utils import PlottingArgs, get_node_styles
 
 
@@ -41,10 +36,20 @@ def get_env(cfg) -> G2OpGymEnv:
 def main(cfg: DictConfig):
     print(OmegaConf.to_yaml(cfg))
     timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M')
-    group = "relation-aware/ppo"
-    name = f"radqn_{timestamp}_{uuid.uuid4().hex}"
+    group = "rl/relation-aware/ppo"
+    name_suffix = cfg.rl.model.name_suffix
+    if name_suffix is None:
+        name = f"radqn_{timestamp}_{uuid.uuid4().hex}"
+    else:
+        name = f"radqn_{timestamp}_{name_suffix}_{uuid.uuid4().hex}"
+
+    # create env
     env = get_env(cfg)
 
+    # create prior distribution that edge-type predictions will be pushed towards
+    prior = prior_from_env_and_config(cfg, env)
+
+    # create policy kwargs
     policy_kwargs = {
         "net_arch": cfg.rl.ppo.sb3.policy_kwargs.net_arch,
         "features_extractor_class": RAFeatureExtractorSB3,
@@ -53,26 +58,20 @@ def main(cfg: DictConfig):
             "out_dim": cfg.rl.ppo.sb3.policy_kwargs.features_extractor_kwargs.out_dim,
             "num_edge_types": cfg.rl.ppo.sb3.policy_kwargs.features_extractor_kwargs.num_edge_types,
             "num_layers": cfg.rl.ppo.sb3.policy_kwargs.features_extractor_kwargs.num_layers,
-            "dropout_prob": cfg.rl.ppo.sb3.policy_kwargs.features_extractor_kwargs.dropout_prob, #TODO optionally include edge index here to restrict edges for nri
+            "dropout_prob": cfg.rl.ppo.sb3.policy_kwargs.features_extractor_kwargs.dropout_prob,
+            # TODO optionally include edge index here to restrict edges for nri
         }
     }
 
-    # create prior
-    prior_for_graph_edges = Tensor(cfg.rl.ppo.loss.prior_for_graph_edges).to(dtype=torch.float32)
-    prior_for_non_graph_edges = Tensor(cfg.rl.ppo.loss.prior_for_non_graph_edges).to(dtype=torch.float32)
-    powergrid_edge_index = torch.from_numpy(env.reset()[0][EDGE_INDEX]) # [2, E]
-    N = powergrid_edge_index.max().item() + 1
-    all_edges = fully_connected_edge_index(N) # [2, E']
-    prior = _get_prior(powergrid_edge_index, all_edges, prior_for_graph_edges, prior_for_non_graph_edges)
-
-    # create plotting args
+    # create plotting args (for logging)
     plotting_args = PlottingArgs(
-        N,
-        get_node_styles(env._g2op_env, BusConnectivityGraphObsSpace),
-        powerline_edge_index=powergrid_edge_index.cpu().numpy(),
+        num_nodes=env.observation_space.num_nodes,
+        node_styles=get_node_styles(env._g2op_env, BusConnectivityGraphObsSpace),
+        powerline_edge_index=torch.from_numpy(env.reset()[0][EDGE_INDEX]).cpu().numpy(),
         skip_last_edge_type=True,
     )
 
+    # create algorithm
     algorithm = RAPPO(
         plotting_args=plotting_args,
         prior=prior,
@@ -95,23 +94,14 @@ def main(cfg: DictConfig):
         tensorboard_log=os.path.join(LOGS_PATH, group),
         policy_kwargs=policy_kwargs,
     )
-    algorithm.learn(total_timesteps=cfg.rl.train.timesteps, tb_log_name=name, log_interval=cfg.rl.train.log_interval)
+
+    # train
+    algorithm.learn(total_timesteps=cfg.rl.train.timesteps, tb_log_name=name, log_interval=1)
     algorithm.save(os.path.join(MODELS_PATH, group, name))
+    topology_policy = Sb3PPOTopologyPolicy(algorithm)
 
     # evaluate
-    agent = BaselineAgent(
-        env.g2op_action_space,
-        Sb3PPOTopologyPolicy(algorithm),
-        safe_max_rho=cfg.env.safe_max_rho,
-    )
-    for dataset in ["train", "test", "val"]:
-        grid2op_env = grid2op.make(f"{cfg.env.env_name}_{dataset}", backend=LightSimBackend(), reward_class=MazeRLReward)
-        evaluate_agent(
-            agent=agent,
-            env=grid2op_env,
-            num_episodes=cfg.baseline.eval.nb_episodes,
-            path_results=Path(os.path.join(EVAL_PATH, group, name + "_" + dataset))
-        )
+    evaluate_topology_policy(topology_policy, group, name, cfg)
 
 
 if __name__ == "__main__":

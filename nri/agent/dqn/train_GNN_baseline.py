@@ -1,20 +1,15 @@
 import os
 import uuid
 from datetime import datetime
-from pathlib import Path
 
-import grid2op
 import hydra
 from hydra.utils import instantiate
-from lightsim2grid import LightSimBackend
 from omegaconf import DictConfig, OmegaConf
 from stable_baselines3 import DQN
 
-from baselines import evaluate_agent
-from baselines.baseline_agent import BaselineAgent
+from baselines.baseline_agent import evaluate_topology_policy
 from common import G2OpGymEnv
-from common.constants import LOGS_PATH, EVAL_PATH, MODELS_PATH
-from common.rewards import MazeRLReward
+from common.constants import LOGS_PATH, MODELS_PATH
 from nri.agent.RAFeatureExtractor import BaselineFeatureExtractorSB3
 from nri.agent.dqn.DQNTopoPolicy import Sb3DQNTopologyPolicy
 
@@ -38,10 +33,17 @@ def get_env(cfg) -> G2OpGymEnv:
 def main(cfg: DictConfig):
     print(OmegaConf.to_yaml(cfg))
     timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M')
-    group = "relation-unaware-baselines/dqn"
-    name = f"gnn_{timestamp}_{uuid.uuid4().hex}"
+    group = "rl/relation-unaware-baselines/dqn"
+    name_suffix = cfg.rl.model.name_suffix
+    if name_suffix is None:
+        name = f"gnn_{timestamp}_{uuid.uuid4().hex}"
+    else:
+        name = f"gnn_{timestamp}_{name_suffix}_{uuid.uuid4().hex}"
+
+    # create env
     env = get_env(cfg)
 
+    # create policy kwargs
     policy_kwargs = {
         "net_arch": cfg.rl.dqn.sb3.policy_kwargs.net_arch,
         "features_extractor_class": BaselineFeatureExtractorSB3,
@@ -53,7 +55,7 @@ def main(cfg: DictConfig):
         }
     }
 
-    # train
+    # create algorithm
     algorithm = DQN(
         env=env,
         policy="MultiInputPolicy",
@@ -71,23 +73,14 @@ def main(cfg: DictConfig):
         batch_size=cfg.rl.dqn.sb3.batch_size,
         learning_rate=cfg.rl.dqn.sb3.learning_rate,
     )
+
+    # train
     algorithm.learn(total_timesteps=cfg.rl.train.timesteps, tb_log_name=name, log_interval=cfg.rl.train.log_interval)
     algorithm.save(os.path.join(MODELS_PATH, group, name))
+    topology_policy = Sb3DQNTopologyPolicy(algorithm)
 
     # evaluate
-    agent = BaselineAgent(
-        env.g2op_action_space,
-        Sb3DQNTopologyPolicy(algorithm),
-        safe_max_rho=cfg.env.safe_max_rho,
-    )
-    for dataset in ["train", "test", "val"]:
-        grid2op_env = grid2op.make(f"{cfg.env.env_name}_{dataset}", backend=LightSimBackend(), reward_class=MazeRLReward)
-        evaluate_agent(
-            agent=agent,
-            env=grid2op_env,
-            num_episodes=cfg.baseline.eval.nb_episodes,
-            path_results=Path(os.path.join(EVAL_PATH, group, name + "_" + dataset))
-        )
+    evaluate_topology_policy(topology_policy, group, name, cfg)
 
 
 if __name__ == "__main__":
