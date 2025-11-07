@@ -74,7 +74,7 @@ def main(cfg: DictConfig):
     logger.info(f"Prior for graph edges: {prior_for_graph_edges}\n"
                 f"Prior for graph edges: {prior_for_non_graph_edges}")
     powergrid_edge_index = torch.from_numpy(env.reset()[0][EDGE_INDEX])  # [2, E]
-    all_edges = fully_connected_edge_index(N)  # [2, E'] # TODO this is directed
+    all_edges = fully_connected_edge_index(N)  # [2, E']
     prior = get_prior_tensor(powergrid_edge_index, all_edges, prior_for_graph_edges, prior_for_non_graph_edges)
     loss_fn = HuberKLLoss(prior=prior, alpha=cfg.rl.dqn.loss.alpha, beta=cfg.rl.dqn.loss.beta)
 
