@@ -64,7 +64,8 @@ def visualize_graph(args: PlottingArgs) -> Figure:
             for t, p in enumerate(probs):
                 if args.skip_last_edge_type and t == max_type:
                     continue
-                w = args.latent_edge_weight * p
+                # 1 for p = 0.5, args.latent_edge_weight for p = 1
+                w = (2 * args.latent_edge_weight - 2) * p - (args.latent_edge_weight - 2) if p > 0.5 else 0
                 if w >= 1:
                     G.add_edge(int(src), int(dst), color=cmap(1 + t), weight=w, type="Dependency")
 
@@ -85,7 +86,7 @@ def visualize_graph(args: PlottingArgs) -> Figure:
             pos,
             edgelist=[(u, v) for u, v, _ in conn_edges],
             edge_color=[d["color"] for _, _, d in conn_edges],
-            width=[d["weight"] * scale for _, _, d in conn_edges],
+            width=[d["weight"] for _, _, d in conn_edges],
             arrows=False,
             style="-"
         )
@@ -98,7 +99,7 @@ def visualize_graph(args: PlottingArgs) -> Figure:
             pos,
             edgelist=[(u, v) for u, v, _ in dep_edges],
             edge_color=[d["color"] for _, _, d in dep_edges],
-            width=[d["weight"] * scale for _, _, d in dep_edges],
+            width=[d["weight"] for _, _, d in dep_edges],
             arrows=False,
         )
         lc.set_zorder(2)

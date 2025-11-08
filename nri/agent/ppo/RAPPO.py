@@ -113,6 +113,7 @@ class RAPPO(PPO):
         pg_losses, value_losses = [], []
         clip_fractions = []
         mean_posteriors = []
+        kl_divs = []
         last_posterior = None
 
         continue_training = True
@@ -174,6 +175,7 @@ class RAPPO(PPO):
 
                 kl_loss = (posterior_distributions * (torch.log(posterior_distributions + self.eps) - torch.log(self.prior + self.eps))).sum(dim=-1)
                 kl_loss = kl_loss.mean()
+                kl_divs = kl_loss.item()
 
                 loss = policy_loss + self.ent_coef * entropy_loss + self.vf_coef * value_loss + self.kl_coef * kl_loss
 
@@ -212,7 +214,7 @@ class RAPPO(PPO):
         self.logger.record("train/approx_kl", np.mean(approx_kl_divs))
         self.logger.record("train/clip_fraction", np.mean(clip_fractions))
         self.logger.record("train/loss", loss.item())
-        self.logger.record("train/kl-div", kl_loss.item())
+        self.logger.record("train/kl-div", np.mean(kl_divs))
         self.logger.record("train/explained_variance", explained_var)
         if hasattr(self.policy, "log_std"):
             self.logger.record("train/std", torch.exp(self.policy.log_std).mean().item())
