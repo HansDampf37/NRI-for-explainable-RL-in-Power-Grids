@@ -113,6 +113,7 @@ class RAPPO(PPO):
         pg_losses, value_losses = [], []
         clip_fractions = []
         mean_posteriors = []
+        last_posterior = None
 
         continue_training = True
         # train for n_epochs epochs
@@ -147,6 +148,7 @@ class RAPPO(PPO):
                 clip_fraction = torch.mean((torch.abs(ratio - 1) > clip_range).float()).item()
                 clip_fractions.append(clip_fraction)
                 mean_posteriors.append(posterior_distributions.mean(dim=0).detach().cpu().numpy())  # mean over batch dim -> [E, K]
+                last_posterior = posterior_distributions[0].detach().cpu().numpy()
 
                 if self.clip_range_vf is None:
                     # No clipping
@@ -219,16 +221,18 @@ class RAPPO(PPO):
         if self.clip_range_vf is not None:
             self.logger.record("train/clip_range_vf", clip_range_vf)
         # visualize and plot images
-        if self.plotting_args is not None:
-            self.plotting_args.latent_edge_probs = np.mean(mean_posteriors, axis=0) # mean over iterations -> [E, K]
-            mean_latent_edges_image = visualize_graph(self.plotting_args)
-            tb_formatter = next(
-                (fmt for fmt in self.logger.output_formats if isinstance(fmt, TensorBoardOutputFormat)),
-                None
-            )
-            if tb_formatter is not None:
-                writer = tb_formatter.writer  # this is the SummaryWriter
-                writer.add_figure("train/image", mean_latent_edges_image, global_step=self.num_timesteps)
+        tb_formatter = next(
+            (fmt for fmt in self.logger.output_formats if isinstance(fmt, TensorBoardOutputFormat)),
+            None
+        )
+        if tb_formatter is not None:
+            writer = tb_formatter.writer  # this is the SummaryWriter
+            writer.add_histogram("train/posterior example", last_posterior, global_step=self.num_timesteps)
+            if self.plotting_args is not None:
+                self.plotting_args.latent_edge_probs = np.mean(mean_posteriors, axis=0) # mean over iterations -> [E, K]
+                mean_latent_edges_image = visualize_graph(self.plotting_args)
+                writer.add_figure("train/latent-edges", mean_latent_edges_image, global_step=self.num_timesteps)
+
 
 
 class RAPPOPolicy(ActorCriticPolicy):
