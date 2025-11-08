@@ -49,7 +49,7 @@ class TestVisualization(unittest.TestCase):
             skip_last_edge_type=True
         )
         fig = visualize_graph(plotting_args)
-        # plt.show()
+        plt.show()
         plt.close(fig)
 
     def test_visualize_edge_hist(self):

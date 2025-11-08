@@ -42,51 +42,87 @@ def visualize_graph(args: PlottingArgs) -> Figure:
     :return a figure
     """
     assert args.latent_edge_probs is None or args.num_nodes * (args.num_nodes - 1) == args.latent_edge_probs.shape[0]
-    fig = plt.figure(figsize=(18, 10))
-    ax = plt.gca()
 
-    # create graph
+    scale = 0.66
+    fig, ax = plt.subplots(figsize=(18 * scale, 10 * scale), dpi=100)
+
     G = nx.MultiDiGraph()
     G.add_nodes_from(range(args.num_nodes))
 
-
+    # base edges
     if args.powerline_edge_index is not None:
         for src, dst in args.powerline_edge_index.T:
             G.add_edge(int(src), int(dst), color="gray", weight=1, type="Connection")
 
+    # latent edges
     if args.latent_edge_probs is not None:
         cmap = plt.get_cmap("Pastel1")
-        edge_index_fully_connected = fully_connected_edge_index(num_nodes=args.num_nodes)
-        max_edge_type = args.latent_edge_probs.shape[1] - 1
-        for edge_index, _ in enumerate(args.latent_edge_probs):
-            for edge_type, _ in enumerate(args.latent_edge_probs[edge_index]):
-                if not args.skip_last_edge_type or edge_type != max_edge_type:
-                    weight = args.latent_edge_weight * args.latent_edge_probs[edge_index, edge_type]
-                    if weight >= 1:
-                        src, dst = edge_index_fully_connected[:, edge_index]
-                        G.add_edge(int(src), int(dst), color=cmap(1+edge_type), weight=weight, type="Dependency")
+        edge_index_full = fully_connected_edge_index(num_nodes=args.num_nodes)
+        max_type = args.latent_edge_probs.shape[1] - 1
+        for e_idx, probs in enumerate(args.latent_edge_probs):
+            src, dst = edge_index_full[:, e_idx]
+            for t, p in enumerate(probs):
+                if args.skip_last_edge_type and t == max_type:
+                    continue
+                w = args.latent_edge_weight * p
+                if w >= 1:
+                    G.add_edge(int(src), int(dst), color=cmap(1 + t), weight=w, type="Dependency")
 
-    edge_colors = [d["color"] for (_, _, d) in G.edges(data=True)]
-    edge_weights = [d["weight"] for (_, _, d) in G.edges(data=True)]
-
+    # get positions
     if args.node_styles is not None:
         pos = {i: ns.position for i, ns in enumerate(args.node_styles)}
-        nx.draw_networkx_edges(G, pos, edge_color=edge_colors, width=edge_weights, style="solid", arrows=False)
+    else:
+        pos = nx.circular_layout(range(args.num_nodes))
+
+    # separate edges
+    conn_edges = [(u, v, d) for u, v, d in G.edges(data=True) if d["type"] == "Connection"]
+    dep_edges = [(u, v, d) for u, v, d in G.edges(data=True) if d["type"] == "Dependency"]
+
+    # draw base edges
+    if conn_edges:
+        lc = nx.draw_networkx_edges(
+            G,
+            pos,
+            edgelist=[(u, v) for u, v, _ in conn_edges],
+            edge_color=[d["color"] for _, _, d in conn_edges],
+            width=[d["weight"] * scale for _, _, d in conn_edges],
+            arrows=False,
+            style="-"
+        )
+        lc.set_zorder(1)
+
+    # draw latent edges top
+    if dep_edges:
+        lc = nx.draw_networkx_edges(
+            G,
+            pos,
+            edgelist=[(u, v) for u, v, _ in dep_edges],
+            edge_color=[d["color"] for _, _, d in dep_edges],
+            width=[d["weight"] * scale for _, _, d in dep_edges],
+            arrows=False,
+        )
+        lc.set_zorder(2)
+
+    # draw nodes
+    if args.node_styles is not None:
         shapes = set(ns.shape for ns in args.node_styles)
         for shape in shapes:
             idx = [i for i, ns in enumerate(args.node_styles) if ns.shape == shape]
-            colors = [args.node_styles[i].color for i in idx]
-            size = [args.node_styles[i].size for i in idx]
-            nx.draw_networkx_nodes(G, pos, nodelist=idx, node_color=colors, node_shape=shape, node_size=size, ax=ax)
-
+            nx.draw_networkx_nodes(
+                G,
+                pos,
+                nodelist=idx,
+                node_color=[args.node_styles[i].color for i in idx],
+                node_shape=shape,
+                node_size=[args.node_styles[i].size * scale for i in idx],
+                ax=ax,
+            )
         _create_legend(args, G)
     else:
-        # fallback: grey circular layout
-        pos = nx.circular_layout(range(args.num_nodes))
-        nx.draw(G, pos=pos, node_color="grey", edge_color=edge_colors, width=edge_weights, style="solid",
-                with_labels=False, arrows=False)
+        nx.draw_networkx_nodes(G, pos, node_color="grey", ax=ax)
 
     plt.axis("off")
+    fig.tight_layout()
     return fig
 
 
