@@ -39,9 +39,9 @@ def main(cfg: DictConfig):
     group = "rl/relation-aware/ppo"
     name_suffix = cfg.rl.model.name_suffix
     if name_suffix is None:
-        name = f"radqn_{timestamp}_{uuid.uuid4().hex}"
+        name = f"rappo_{timestamp}_{uuid.uuid4().hex}"
     else:
-        name = f"radqn_{timestamp}_{name_suffix}_{uuid.uuid4().hex}"
+        name = f"rappo_{timestamp}_{name_suffix}_{uuid.uuid4().hex}"
 
     # create env
     env = get_env(cfg)
