@@ -102,7 +102,7 @@ def prior_from_env(prob_graph_edge_exists: float, env: G2OpGymEnv) -> Tensor:
 def get_prior_tensor(graph_edges: Tensor, all_edges: Tensor, prior_for_graph_edges: Tensor,
                      prior_for_non_graph_edges: Tensor) -> Tensor:
     """
-    Given edge indices for graph edges [2,E] and all considered edges [2, E'] return a tensor of shape [E', K] containing
+    Given edge indices for graph edges [2, E] and all considered edges [2, E'] return a tensor of shape [E', K] containing
     prior distribution for each considered edge in E'. If the edge exists as part of the graph it receives the distribution
     `prior_for_graph_edges`. Otherwise, its distribution is set to `prior_for_non_graph_edges`.
     @param graph_edges: Edge index for graph edges [2, E]

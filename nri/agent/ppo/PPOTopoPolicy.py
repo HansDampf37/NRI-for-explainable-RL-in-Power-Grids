@@ -40,7 +40,7 @@ class Sb3PPOTopologyPolicy(TopologyPolicy):
 
         # Get action probs for each action
         with torch.no_grad():
-            action_probs = self.ppo.policy.get_distribution(obs_batch)
+            action_probs = self.ppo.policy.get_distribution(obs_batch).distribution.probs
             action_probs = action_probs.squeeze().cpu().numpy()
         # Get the indices of the top k actions based on their probabilities
         top_k_indices = np.argsort(action_probs)[-k:]  # Sort in descending order

@@ -7,6 +7,7 @@ from grid2op.Observation import BaseObservation
 from stable_baselines3 import DQN
 
 from baselines.baseline_agent import TopologyPolicy
+from nri.agent.dqn.RADQN import RAQNetwork
 
 
 class Sb3DQNTopologyPolicy(TopologyPolicy):
@@ -40,7 +41,10 @@ class Sb3DQNTopologyPolicy(TopologyPolicy):
 
         # Get Q-values for each action
         with torch.no_grad():
-            q_values = self.dqn.policy.q_net.forward(obs_batch)
+            if isinstance(self.dqn.policy.q_net, RAQNetwork):
+                q_values, _ = self.dqn.policy.q_net.forward(obs_batch)
+            else:
+                q_values = self.dqn.policy.q_net.forward(obs_batch)
             q_values = q_values.squeeze().cpu().numpy()
         # Get the indices of the top k actions based on their Q-values
         top_k_indices = np.argsort(q_values)[-k:]  # Sort in descending order
