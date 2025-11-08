@@ -4,7 +4,6 @@ from typing import Union, Tuple
 import numpy as np
 import numpy.typing as npt
 import torch
-from omegaconf import DictConfig
 from torch import Tensor, nn
 from torch_geometric.utils import dense_to_sparse
 
@@ -78,12 +77,12 @@ def get_priors(prob_graph_edges_exist: float, num_graph_edges: int, num_non_grap
     return Tensor(p1), Tensor(p2)
 
 
-def prior_from_env_and_config(cfg: DictConfig, env: G2OpGymEnv) -> Tensor:
+def prior_from_env(prob_graph_edge_exists: float, env: G2OpGymEnv) -> Tensor:
     """
-    Create prior distributions given the environment and hydra config. These priors are used to condition the relation
-    aware agents in their edge type predictions.
+    Create prior distributions given the environment and existence probability for graph edges.
+    These priors are used to condition the relation aware agents in their edge type predictions.
 
-    :param cfg: Hydra config
+    :param prob_graph_edge_exists: the probability of latent dependencies on graph edges.
     :param env: The environment
     :return: prior distributions
     """
@@ -91,7 +90,6 @@ def prior_from_env_and_config(cfg: DictConfig, env: G2OpGymEnv) -> Tensor:
     N = obs_space.num_nodes
     num_graph_edges = obs_space.max_num_edges
     num_non_graph_edges = N * (N - 1) // 2 - num_graph_edges
-    prob_graph_edge_exists = cfg.rl.model.prior_for_graph_edges_existing
     prior_for_graph_edges, prior_for_non_graph_edges = get_priors(prob_graph_edge_exists, num_graph_edges, num_non_graph_edges)
     logger.info(f"Prior for graph edges: {prior_for_graph_edges}\n"
                 f"Prior for graph edges: {prior_for_non_graph_edges}")

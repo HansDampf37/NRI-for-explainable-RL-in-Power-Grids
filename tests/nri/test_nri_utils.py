@@ -3,11 +3,14 @@ import unittest
 from unittest.mock import create_autospec
 
 import torch
+from matplotlib import pyplot as plt
 from torch import Tensor
 from torch_geometric.utils import to_dense_adj
 
+from common import BusConnectivityGraphObsSpace, EDGE_INDEX, G2OpGymEnv
 from nri.utils import fully_connected_edge_index, Edge2Node, Node2Edge, EdgeNode2Node, warn_large_loss, \
-    fully_connected_edge_index_per_batch, get_prior_tensor, get_priors
+    fully_connected_edge_index_per_batch, get_prior_tensor, get_priors, prior_from_env
+from visualization.utils import PlottingArgs, get_node_styles, visualize_graph
 
 
 class TestNRIUtils(unittest.TestCase):
@@ -108,6 +111,26 @@ class TestGetPriors(unittest.TestCase):
 
         # Last edge (2->3) not listed → non-graph
         self.assertTrue(torch.allclose(prior[2], prior_non_graph))
+
+    def test_vis_prior(self):
+        # Define two edges in graph
+        env = G2OpGymEnv(
+            "l2rpn_case14_sandbox",
+            obs_space_creation=lambda e: BusConnectivityGraphObsSpace(e.observation_space)
+        )
+        prior = prior_from_env(.7, env)
+
+        plotting_args = PlottingArgs(
+            num_nodes=57,
+            node_styles=get_node_styles(env._g2op_env, env.observation_space.__class__),
+            powerline_edge_index=env.reset()[0][EDGE_INDEX],
+            latent_edge_probs=prior.numpy(),
+            latent_edge_weight=50,
+            skip_last_edge_type=True
+        )
+        fig = visualize_graph(plotting_args)
+        # plt.show()
+        plt.close(fig)
 
 
 class TestEdge2Node(unittest.TestCase):

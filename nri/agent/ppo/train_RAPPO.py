@@ -13,7 +13,7 @@ from common.constants import LOGS_PATH, MODELS_PATH
 from nri.agent.RAFeatureExtractor import RAFeatureExtractorSB3
 from nri.agent.ppo.PPOTopoPolicy import Sb3PPOTopologyPolicy
 from nri.agent.ppo.RAPPO import RAPPO
-from nri.utils import prior_from_env_and_config
+from nri.utils import prior_from_env
 from visualization.utils import PlottingArgs, get_node_styles
 
 
@@ -47,7 +47,7 @@ def main(cfg: DictConfig):
     env = get_env(cfg)
 
     # create prior distribution that edge-type predictions will be pushed towards
-    prior = prior_from_env_and_config(cfg, env)
+    prior = prior_from_env(cfg.rl.model.prior_for_graph_edges_existing, env)
 
     # create policy kwargs
     policy_kwargs = {

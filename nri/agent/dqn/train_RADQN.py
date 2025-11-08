@@ -15,7 +15,7 @@ from nri.agent.RAFeatureExtractor import RAFeatureExtractorSB3
 from nri.agent.dqn.DQNTopoPolicy import Sb3DQNTopologyPolicy
 from nri.agent.dqn.HuberKLLoss import HuberKLLoss
 from nri.agent.dqn.RADQN import RADQN
-from nri.utils import prior_from_env_and_config
+from nri.utils import prior_from_env
 from visualization.utils import PlottingArgs, get_node_styles
 
 
@@ -63,7 +63,7 @@ def main(cfg: DictConfig):
     }
 
     # create loss function
-    prior = prior_from_env_and_config(cfg, env)
+    prior = prior_from_env(cfg.rl.model.prior_for_graph_edges_existing, env)
     loss_fn = HuberKLLoss(prior=prior, alpha=cfg.rl.dqn.loss.alpha, beta=cfg.rl.dqn.loss.beta)
 
     # create plotting args (for logging)
