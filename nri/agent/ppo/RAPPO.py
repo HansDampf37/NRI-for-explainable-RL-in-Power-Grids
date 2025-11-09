@@ -18,7 +18,7 @@ from stable_baselines3.common.utils import explained_variance
 from torch import Tensor
 
 from common import GraphObservationSpace, BusConnectivityGraphObsSpace
-from visualization.utils import visualize_graph, PlottingArgs
+from visualization.utils import visualize_graph, PlottingArgs, visualize_posterior
 
 
 class RAPPO(PPO):
@@ -231,6 +231,7 @@ class RAPPO(PPO):
         if tb_formatter is not None:
             writer = tb_formatter.writer  # this is the SummaryWriter
             writer.add_histogram("train/posterior example", last_posterior, global_step=self.num_timesteps)
+            writer.add_figure("train/posterior_vs_prior", visualize_posterior(mean_posteriors, self.prior), global_step=self.num_timesteps)
             if self.plotting_args is not None:
                 self.plotting_args.latent_edge_probs = np.mean(mean_posteriors, axis=0) # mean over iterations -> [E, K]
                 mean_latent_edges_image = visualize_graph(self.plotting_args)

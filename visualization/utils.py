@@ -3,6 +3,7 @@ from typing import Optional, List
 
 import networkx as nx
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 import seaborn as sns
 from grid2op.Environment import Environment
@@ -17,7 +18,7 @@ from nri.utils import fully_connected_edge_index
 
 @dataclass
 class NodeStyle:
-    position: np.ndarray
+    position: npt.NDArray
     color: str
     shape: str
     size: int
@@ -28,8 +29,8 @@ class NodeStyle:
 class PlottingArgs:
     num_nodes: int
     node_styles: Optional[List[NodeStyle]] = None
-    powerline_edge_index: Optional[np.ndarray] = None
-    latent_edge_probs: Optional[np.ndarray] = None
+    powerline_edge_index: Optional[npt.NDArray] = None
+    latent_edge_probs: Optional[npt.NDArray] = None
     latent_edge_weight: float = 5.0
     do_weight_sweep: bool = False
     skip_last_edge_type: bool = True
@@ -171,7 +172,7 @@ def _create_legend(args: PlottingArgs, G: nx.Graph) -> None:
     plt.legend(handles=node_legend + edge_legend, loc="best", frameon=False)
 
 
-def latent_edge_hist(accumulated_edge_probabilities: np.ndarray, skip_last_edge_type: bool = True):
+def latent_edge_hist(accumulated_edge_probabilities: npt.NDArray, skip_last_edge_type: bool = True):
     """
     Visualize a histogram showcasing the probability masses for different edges for any edge type except the first.
 
@@ -211,7 +212,7 @@ def get_node_styles(env: Environment, observation_space: type[GraphObservationSp
         r = 20.0
         layout = plot_helper._grid_layout
 
-        def pos(sub_id: int, src_position: np.ndarray) -> np.ndarray:
+        def pos(sub_id: int, src_position: npt.NDArray) -> npt.NDArray:
             """Compute node offset position from source location toward target substation."""
             target_pos = np.array(layout[f"sub_{sub_id}"])
             vec = target_pos - src_position
@@ -256,3 +257,29 @@ def get_node_styles(env: Environment, observation_space: type[GraphObservationSp
         return node_styles
     else:
         raise NotImplementedError()
+    
+
+def visualize_posterior(latent_edge_posterior: npt.NDArray, latent_edge_prior: npt.NDArray, skip_last: bool = True) -> Figure:
+    assert latent_edge_posterior.shape == latent_edge_prior.shape
+    assert latent_edge_posterior.ndim == 2
+    assert latent_edge_posterior.shape[1] == 2
+
+    if skip_last:
+        latent_edge_prior = latent_edge_prior[:, :1]
+        latent_edge_posterior = latent_edge_posterior[:, :1]
+
+    sns.set_theme(style="whitegrid", palette="muted", font_scale=1.2)
+    fig = plt.figure(figsize=(12, 7))
+    sns.histplot(latent_edge_posterior.flatten(), bins=50, label="Latent Edge Posterior")
+    sns.histplot(latent_edge_prior.flatten(), bins=50, label="Latent Edge Prior")
+    plt.xlim((0, 1))
+    plt.legend()
+    plt.xlabel("Probability")
+    plt.ylabel("Number of Edges")
+    plt.title("Histogram of Latent Edge Probabilities (Prior & Posterior)")
+
+    return fig
+
+
+
+

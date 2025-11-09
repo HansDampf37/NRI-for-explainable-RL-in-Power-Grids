@@ -1,11 +1,12 @@
 import unittest
 
 import grid2op
+import numpy as np
 import torch
 from matplotlib import pyplot as plt
 
 from common.graph_structured_observation_space import BusConnectivityGraphObsSpace, EDGE_INDEX
-from visualization.utils import get_node_styles, visualize_graph, latent_edge_hist, PlottingArgs
+from visualization.utils import get_node_styles, visualize_graph, latent_edge_hist, PlottingArgs, visualize_posterior
 
 
 class TestVisualization(unittest.TestCase):
@@ -51,6 +52,20 @@ class TestVisualization(unittest.TestCase):
         fig = visualize_graph(plotting_args)
         # plt.show()
         plt.close(fig)
+
+    def test_visualize_posterior(self):
+        num_edges = 1000
+
+        prior = 0.1 * np.random.randn(num_edges, ) + 0.8
+        posterior = 0.1 * np.random.randn(num_edges, ) + 0.6
+
+        prior = np.stack([prior, 1 - prior], axis=-1)
+        posterior = np.stack([posterior, 1 - posterior], axis=-1)
+
+        fig = visualize_posterior(posterior, prior)
+        plt.show()
+        plt.close(fig)
+
 
     def test_visualize_edge_hist(self):
         num_nodes = 57

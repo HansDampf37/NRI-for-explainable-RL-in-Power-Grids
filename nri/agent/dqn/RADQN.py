@@ -16,7 +16,7 @@ from torch import nn, Tensor
 from common import GraphObservationSpace
 from .HuberKLLoss import HuberKLLoss
 from nri.agent.RAFeatureExtractor import RAFeatureExtractorSB3
-from visualization.utils import visualize_graph, PlottingArgs
+from visualization.utils import visualize_graph, PlottingArgs, visualize_posterior
 
 
 class RADQN(DQN):
@@ -102,7 +102,6 @@ class RADQN(DQN):
         huber_losses = []
         kl_divs = []
         mean_posteriors = []
-        last_posterior = None
 
         for _ in range(gradient_steps):
             # Sample replay buffer
@@ -137,7 +136,6 @@ class RADQN(DQN):
             huber_losses.append(huber.item())
             kl_divs.append(kl.item())
             mean_posteriors.append(posterior_distributions.mean(dim=0).detach().cpu().numpy()) # mean over batch dim -> [E, K]
-            last_posterior = posterior_distributions[0].detach().cpu().numpy()
 
             # Optimize the policy
             self.policy.optimizer.zero_grad()
@@ -161,9 +159,11 @@ class RADQN(DQN):
         )
         if tb_formatter is not None:
             writer = tb_formatter.writer  # this is the SummaryWriter
-            writer.add_histogram("train/posterior example", last_posterior, global_step=self.num_timesteps)
+            mean_posterior = np.mean(mean_posteriors, axis=0) # mean over iterations -> [E, K]
+            writer.add_histogram("train/posterior example", mean_posterior, global_step=self.num_timesteps, bins=40)
+            writer.add_figure("train/posterior_vs_prior", visualize_posterior(mean_posteriors, self.loss_fn.prior), global_step=self.num_timesteps)
             if self.plotting_args is not None:
-                self.plotting_args.latent_edge_probs = np.mean(mean_posteriors, axis=0)  # mean over iterations -> [E, K]
+                self.plotting_args.latent_edge_probs = mean_posterior
                 mean_latent_edges_image = visualize_graph(self.plotting_args)
                 writer.add_figure("train/latent-edges", mean_latent_edges_image, global_step=self.num_timesteps)
 
