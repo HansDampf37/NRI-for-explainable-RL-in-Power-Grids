@@ -174,7 +174,7 @@ def _create_legend(args: PlottingArgs, G: nx.Graph) -> None:
 
 def latent_edge_hist(accumulated_edge_probabilities: npt.NDArray, skip_last_edge_type: bool = True):
     """
-    Visualize a histogram showcasing the probability masses for different edges for any edge type except the first.
+    Visualize a histogram showcasing the probabilities for different edges for any edge type except the first.
 
     :param accumulated_edge_probabilities: Edge probabilities of shape [E, num_edge_types] with probabilities for each edge - edge_type combination
     :param skip_last_edge_type: Whether to skip last edge type (default: True)
@@ -270,8 +270,17 @@ def visualize_posterior(latent_edge_posterior: npt.NDArray, latent_edge_prior: n
 
     sns.set_theme(style="whitegrid", palette="muted", font_scale=1.2)
     fig = plt.figure(figsize=(12, 7))
-    sns.histplot(latent_edge_posterior.flatten(), bins=50, label="Latent Edge Posterior")
-    sns.histplot(latent_edge_prior.flatten(), bins=50, label="Latent Edge Prior")
+    bins = np.arange(0, 1.05, 0.05)
+
+    data = pd.DataFrame({
+        "value": np.concatenate([latent_edge_posterior.flatten(),
+                                 latent_edge_prior.flatten()]),
+        "group": ["posterior"] * len(latent_edge_posterior.flatten()) +
+                 ["prior"] * len(latent_edge_prior.flatten())
+    })
+
+    sns.histplot(data=data, x="value", hue="group", bins=bins, multiple="layer")
+
     plt.xlim((0, 1))
     plt.legend()
     plt.xlabel("Probability")

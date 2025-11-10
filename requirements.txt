@@ -16,3 +16,7 @@ seaborn~=0.13.2
 stable_baselines3~=2.7.0
 l2rpn_baselines~=0.8.0
 matplotlib~=3.10.6
+stable_baselines3~=2.7.0
+l2rpn_baselines~=0.8.0
+networkx~=3.5
+scipy~=1.16.2
