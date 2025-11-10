@@ -70,7 +70,7 @@ def main(cfg: DictConfig):
     )
 
     # train
-    algorithm.learn(total_timesteps=600000, tb_log_name=name, log_interval=1)
+    algorithm.learn(total_timesteps=cfg.rl.train.timesteps, tb_log_name=name, log_interval=1)
     algorithm.save(os.path.join(MODELS_PATH, group, name))
     topology_policy = Sb3PPOTopologyPolicy(algorithm)
 
