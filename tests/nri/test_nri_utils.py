@@ -66,8 +66,7 @@ class TestNRIUtils(unittest.TestCase):
         num_features = 8
         nri_prediction = torch.rand(10, 10, 10, num_features)
         nri_target = torch.rand(10, 10, 10, num_features)
-        logger = create_autospec(logging.Logger, instance=True)
-        per_feature_mse = warn_large_loss(logger, nri_prediction, nri_target)
+        per_feature_mse = warn_large_loss(nri_prediction, nri_target)
         self.assertEqual(per_feature_mse.shape, (num_features,))
 
 

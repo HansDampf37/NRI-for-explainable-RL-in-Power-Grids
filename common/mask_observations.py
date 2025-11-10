@@ -20,7 +20,7 @@ x_t. This function creates the respective masks.
 """
 import numpy as np
 
-from common import GraphObservationSpace
+from .graph_structured_observation_space import GraphObservationSpace
 
 
 def get_feature_mask(obs_space: GraphObservationSpace, predict_features: list[str]) -> np.ndarray:

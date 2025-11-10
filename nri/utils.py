@@ -1,4 +1,3 @@
-import logging
 from typing import Union, Tuple
 
 import numpy as np
@@ -7,10 +6,7 @@ import torch
 from torch import Tensor, nn
 from torch_geometric.utils import dense_to_sparse
 
-from common import G2OpGymEnv, GraphObservationSpace, EDGE_INDEX
-from common.MLP import MLP
-
-logger = logging.Logger(__name__)
+from common import G2OpGymEnv, GraphObservationSpace, EDGE_INDEX, MLP, logger
 
 
 def fully_connected_edge_index(num_nodes: int, device: str = "cpu", self_loops: bool = False) -> Tensor:
@@ -90,7 +86,8 @@ def prior_from_env(prob_graph_edge_exists: float, env: G2OpGymEnv) -> Tensor:
     N = obs_space.num_nodes
     num_graph_edges = obs_space.max_num_edges
     num_non_graph_edges = N * (N - 1) // 2 - num_graph_edges
-    prior_for_graph_edges, prior_for_non_graph_edges = get_priors(prob_graph_edge_exists, num_graph_edges, num_non_graph_edges)
+    prior_for_graph_edges, prior_for_non_graph_edges = get_priors(prob_graph_edge_exists, num_graph_edges,
+                                                                  num_non_graph_edges)
     logger.info(f"Prior for graph edges: {prior_for_graph_edges}\n"
                 f"Prior for graph edges: {prior_for_non_graph_edges}")
     powergrid_edge_index = torch.from_numpy(env.reset()[0][EDGE_INDEX])  # [2, E]
@@ -244,7 +241,7 @@ class EdgeNode2Node(nn.Module):
         return self.phi(torch.cat([agg, x], dim=-1))
 
 
-def warn_large_loss(logger: logging.Logger, predictions: Tensor, target: Tensor) -> npt.NDArray[np.float32]:
+def warn_large_loss(predictions: Tensor, target: Tensor) -> npt.NDArray[np.float32]:
     with torch.no_grad():
         per_feature_mse = ((target - predictions).pow(2)).mean(dim=(0, 1, 2)).cpu().numpy()
         logger.warning(f"Large Loss: {per_feature_mse.mean()}\n"

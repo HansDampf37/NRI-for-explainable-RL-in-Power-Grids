@@ -1,7 +1,6 @@
 """
 This script contains code to generate a dataset containing trajectories of the environment being operated by some agent.
 """
-import logging
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict
@@ -18,12 +17,8 @@ from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 
 from baselines.train_stable_baseline import build_agent
-from common.constants import NRI_DATASETS_PATH
-from common.graph_structured_observation_space import EDGE_INDEX, EDGE_MASK, GraphObservationSpace
-from common.rewards import MazeRLReward
+from common import NRI_DATASETS_PATH, logger, EDGE_INDEX, EDGE_MASK, GraphObservationSpace, MazeRLReward
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 
 
 class AgentFailsEarly(Exception):

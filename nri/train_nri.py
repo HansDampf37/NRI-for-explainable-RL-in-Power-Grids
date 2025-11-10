@@ -2,8 +2,8 @@ import logging
 import os
 import uuid
 from datetime import datetime
-from typing import Optional, List
 from pathlib import Path
+from typing import Optional, List
 
 import grid2op
 import hydra
@@ -16,16 +16,13 @@ from torch.utils.data import Dataset, DataLoader, TensorDataset
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
-from common.constants import LOGS_PATH, MODELS_PATH, EDGE_PROBS_PATH
-from common.graph_structured_observation_space import EDGE_INDEX, GraphObservationSpace
-from nri.ElboObjective import ElboLoss
-from common.mask_observations import get_feature_mask
-from nri.NRI import NRIModule
-from nri.get_edge_probs import save_edge_probs
-from nri.utils import warn_large_loss
-from visualization.utils import visualize_graph, get_node_styles, latent_edge_hist, PlottingArgs
+from common import LOGS_PATH, MODELS_PATH, EDGE_PROBS_PATH, logger, EDGE_INDEX, GraphObservationSpace, get_feature_mask
+from .ElboObjective import ElboLoss
+from .NRI import NRIModule
+from .utils import warn_large_loss
+from .get_edge_probs import save_edge_probs
+from visualization import visualize_graph, get_node_styles, latent_edge_hist, PlottingArgs
 
-logger: logging.Logger = logging.getLogger(__name__)
 max_loss_without_warning = 200
 
 
@@ -33,6 +30,7 @@ class RunningMetrics:
     """
     Metrics can be accumulated for an epoch and then updated.
     """
+
     def __init__(self, summary_writer: Optional[SummaryWriter], plotting_args: Optional[PlottingArgs]):
         """
         Constructor.
@@ -94,30 +92,37 @@ class RunningMetrics:
 
         if self.summary_writer is not None:
             self.summary_writer.add_scalar(f"Loss/{tensorboard_tag}", self.running_loss / self.num_iter, epoch)
-            self.summary_writer.add_scalar(f"Negative Log Likelihood/{tensorboard_tag}", self.running_nll / self.num_iter, epoch)
-            self.summary_writer.add_scalar(f"KL-Divergence to Prior/{tensorboard_tag}", self.running_kl_div / self.num_iter, epoch)
+            self.summary_writer.add_scalar(f"Negative Log Likelihood/{tensorboard_tag}",
+                                           self.running_nll / self.num_iter, epoch)
+            self.summary_writer.add_scalar(f"KL-Divergence to Prior/{tensorboard_tag}",
+                                           self.running_kl_div / self.num_iter, epoch)
             self.summary_writer.add_scalar(f"MSE/{tensorboard_tag}", self.running_mse / self.num_iter, epoch)
-            self.summary_writer.add_scalar(f"Entropy of edge type predictions/{tensorboard_tag}", self.running_entropy / self.num_iter, epoch)
+            self.summary_writer.add_scalar(f"Entropy of edge type predictions/{tensorboard_tag}",
+                                           self.running_entropy / self.num_iter, epoch)
 
             if self.grad_norm is not None:
                 self.summary_writer.add_scalar(f"Gradient Norm/{tensorboard_tag}", self.grad_norm, epoch)
             if self.running_type_probs is not None:
-                self.summary_writer.add_histogram(f"Average type probabilities/{tensorboard_tag}", self.running_type_probs / self.num_iter, epoch)
+                self.summary_writer.add_histogram(f"Average type probabilities/{tensorboard_tag}",
+                                                  self.running_type_probs / self.num_iter, epoch)
             if self.running_edge_type_probs is not None and self.plotting_args is not None:
                 self.plotting_args.latent_edge_probs = self.running_edge_type_probs / self.num_iter
                 if self.plotting_args.do_weight_sweep:
                     steps = np.linspace(0, 1, 10)
-                    weights: List[float] = self.plotting_args.latent_edge_weight * 100 ** (steps * 2 - 1) / (1 + 100 ** (steps * 2 - 1)).tolist()
+                    weights: List[float] = self.plotting_args.latent_edge_weight * 100 ** (steps * 2 - 1) / (
+                                1 + 100 ** (steps * 2 - 1)).tolist()
                     for i, weight in enumerate(weights):
                         self.plotting_args.latent_edge_weight = weight
                         latent_edges_fig = visualize_graph(self.plotting_args)
-                        self.summary_writer.add_figure(f"Predicted latent Graph sweep/{tensorboard_tag}", latent_edges_fig, i)
+                        self.summary_writer.add_figure(f"Predicted latent Graph sweep/{tensorboard_tag}",
+                                                       latent_edges_fig, i)
                 else:
                     latent_edges_fig = visualize_graph(self.plotting_args)
                     self.summary_writer.add_figure(f"Predicted latent Graph/{tensorboard_tag}", latent_edges_fig, epoch)
 
                 latent_edges_hist = latent_edge_hist(self.running_edge_type_probs / self.num_iter)
-                self.summary_writer.add_figure(f"Histogram of predicted latent edges/{tensorboard_tag}", latent_edges_hist, epoch)
+                self.summary_writer.add_figure(f"Histogram of predicted latent edges/{tensorboard_tag}",
+                                               latent_edges_hist, epoch)
 
         msg = (f"{tensorboard_tag} Epoch {epoch}: loss: {self.running_loss / self.num_iter:.2f} "
                f"Neg Log Likelihood: {self.running_nll / self.num_iter:.2f} "
@@ -181,7 +186,7 @@ def train(
 
             batch: Tensor = batch_[0].to(device=device, dtype=torch.float32)
             predictions, edge_type_distributions = nri_module.forward(batch, edge_index)
-            target = batch[:, 1:, :, :] # target is next time step
+            target = batch[:, 1:, :, :]  # target is next time step
             if feature_mask is not None:
                 target = target[..., feature_mask]
                 predictions = predictions[..., feature_mask]
@@ -265,7 +270,7 @@ def evaluate_nri_module(
             loss, nll, kl = criterion(predictions, target, edge_type_distributions, with_nll_kl=True)
 
             if loss.item() > max_loss_without_warning:
-                warn_large_loss(logger, predictions, target)
+                warn_large_loss(predictions, target)
 
             metrics.new_iter(
                 loss=loss.item(),
@@ -276,6 +281,7 @@ def evaluate_nri_module(
             )
 
         metrics.log(epoch=current_epoch, tensorboard_tag="testing")
+
 
 @hydra.main(config_path="../hydra_configs", config_name="config", version_base="1.3")
 def main(cfg: DictConfig):
@@ -294,7 +300,8 @@ def main(cfg: DictConfig):
 
     # prepare plotting args
     env = grid2op.make(cfg.env.env_name)
-    observation_space: GraphObservationSpace = instantiate(cfg.nri.dataset_creation.obs_space, grid2op_observation_space=env.observation_space)
+    observation_space: GraphObservationSpace = instantiate(cfg.nri.dataset_creation.obs_space,
+                                                           grid2op_observation_space=env.observation_space)
     edge_index = observation_space.to_gym(env.reset())[EDGE_INDEX]
     plotting_args = PlottingArgs(
         num_nodes=train_data.shape[-2],
@@ -332,8 +339,10 @@ def main(cfg: DictConfig):
     save_path = Path(MODELS_PATH, group, name + ".pt")
     save_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(nri_module.state_dict(), save_path)
-    save_edge_probs(nri_module, train_dataset, cfg.nri.train.batch_size, save_path=Path(EDGE_PROBS_PATH, group, name + "_training.npy"))
-    save_edge_probs(nri_module, test_dataset, cfg.nri.train.batch_size, save_path=Path(EDGE_PROBS_PATH, group, name + "_testing.npy"))
+    save_edge_probs(nri_module, train_dataset, cfg.nri.train.batch_size,
+                    save_path=Path(EDGE_PROBS_PATH, group, name + "_training.npy"))
+    save_edge_probs(nri_module, test_dataset, cfg.nri.train.batch_size,
+                    save_path=Path(EDGE_PROBS_PATH, group, name + "_testing.npy"))
     tensorboard_logger.close()
 
 

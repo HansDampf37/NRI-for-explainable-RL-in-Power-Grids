@@ -14,6 +14,8 @@ __all__ = [
     "Node2Edge",
     "Edge2Node",
     "EdgeNode2Node",
+    "prior_from_env",
+    "warn_large_loss",
 ]
 
 from .create_dataset import generate_dataset
@@ -25,5 +27,6 @@ from .NRI import NRIModule
 from .Sampling import GumbelSoftmax
 from .train_nri import train as train_nri_module
 from .train_nri import evaluate_nri_module
-from .utils import fully_connected_edge_index, fully_connected_edge_index_per_batch, Node2Edge, Edge2Node, EdgeNode2Node
+from .utils import fully_connected_edge_index, fully_connected_edge_index_per_batch, Node2Edge, Edge2Node, \
+    EdgeNode2Node, prior_from_env, warn_large_loss
 from .agent import *

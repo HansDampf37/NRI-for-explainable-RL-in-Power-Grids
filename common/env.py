@@ -9,7 +9,7 @@ from gymnasium import Env
 from l2rpn_baselines.utils import GymEnvWithRecoWithDN
 from lightsim2grid import LightSimBackend
 
-from common.rewards import MazeRLReward
+from .rewards import MazeRLReward
 
 
 class G2OpGymEnv(Env):
