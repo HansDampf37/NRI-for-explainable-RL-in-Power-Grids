@@ -161,7 +161,7 @@ class RADQN(DQN):
             writer = tb_formatter.writer  # this is the SummaryWriter
             mean_posterior = np.mean(mean_posteriors, axis=0) # mean over iterations -> [E, K]
             writer.add_histogram("train/posterior example", mean_posterior, global_step=self.num_timesteps, bins=40)
-            writer.add_figure("train/posterior_vs_prior", visualize_posterior(mean_posteriors, self.loss_fn.prior), global_step=self.num_timesteps)
+            writer.add_figure("train/posterior_vs_prior", visualize_posterior(mean_posterior, self.loss_fn.prior), global_step=self.num_timesteps)
             if self.plotting_args is not None:
                 self.plotting_args.latent_edge_probs = mean_posterior
                 mean_latent_edges_image = visualize_graph(self.plotting_args)

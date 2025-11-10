@@ -114,7 +114,6 @@ class RAPPO(PPO):
         clip_fractions = []
         mean_posteriors = []
         kl_divs = []
-        last_posterior = None
 
         continue_training = True
         # train for n_epochs epochs
@@ -230,8 +229,10 @@ class RAPPO(PPO):
         )
         if tb_formatter is not None:
             writer = tb_formatter.writer  # this is the SummaryWriter
-            writer.add_histogram("train/posterior example", last_posterior, global_step=self.num_timesteps)
-            writer.add_figure("train/posterior_vs_prior", visualize_posterior(mean_posteriors, self.prior), global_step=self.num_timesteps)
+            mean_posterior = np.mean(mean_posteriors, axis=0)  # mean over iterations -> [E, K]
+            writer.add_histogram("train/posterior example", mean_posterior, global_step=self.num_timesteps)
+            hist_image = visualize_posterior(mean_posterior, self.prior.detach().cpu().numpy())
+            writer.add_figure("train/posterior_vs_prior", hist_image, global_step=self.num_timesteps)
             if self.plotting_args is not None:
                 self.plotting_args.latent_edge_probs = np.mean(mean_posteriors, axis=0) # mean over iterations -> [E, K]
                 mean_latent_edges_image = visualize_graph(self.plotting_args)
