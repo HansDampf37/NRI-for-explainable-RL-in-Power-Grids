@@ -63,7 +63,7 @@ class TestVisualization(unittest.TestCase):
         posterior = np.stack([posterior, 1 - posterior], axis=-1)
 
         fig = visualize_posterior(posterior, prior)
-        plt.show()
+        # plt.show()
         plt.close(fig)
 
 
