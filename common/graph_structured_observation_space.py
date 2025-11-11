@@ -90,8 +90,8 @@ class BusConnectivityGraphObsSpace(GraphObservationSpace):
         num_node = obs_space.n_gen + obs_space.n_load + 2 * obs_space.n_line
         num_connections = obs_space.sub_info
         num_line = obs_space.n_line
-        max_n_edge = (num_connections * (num_connections - 1) // 2).sum() + num_line
-        x_dim = 10
+        max_n_edge = (num_connections * (num_connections - 1)).sum() + 2 * num_line
+        x_dim = len(self.node_feature_names)
         global_dim = 6
 
         super().__init__({
@@ -136,10 +136,12 @@ class BusConnectivityGraphObsSpace(GraphObservationSpace):
                 if connected_to_bus[i] == connected_to_bus[j] and connected_to_sub[i] == connected_to_sub[j]:
                     # nodes share substation and bus -> edge
                     edge_index.append([i, j])
+                    edge_index.append([j, i])
 
         for i in range(g2op_obs.n_line):
             # node i and i + n_line are endpoints of the same powerline and should be connected
             edge_index.append([i, i + g2op_obs.n_line])
+            edge_index.append([i + g2op_obs.n_line, i])
 
         return np.array(edge_index).transpose().astype(np.int32)
 
@@ -180,8 +182,6 @@ class BusConnectivityGraphObsSpace(GraphObservationSpace):
         voltage_angle = np.concatenate([g2op_obs.theta_or, g2op_obs.theta_ex, g2op_obs.gen_theta, g2op_obs.load_theta])
         current = np.concatenate([g2op_obs.a_or, g2op_obs.a_ex, I_mag])
         rho = np.concatenate([g2op_obs.rho, g2op_obs.rho, np.zeros((g2op_obs.n_gen + g2op_obs.n_load,))])
-        bus_indices = np.concatenate([g2op_obs.line_or_bus, g2op_obs.line_ex_bus, g2op_obs.gen_bus, g2op_obs.load_bus])
-        sub_indices = np.concatenate([g2op_obs.line_or_to_subid, g2op_obs.line_ex_to_subid, g2op_obs.gen_to_subid, g2op_obs.load_to_subid])
 
         features = [
             active_power_forecast,
@@ -192,8 +192,6 @@ class BusConnectivityGraphObsSpace(GraphObservationSpace):
             voltage_angle,
             current,
             rho,
-            sub_indices,
-            bus_indices,
         ]
 
         return np.array(features).transpose().astype(np.float32)
@@ -226,8 +224,6 @@ class BusConnectivityGraphObsSpace(GraphObservationSpace):
             "voltage_angle",
             "current",
             "rho",
-            "sub_indices",
-            "bus_indices",
         ]
 
         return feature_names

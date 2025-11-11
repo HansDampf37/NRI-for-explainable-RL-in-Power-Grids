@@ -1,4 +1,5 @@
 import unittest
+from collections import Counter
 
 import grid2op
 import numpy as np
@@ -42,3 +43,10 @@ class TestBusConnectivityGraphObsSpace(unittest.TestCase):
         true_edges = np.unique(obs[EDGE_MASK], return_counts=True)[1]
         # all edges should be present -> only one edge label with all counts
         self.assertEqual(self.obs_space.max_num_edges, true_edges[0])
+
+    def test_undirected(self):
+        obs, _ = self.gym_env.reset()
+        cols = list(map(tuple, obs[EDGE_INDEX].T))
+        c = Counter(cols)
+        missing_mask = np.array([c[(y, x)] == 0 for (x, y) in cols])
+        self.assertTrue(np.all(np.logical_not(missing_mask)))

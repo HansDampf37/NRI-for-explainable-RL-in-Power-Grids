@@ -16,9 +16,7 @@ def fully_connected_edge_index(num_nodes: int, device: str = "cpu", self_loops: 
     :param self_loops: If true, create self-loops.
     :param device: Device to use.
     """
-    senders, receivers = torch.meshgrid(
-        torch.arange(num_nodes), torch.arange(num_nodes), indexing="ij"
-    )
+    senders, receivers = torch.meshgrid(torch.arange(num_nodes), torch.arange(num_nodes), indexing="ij")
     edge_index = torch.stack([senders.flatten(), receivers.flatten()], dim=0)
     if not self_loops:
         edge_index = edge_index[:, edge_index[0] != edge_index[1]]
@@ -88,8 +86,7 @@ def prior_from_env(prob_graph_edge_exists: float, env: G2OpGymEnv) -> Tensor:
     num_non_graph_edges = N * (N - 1) // 2 - num_graph_edges
     prior_for_graph_edges, prior_for_non_graph_edges = get_priors(prob_graph_edge_exists, num_graph_edges,
                                                                   num_non_graph_edges)
-    logger.info(f"Prior for graph edges: {prior_for_graph_edges}\n"
-                f"Prior for graph edges: {prior_for_non_graph_edges}")
+    logger.info(f"Prior for graph edges: {prior_for_graph_edges}, Prior for non graph edges: {prior_for_non_graph_edges}")
     powergrid_edge_index = torch.from_numpy(env.reset()[0][EDGE_INDEX])  # [2, E]
     all_edges = fully_connected_edge_index(N)  # [2, E']
     prior = get_prior_tensor(powergrid_edge_index, all_edges, prior_for_graph_edges, prior_for_non_graph_edges)
@@ -194,6 +191,18 @@ class Edge2Node(nn.Module):
         # index_reduce_ to average messages into receivers rows
         agg.index_reduce_(dim=-2, index=receivers, source=e, reduce="mean")
         return self.phi(agg)
+
+def edge_membership_mask(super_edge_set: torch.Tensor, sub_edge_set: torch.Tensor) -> torch.Tensor:
+    """
+    Given two edge indices returns a mask indicating which elements from the superset are also included in the subset
+    @param super_edge_set: the superset
+    @param sub_edge_set: the subset
+    @return: a mask
+    """
+    num_nodes = super_edge_set.max() + 1
+    a = super_edge_set[0] * num_nodes + super_edge_set[1]  # [E]
+    b = sub_edge_set[0] * num_nodes + sub_edge_set[1]  # [E_sub]
+    return torch.isin(a, b)
 
 
 class EdgeNode2Node(nn.Module):

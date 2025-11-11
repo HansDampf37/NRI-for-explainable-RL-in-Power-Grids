@@ -69,15 +69,15 @@ class RAFeatureExtractor(nn.Module):
         )
         self.x_out_dim = x_out_dim
 
-    def forward(self, x: Tensor, batch: Optional[Tensor] = None,
-                edge_index: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
+    def forward(self, x: Tensor, batch: Optional[Tensor] = None, powerline_edge_index: Optional[Tensor] = None, edge_set: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
         """
         Forward pass.
 
         Args:
             x (Tensor): Node features of shape [B*N, x_dim].
+            powerline_edge_index (Tensor):  Graph connectivity in COO format [2, B*E'].
             batch (Tensor): Batch vector mapping each node to its graph [B*N]. (defaults to every node in the same batch)
-            edge_index (Tensor): Graph connectivity in COO format [2, B*E]. (defaults to fully connected per batch) THIS NEEDS TO HAVE A CONSISTENT NUMBER OF EDGES PER BATCH!
+            edge_set (Tensor): Which edges to infer probabilities for, Graph connectivity in COO format [2, B*E]. (defaults to fully connected per batch) THIS NEEDS TO HAVE A CONSISTENT NUMBER OF EDGES PER BATCH!
 
         Returns:
             tuple[Tensor, Tensor]:
@@ -86,18 +86,18 @@ class RAFeatureExtractor(nn.Module):
         """
         BxN, x_dim = x.shape[-2:]
         batch = batch if batch is not None else torch.zeros(BxN).to(x.device)
-        edge_index = edge_index if edge_index is not None else fully_connected_edge_index_per_batch(batch, x.device)
+        edge_set = edge_set if edge_set is not None else fully_connected_edge_index_per_batch(batch, x.device)
 
         # get posterior
-        encoder_logits: Tensor = self.encoder.forward(x=x, batch=batch, edge_index=edge_index) # [B*E, K]
+        encoder_logits: Tensor = self.encoder.forward(x=x, batch=batch, edge_set=edge_set, powerline_edge_index=powerline_edge_index) # [B*E, K]
         p_z_given_x: Tensor = f.softmax(encoder_logits, dim=-1) # [B*E, K]
         p_one_hot: Tensor = self.gumbel_softmax.forward(x=encoder_logits) # [B*E, K]
 
         # condition gnn on posterior and push x
-        predictions: Tensor = self.gnn.forward(x=x, batch=batch, edge_index=edge_index, edge_type_posterior=p_one_hot)
+        predictions: Tensor = self.gnn.forward(x=x, batch=batch, edge_index=edge_set, edge_type_posterior=p_one_hot)
 
         # transform posterior into batched format.
-        edge_batch = batch[edge_index[0]] # edge is in the same batch as incident nodes
+        edge_batch = batch[edge_set[0]] # edge is in the same batch as incident nodes
         batched_p_z_given_x, mask = to_dense_batch(p_z_given_x, edge_batch)
         assert torch.all(mask), "Different number of edges across batches is not allowed."
 
@@ -130,6 +130,8 @@ class RAFeatureExtractorSB3(BaseFeaturesExtractor):
 
     def forward(self, observations: dict[str, torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor]:
         node_features_batch = observations[NODES]  # [B, N, node_in_dim]
+        powerline_edge_index_batch = observations[EDGE_INDEX]
+        edge_mask = observations[EDGE_MASK]
 
         B, N, _ = node_features_batch.shape
         device = node_features_batch.device
@@ -138,7 +140,16 @@ class RAFeatureExtractorSB3(BaseFeaturesExtractor):
         x = node_features_batch.reshape(B * N, -1)
         batch = torch.arange(B, device=device).repeat_interleave(N)
 
-        return self.gnn_feature_extractor(x=x, batch=batch)
+        # Mask edges
+        valid_edges = edge_mask.bool()
+        powerline_edge_index_batch = powerline_edge_index_batch.permute(1, 0, 2)  # [2, B, E_max]
+        powerline_edge_index_batch = powerline_edge_index_batch[:, valid_edges]  # [2, total_E]
+
+        # Add per-graph node offsets
+        offsets = (torch.arange(B, device=device) * N).repeat_interleave(valid_edges.sum(1))
+        powerline_edge_index_batch += offsets.unsqueeze(0)
+
+        return self.gnn_feature_extractor(x=x, batch=batch, powerline_edge_index=powerline_edge_index_batch.to(dtype=torch.int32))
 
 
 class BaselineFeatureExtractorSB3(BaseFeaturesExtractor):
