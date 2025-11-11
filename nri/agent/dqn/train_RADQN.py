@@ -1,6 +1,7 @@
 import os
 import uuid
 from datetime import datetime
+from pathlib import Path
 
 import hydra
 import torch
@@ -9,11 +10,12 @@ from omegaconf import DictConfig, OmegaConf
 
 from baselines.baseline_agent import evaluate_topology_policy
 from common import G2OpGymEnv, EDGE_INDEX, BusConnectivityGraphObsSpace
-from common.constants import LOGS_PATH, MODELS_PATH
+from common.constants import LOGS_PATH, MODELS_PATH, EDGE_PROBS_PATH
 from nri.agent.RAFeatureExtractor import RAFeatureExtractorSB3
 from nri.agent.dqn.DQNTopoPolicy import Sb3DQNTopologyPolicy
 from nri.agent.dqn.HuberKLLoss import HuberKLLoss
 from nri.agent.dqn.RADQN import RADQN
+from nri.agent.get_edge_probs import save_edge_probs
 from nri.utils import prior_from_env
 from visualization.utils import PlottingArgs, get_node_styles
 
@@ -100,6 +102,9 @@ def main(cfg: DictConfig):
 
     # evaluate
     evaluate_topology_policy(topology_policy, group, name, cfg)
+
+    # save edge probs
+    save_edge_probs(algorithm, env, save_path=Path(EDGE_PROBS_PATH, group, name + ".npy"))
 
 
 if __name__ == "__main__":

@@ -14,12 +14,13 @@ from stable_baselines3.dqn.policies import DQNPolicy, QNetwork
 from torch import nn, Tensor
 
 from common import GraphObservationSpace
-from .HuberKLLoss import HuberKLLoss
-from nri.agent.RAFeatureExtractor import RAFeatureExtractorSB3
 from visualization.utils import visualize_graph, PlottingArgs, visualize_posterior
+from .HuberKLLoss import HuberKLLoss
+from ..RAFeatureExtractor import RAFeatureExtractorSB3
+from ..RARL import RARL
 
 
-class RADQN(DQN):
+class RADQN(DQN, RARL):
     """
     This class implements the DQN interface from sb3. It uses an Encoder + downstream RA-GNN to predict the q_values.
     The loss is extended, to include the distance between posterior p(z|x) to the prior p(z).
@@ -166,6 +167,10 @@ class RADQN(DQN):
                 self.plotting_args.latent_edge_probs = mean_posterior
                 mean_latent_edges_image = visualize_graph(self.plotting_args)
                 writer.add_figure("train/latent-edges", mean_latent_edges_image, global_step=self.num_timesteps)
+
+    def get_edge_type_posterior(self, obs: Union[np.ndarray, dict[str, np.ndarray]]) -> Tensor:
+        _, edge_type_posterior = self.q_net(self.q_net.obs_to_tensor(obs))
+        return edge_type_posterior
 
 
 class RAQNetwork(QNetwork):

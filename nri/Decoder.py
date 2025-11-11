@@ -1,10 +1,10 @@
 from math import ceil
-from typing import Optional, List
+from typing import Optional
 
 import torch
 from torch import nn, Tensor
 
-from nri.utils import EdgeNode2Node, Node2Edge, fully_connected_edge_index
+from .utils import EdgeNode2Node, Node2Edge, fully_connected_edge_index
 
 
 class Decoder(nn.Module):

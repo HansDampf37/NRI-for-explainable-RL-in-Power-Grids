@@ -3,8 +3,8 @@ from typing import Optional
 import torch
 from torch import nn, Tensor
 
-from common.MLP import MLP
-from nri.utils import fully_connected_edge_index, Node2Edge, Edge2Node
+from common import MLP
+from .utils import fully_connected_edge_index, Node2Edge, Edge2Node
 
 
 class Encoder(nn.Module):

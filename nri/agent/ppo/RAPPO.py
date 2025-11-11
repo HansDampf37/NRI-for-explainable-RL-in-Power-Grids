@@ -5,7 +5,7 @@ from typing import Union, Optional, Any
 
 import numpy as np
 import torch
-import torch.nn.functional as F
+import torch.nn.functional as f
 from gymnasium import spaces
 from gymnasium.spaces import Discrete
 from stable_baselines3 import PPO
@@ -18,10 +18,11 @@ from stable_baselines3.common.utils import explained_variance
 from torch import Tensor
 
 from common import GraphObservationSpace, BusConnectivityGraphObsSpace
+from ..RARL import RARL
 from visualization.utils import visualize_graph, PlottingArgs, visualize_posterior
 
 
-class RAPPO(PPO):
+class RAPPO(PPO, RARL):
     """
     This class implements the PPO interface from sb3. It uses an Encoder + downstream RA-GNN to predict the action probabilities + q-value.
     The loss is extended, to include the distance between posterior p(z|x) to the prior p(z).
@@ -131,7 +132,7 @@ class RAPPO(PPO):
                 values = values.flatten()
                 # Normalize advantage
                 advantages = rollout_data.advantages
-                # Normalization does not make sense if mini batchsize == 1, see GH issue #325
+                # Normalization does not make sense if mini batch-size == 1, see GH issue #325
                 if self.normalize_advantage and len(advantages) > 1:
                     advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
@@ -160,7 +161,7 @@ class RAPPO(PPO):
                         values - rollout_data.old_values, -clip_range_vf, clip_range_vf
                     )
                 # Value loss using the TD(gae_lambda) target
-                value_loss = F.mse_loss(rollout_data.returns, values_pred)
+                value_loss = f.mse_loss(rollout_data.returns, values_pred)
                 value_losses.append(value_loss.item())
 
                 # Entropy loss favor exploration
@@ -238,6 +239,8 @@ class RAPPO(PPO):
                 mean_latent_edges_image = visualize_graph(self.plotting_args)
                 writer.add_figure("train/latent-edges", mean_latent_edges_image, global_step=self.num_timesteps)
 
+    def get_edge_type_posterior(self, obs: Union[np.ndarray, dict[str, np.ndarray]]) -> Tensor:
+        return self.policy.get_edge_type_posterior(self.policy.obs_to_tensor(obs)[0])
 
 
 class RAPPOPolicy(ActorCriticPolicy):
@@ -263,7 +266,7 @@ class RAPPOPolicy(ActorCriticPolicy):
             **kwargs,
         )
 
-    def forward(self, obs: Tensor, deterministic: bool = False) -> tuple[Tensor, Tensor, Tensor]:
+    def forward(self, obs: PyTorchObs, deterministic: bool = False) -> tuple[Tensor, Tensor, Tensor]:
         """
         Forward pass in all the networks (actor and critic)
 

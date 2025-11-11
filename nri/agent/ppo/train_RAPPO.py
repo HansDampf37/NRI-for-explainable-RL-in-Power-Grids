@@ -1,6 +1,7 @@
 import os
 import uuid
 from datetime import datetime
+from pathlib import Path
 
 import hydra
 import torch
@@ -9,8 +10,9 @@ from omegaconf import DictConfig, OmegaConf
 
 from baselines.baseline_agent import evaluate_topology_policy
 from common import G2OpGymEnv, EDGE_INDEX, BusConnectivityGraphObsSpace
-from common.constants import LOGS_PATH, MODELS_PATH
+from common.constants import LOGS_PATH, MODELS_PATH, EDGE_PROBS_PATH
 from nri.agent.RAFeatureExtractor import RAFeatureExtractorSB3
+from nri.agent.get_edge_probs import save_edge_probs
 from nri.agent.ppo.PPOTopoPolicy import Sb3PPOTopologyPolicy
 from nri.agent.ppo.RAPPO import RAPPO
 from nri.utils import prior_from_env
@@ -96,12 +98,15 @@ def main(cfg: DictConfig):
     )
 
     # train
-    algorithm.learn(total_timesteps=cfg.rl.train.timesteps, tb_log_name=name, log_interval=1)
-    algorithm.save(os.path.join(MODELS_PATH, group, name))
-    topology_policy = Sb3PPOTopologyPolicy(algorithm)
+    # algorithm.learn(total_timesteps=cfg.rl.train.timesteps, tb_log_name=name, log_interval=1)
+    # algorithm.save(os.path.join(MODELS_PATH, group, name))
+    # topology_policy = Sb3PPOTopologyPolicy(algorithm)
+    #
+    # # evaluate
+    # evaluate_topology_policy(topology_policy, group, name, cfg)
 
-    # evaluate
-    evaluate_topology_policy(topology_policy, group, name, cfg)
+    # save edge probs
+    save_edge_probs(algorithm, env, save_path=Path(EDGE_PROBS_PATH, group, name + ".npy"))
 
 
 if __name__ == "__main__":
