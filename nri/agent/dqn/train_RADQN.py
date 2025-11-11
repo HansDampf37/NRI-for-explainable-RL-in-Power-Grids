@@ -1,4 +1,3 @@
-import logging
 import os
 import uuid
 from datetime import datetime
@@ -63,7 +62,7 @@ def main(cfg: DictConfig):
     }
 
     # create loss function
-    prior = prior_from_env(cfg.rl.model.prior_for_graph_edges_existing, env)
+    prior = prior_from_env(cfg.rl.model.prior_for_graph_edges_existing, env, cfg.rl.model.temperature)
     loss_fn = HuberKLLoss(prior=prior, alpha=cfg.rl.dqn.loss.alpha, beta=cfg.rl.dqn.loss.beta)
 
     # create plotting args (for logging)

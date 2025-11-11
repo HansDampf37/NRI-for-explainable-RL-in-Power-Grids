@@ -47,7 +47,7 @@ def main(cfg: DictConfig):
     env = get_env(cfg)
 
     # create prior distribution that edge-type predictions will be pushed towards
-    prior = prior_from_env(cfg.rl.model.prior_for_graph_edges_existing, env)
+    prior = prior_from_env(cfg.rl.model.prior_for_graph_edges_existing, env, cfg.rl.model.temperature)
 
     # create policy kwargs
     policy_kwargs = {

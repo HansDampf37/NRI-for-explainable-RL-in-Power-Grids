@@ -1,6 +1,4 @@
-import logging
 import unittest
-from unittest.mock import create_autospec
 
 import torch
 from matplotlib import pyplot as plt
@@ -81,7 +79,7 @@ class TestGetPriors(unittest.TestCase):
         self.assertEqual(p2.shape, (2,))
 
     def test_values_consistency(self):
-        p1, p2 = get_priors(0.5, 4, 6)
+        p1, p2 = get_priors(0.5, 4, 6, temperature=0.0)
         # p1 should be [0.5, 0.5]
         self.assertTrue(torch.allclose(p1, torch.tensor([0.5, 0.5], dtype=torch.float32)))
         # Check mixture consistency
