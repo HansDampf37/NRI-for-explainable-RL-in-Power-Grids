@@ -135,5 +135,5 @@ def evaluate_topology_policy(topology_policy: TopologyPolicy, group: str, name: 
             agent=agent,
             env=grid2op_env,
             num_episodes=cfg.baseline.eval.nb_episodes,
-            path_results=Path(EVAL_PATH, group, name + "_" + dataset)
+            path_results=Path(EVAL_PATH, group, name, dataset)
         )
