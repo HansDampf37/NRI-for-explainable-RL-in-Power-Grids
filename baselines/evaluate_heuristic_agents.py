@@ -7,6 +7,7 @@ from omegaconf import DictConfig
 from grid2op.Agent import RecoPowerlineAgent, DoNothingAgent
 
 from baselines.baseline_agent import evaluate_agent
+from common import EVAL_PATH
 from common.rewards import MazeRLReward
 
 
@@ -24,7 +25,7 @@ def evaluate(cfg: DictConfig):
                 agent=agent,
                 env=env,
                 num_episodes=cfg.baseline.eval.nb_episodes,
-                path_results=Path("../data/evaluations/heuristic_agents").joinpath(name, dataset)
+                path_results=Path(EVAL_PATH, "heuristic_agents", name, dataset)
             )
 
 

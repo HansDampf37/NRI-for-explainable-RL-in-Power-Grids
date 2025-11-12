@@ -38,7 +38,7 @@ def get_edge_type_probabilities(
             done = False
             while not done:
                 act, _ = RARL_model.predict(obs)
-                latent_edges = RARL_model.get_edge_type_posterior(obs)
+                latent_edges = RARL_model.get_edge_type_posterior(obs).detach().cpu().numpy()
                 if running_sum is None:
                     running_sum = latent_edges
                 else:
