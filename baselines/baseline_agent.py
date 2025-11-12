@@ -2,7 +2,9 @@
 This script implements a baseline agent. The agent is a greedy agent meaning it will simulate all actions returned by its
 _get_tested_action method and execute the one with the highest simulated reward.
 """
+import json
 import logging
+import os
 from abc import abstractmethod, ABC
 from pathlib import Path
 from typing import List, Optional
@@ -13,7 +15,9 @@ from grid2op.Agent import RecoPowerlineAgent, BaseAgent
 from grid2op.Environment import Environment
 from grid2op.Observation import BaseObservation
 from grid2op.Runner import Runner
+from gymnasium import Env
 from omegaconf import DictConfig
+from stable_baselines3.common.base_class import BaseAlgorithm
 
 from common.constants import EVAL_PATH
 
@@ -137,3 +141,39 @@ def evaluate_topology_policy(topology_policy: TopologyPolicy, group: str, name: 
             num_episodes=cfg.baseline.eval.nb_episodes,
             path_results=Path(EVAL_PATH, group, name, dataset)
         )
+
+def evaluate_sb3_alg(alg: BaseAlgorithm, env: Env, group: str, name: str, dataset: str, cfg: DictConfig):
+    """
+    This method evaluates a stable-baseline3 algorithm on a given gym env.
+    The evaluation results are stored in under EVAL_PATH/group/name/dataset.
+    This is different from evaluating agents in the sense that heuristic actions are not part of the evaluation.
+
+    :param alg: The BaseAlgorithm to evaluate
+    :param env: The env to evaluate on
+    :param group: The group name for storing results
+    :param name: The name for storing results
+    :param dataset: the name of the dataset (train, test, val)
+    :param cfg: The hydra config
+    """
+    for _ in range(cfg.baseline.eval.nb_episodes):
+        obs, info = env.reset()
+        cumulative_reward = 0
+        episode_length = 0
+        while True:
+            act, _ = alg.predict(obs, deterministic=True)
+            obs, reward, done, truncated, info = env.step(act)
+            if done or truncated:
+                break
+            cumulative_reward += reward
+            episode_length += 1
+        print(f"Survived {episode_length} steps with a return of {cumulative_reward:.2f}")
+        name_chronic = os.path.basename(info['time_series_id'])
+        base_path = Path(EVAL_PATH, group, name, "gymnasium", dataset, name_chronic)
+        base_path.mkdir(parents=True, exist_ok=True)
+        with open(base_path.joinpath("episode_meta.json"), 'w') as f:
+            json.dump({
+                "agent_seed": None,
+                "chronics_max_timestep": -1,
+                "cumulative_reward": cumulative_reward,
+                "nb_timestep_played": episode_length
+            }, f, indent=4)
