@@ -149,7 +149,6 @@ class RAPPO(PPO, RARL):
                 clip_fraction = torch.mean((torch.abs(ratio - 1) > clip_range).float()).item()
                 clip_fractions.append(clip_fraction)
                 mean_posteriors.append(posterior_distributions.mean(dim=0).detach().cpu().numpy())  # mean over batch dim -> [E, K]
-                last_posterior = posterior_distributions[0].detach().cpu().numpy()
 
                 if self.clip_range_vf is None:
                     # No clipping
@@ -175,9 +174,13 @@ class RAPPO(PPO, RARL):
 
                 kl_loss = (posterior_distributions * (torch.log(posterior_distributions + self.eps) - torch.log(self.prior + self.eps))).sum(dim=-1)
                 kl_loss = kl_loss.mean()
-                kl_divs = kl_loss.item()
+                kl_divs.append(kl_loss.item())
 
-                loss = policy_loss + self.ent_coef * entropy_loss + self.vf_coef * value_loss + self.kl_coef * kl_loss
+                # compute loss
+                ppo_loss = policy_loss + self.ent_coef * entropy_loss + self.vf_coef * value_loss
+                # Combine loss terms
+                kl_weight = ppo_loss.detach().abs() * self.kl_coef # scale the weight with ppo magnitude to prevent overshadowing
+                total_loss = ppo_loss + kl_weight * kl_loss
 
                 # Calculate approximate form of reverse KL Divergence for early stopping
                 # see issue #417: https://github.com/DLR-RM/stable-baselines3/issues/417
@@ -196,7 +199,7 @@ class RAPPO(PPO, RARL):
 
                 # Optimization step
                 self.policy.optimizer.zero_grad()
-                loss.backward()
+                total_loss.backward()
                 # Clip grad norm
                 torch.nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
                 self.policy.optimizer.step()
@@ -213,7 +216,9 @@ class RAPPO(PPO, RARL):
         self.logger.record("train/value_loss", np.mean(value_losses))
         self.logger.record("train/approx_kl", np.mean(approx_kl_divs))
         self.logger.record("train/clip_fraction", np.mean(clip_fractions))
-        self.logger.record("train/loss", loss.item())
+        self.logger.record("train/total_loss", total_loss)
+        self.logger.record("train/ppo_loss", ppo_loss)
+        self.logger.record("train/weighted_kl", kl_weight * kl_loss)
         self.logger.record("train/kl-div", np.mean(kl_divs))
         self.logger.record("train/explained_variance", explained_var)
         if hasattr(self.policy, "log_std"):
@@ -231,13 +236,13 @@ class RAPPO(PPO, RARL):
         if tb_formatter is not None:
             writer = tb_formatter.writer  # this is the SummaryWriter
             mean_posterior = np.mean(mean_posteriors, axis=0)  # mean over iterations -> [E, K]
-            writer.add_histogram("train/posterior example", mean_posterior, global_step=self.num_timesteps)
+            writer.add_histogram("latent_edges/mean posterior", mean_posterior, global_step=self.num_timesteps)
             hist_image = visualize_posterior(mean_posterior, self.prior.detach().cpu().numpy())
-            writer.add_figure("train/posterior_vs_prior", hist_image, global_step=self.num_timesteps)
+            writer.add_figure("latent_edges/posterior_vs_prior", hist_image, global_step=self.num_timesteps)
             if self.plotting_args is not None:
                 self.plotting_args.latent_edge_probs = np.mean(mean_posteriors, axis=0) # mean over iterations -> [E, K]
                 mean_latent_edges_image = visualize_graph(self.plotting_args)
-                writer.add_figure("train/latent-edges", mean_latent_edges_image, global_step=self.num_timesteps)
+                writer.add_figure("latent_edges/latent-edges", mean_latent_edges_image, global_step=self.num_timesteps)
 
     def get_edge_type_posterior(self, obs: Union[np.ndarray, dict[str, np.ndarray]]) -> Tensor:
         return self.policy.get_edge_type_posterior(self.policy.obs_to_tensor(obs)[0])

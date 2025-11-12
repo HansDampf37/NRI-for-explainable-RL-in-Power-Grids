@@ -161,12 +161,13 @@ class RADQN(DQN, RARL):
         if tb_formatter is not None:
             writer = tb_formatter.writer  # this is the SummaryWriter
             mean_posterior = np.mean(mean_posteriors, axis=0) # mean over iterations -> [E, K]
-            writer.add_histogram("train/posterior example", mean_posterior, global_step=self.num_timesteps, bins=40)
-            writer.add_figure("train/posterior_vs_prior", visualize_posterior(mean_posterior, self.loss_fn.prior), global_step=self.num_timesteps)
+            writer.add_histogram("latent_edges/posterior example", mean_posterior, global_step=self.num_timesteps, bins=40)
+            posterior_hist_image = visualize_posterior(mean_posterior, self.loss_fn.prior.detach().cpu().numpy())
+            writer.add_figure("latent_edges/posterior_vs_prior", posterior_hist_image, global_step=self.num_timesteps)
             if self.plotting_args is not None:
                 self.plotting_args.latent_edge_probs = mean_posterior
                 mean_latent_edges_image = visualize_graph(self.plotting_args)
-                writer.add_figure("train/latent-edges", mean_latent_edges_image, global_step=self.num_timesteps)
+                writer.add_figure("latent_edges/latent-edges", mean_latent_edges_image, global_step=self.num_timesteps)
 
     def get_edge_type_posterior(self, obs: Union[np.ndarray, dict[str, np.ndarray]]) -> Tensor:
         _, edge_type_posterior = self.q_net(self.q_net.obs_to_tensor(obs))

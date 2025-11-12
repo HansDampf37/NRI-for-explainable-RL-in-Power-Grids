@@ -49,7 +49,9 @@ class HuberKLLoss(nn.Module):
         """
         huber = F.smooth_l1_loss(predictions, target)
         kl = self.kl_divergence_to_prior(posterior_probs)
-        loss = (self.alpha * huber + self.beta * kl) / (self.alpha + self.beta)
+        # Combine loss terms
+        kl_weight = huber.detach().abs() * self.beta  # scale the weight with ppo magnitude to prevent overshadowing
+        loss = (self.alpha * huber + kl_weight * kl) / (self.alpha + kl_weight)
         return (loss, huber, kl) if with_huber_kl else loss
 
 
