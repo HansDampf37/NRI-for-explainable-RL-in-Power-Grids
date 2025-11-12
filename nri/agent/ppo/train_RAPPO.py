@@ -98,12 +98,12 @@ def main(cfg: DictConfig):
     )
 
     # train
-    # algorithm.learn(total_timesteps=cfg.rl.train.timesteps, tb_log_name=name, log_interval=1)
-    # algorithm.save(os.path.join(MODELS_PATH, group, name))
-    # topology_policy = Sb3PPOTopologyPolicy(algorithm)
-    #
-    # # evaluate
-    # evaluate_topology_policy(topology_policy, group, name, cfg)
+    algorithm.learn(total_timesteps=cfg.rl.train.timesteps, tb_log_name=name, log_interval=1)
+    algorithm.save(os.path.join(MODELS_PATH, group, name))
+    topology_policy = Sb3PPOTopologyPolicy(algorithm)
+
+    # evaluate
+    evaluate_topology_policy(topology_policy, group, name, cfg)
 
     # save edge probs
     save_edge_probs(algorithm, env, save_path=Path(EDGE_PROBS_PATH, group, name + ".npy"))
