@@ -216,9 +216,9 @@ class RAPPO(PPO, RARL):
         self.logger.record("train/value_loss", np.mean(value_losses))
         self.logger.record("train/approx_kl", np.mean(approx_kl_divs))
         self.logger.record("train/clip_fraction", np.mean(clip_fractions))
-        self.logger.record("train/total_loss", total_loss)
-        self.logger.record("train/ppo_loss", ppo_loss)
-        self.logger.record("train/weighted_kl", kl_weight * kl_loss)
+        self.logger.record("train/total_loss", total_loss.item())
+        self.logger.record("train/ppo_loss", ppo_loss.item())
+        self.logger.record("train/weighted_kl", (kl_weight * kl_loss).item())
         self.logger.record("train/kl-div", np.mean(kl_divs))
         self.logger.record("train/explained_variance", explained_var)
         if hasattr(self.policy, "log_std"):
@@ -236,7 +236,7 @@ class RAPPO(PPO, RARL):
         if tb_formatter is not None:
             writer = tb_formatter.writer  # this is the SummaryWriter
             mean_posterior = np.mean(mean_posteriors, axis=0)  # mean over iterations -> [E, K]
-            writer.add_histogram("latent_edges/mean posterior", mean_posterior, global_step=self.num_timesteps)
+            writer.add_histogram("latent_edges/mean posterior", mean_posterior[:, :-1], global_step=self.num_timesteps)
             hist_image = visualize_posterior(mean_posterior, self.prior.detach().cpu().numpy())
             writer.add_figure("latent_edges/posterior_vs_prior", hist_image, global_step=self.num_timesteps)
             if self.plotting_args is not None:
