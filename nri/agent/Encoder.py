@@ -10,7 +10,7 @@ from nri.utils import Node2Edge, Edge2Node, fully_connected_edge_index_per_batch
 class Encoder(nn.Module):
     """
     Encoder closely inspired by Kipf et al.
-    Predicts posterior where x encodes the current observation and z is a distribution over edge types
+    Predicts posterior p(z|x) where x encodes the current observation and z is a distribution over edge types
     for each edge of the fully meshed graph.
     """
     def __init__(self, x_dim: int, hidden_dim: int, num_edge_types: int = 2, dropout_prob=0.):

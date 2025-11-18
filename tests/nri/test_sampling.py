@@ -1,5 +1,6 @@
 import unittest
 import torch
+from torch import Tensor
 
 from nri.Sampling import GumbelSoftmax
 
@@ -58,3 +59,12 @@ class TestSampling(unittest.TestCase):
         mean = samples.mean().item()
         # Mean of Gumbel(0,1) ≈ 0.5772
         self.assertAlmostEqual(mean, 0.577, delta=0.1)
+
+    def test_gumbel_softmax_mean(self):
+        num_draws = 1000
+        p = 0.01
+        dists = Tensor([p, 1-p]).repeat([num_draws, 1])
+        logits = torch.log(dists)
+        discrete = GumbelSoftmax(tau=0.1).forward(logits)
+        expected_draws = num_draws * p
+        self.assertTrue(abs(discrete[:, 0].sum().item() - expected_draws) < num_draws / 100)

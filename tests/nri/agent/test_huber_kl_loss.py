@@ -14,7 +14,7 @@ class TestHuberKLLoss(unittest.TestCase):
 
         loss, huber, kl = loss_module.forward(predictions, target, posterior, with_huber_kl=True)
         # loss should equal weighted average
-        expected_loss = (2.0 * huber + 3.0 * kl) / (2.0 + 3.0)
+        expected_loss = (2.0 * huber + 3.0 * huber.abs() * kl) / (2.0 + 3.0)
         self.assertAlmostEqual(loss.item(), expected_loss.item(), places=6)
 
     def test_huber_kl_loss_with_prior(self):

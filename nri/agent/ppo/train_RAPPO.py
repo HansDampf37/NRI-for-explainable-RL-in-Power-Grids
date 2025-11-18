@@ -50,6 +50,9 @@ def main(cfg: DictConfig):
     # create env
     env = get_env(cfg)
 
+    if cfg.rl.model.use_graphormer:
+        group += "/graphormer"
+
     # create prior distribution that edge-type predictions will be pushed towards
     prior = prior_from_env(cfg.rl.model.prior_for_graph_edges_existing, env, cfg.rl.model.temperature)
 
@@ -63,6 +66,7 @@ def main(cfg: DictConfig):
             "num_edge_types": cfg.rl.ppo.sb3.policy_kwargs.features_extractor_kwargs.num_edge_types,
             "num_layers": cfg.rl.ppo.sb3.policy_kwargs.features_extractor_kwargs.num_layers,
             "dropout_prob": cfg.rl.ppo.sb3.policy_kwargs.features_extractor_kwargs.dropout_prob,
+            "use_graphormer": cfg.rl.model.use_graphormer,
             # TODO optionally include edge index here to restrict edges for nri
         }
     }

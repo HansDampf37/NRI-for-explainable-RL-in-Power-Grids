@@ -14,6 +14,7 @@ from common import GraphObservationSpace, NODES, EDGE_INDEX, EDGE_MASK
 from nri.Sampling import GumbelSoftmax
 from nri.agent.Encoder import Encoder
 from nri.agent.RAGNN import RAGNN, BaselineGNN
+from nri.agent.graphormer.GraphormerEncoder import GraphormerNRIEncoder
 from nri.utils import fully_connected_edge_index_per_batch
 
 
@@ -48,7 +49,7 @@ class RAFeatureExtractor(nn.Module):
         num_layers: int,
         num_edge_types: int,
         dropout_prob: float,
-    ) -> None:
+    ):
         super().__init__()
         self.encoder: Encoder = Encoder(
             x_dim=x_dim,
@@ -104,6 +105,29 @@ class RAFeatureExtractor(nn.Module):
         return predictions, batched_p_z_given_x
 
 
+class RAGraphormerFeatureExtractor(RAFeatureExtractor):
+    def __init__(
+            self,
+            x_dim: int,
+            hidden_dim: int,
+            x_out_dim: int,
+            num_layers: int,
+            num_edge_types: int,
+            dropout_prob: float,
+            max_degree: int,
+            max_path_distance: int,
+    ):
+        super().__init__(x_dim=x_dim, hidden_dim=hidden_dim, x_out_dim=x_out_dim, num_layers=num_layers,
+                         num_edge_types=num_edge_types, dropout_prob=dropout_prob)
+        self.encoder = GraphormerNRIEncoder(
+            x_dim=x_dim,
+            hidden_dim=hidden_dim,
+            num_edge_types=num_edge_types,
+            max_degree=max_degree,
+            max_path_distance=max_path_distance
+        )
+
+
 class RAFeatureExtractorSB3(BaseFeaturesExtractor):
     """
     Wraps the RAFeatureExtractor to be compatible with the sb3 API.
@@ -117,16 +141,29 @@ class RAFeatureExtractorSB3(BaseFeaturesExtractor):
             num_layers: int,
             num_edge_types: int,
             dropout_prob: float = 0.0,
+            use_graphormer: bool = True,
     ):
         BaseFeaturesExtractor.__init__(self, observation_space, features_dim=out_dim)
-        self.gnn_feature_extractor = RAFeatureExtractor(
-            x_dim=observation_space.x_dim,
-            hidden_dim=hidden_dim,
-            x_out_dim=out_dim,
-            num_layers=num_layers,
-            num_edge_types=num_edge_types,
-            dropout_prob=dropout_prob,
-        )
+        if use_graphormer:
+            self.gnn_feature_extractor = RAGraphormerFeatureExtractor(
+                x_dim=observation_space.x_dim,
+                hidden_dim=hidden_dim,
+                x_out_dim=out_dim,
+                num_layers=num_layers,
+                num_edge_types=num_edge_types,
+                dropout_prob=dropout_prob,
+                max_degree=7, # TODO hardcoded
+                max_path_distance=9
+            )
+        else:
+            self.gnn_feature_extractor = RAFeatureExtractor(
+                x_dim=observation_space.x_dim,
+                hidden_dim=hidden_dim,
+                x_out_dim=out_dim,
+                num_layers=num_layers,
+                num_edge_types=num_edge_types,
+                dropout_prob=dropout_prob,
+            )
 
     def forward(self, observations: dict[str, torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor]:
         node_features_batch = observations[NODES]  # [B, N, node_in_dim]
@@ -149,7 +186,7 @@ class RAFeatureExtractorSB3(BaseFeaturesExtractor):
         offsets = (torch.arange(B, device=device) * N).repeat_interleave(valid_edges.sum(1))
         powerline_edge_index_batch += offsets.unsqueeze(0)
 
-        return self.gnn_feature_extractor(x=x, batch=batch, powerline_edge_index=powerline_edge_index_batch.to(dtype=torch.int32))
+        return self.gnn_feature_extractor(x=x, batch=batch, powerline_edge_index=powerline_edge_index_batch.to(dtype=torch.long))
 
 
 class BaselineFeatureExtractorSB3(BaseFeaturesExtractor):
@@ -196,5 +233,4 @@ class BaselineFeatureExtractorSB3(BaseFeaturesExtractor):
         offsets = (torch.arange(B, device=device) * N).repeat_interleave(valid_edges.sum(1))
         edge_index_batch += offsets.unsqueeze(0)
 
-        return self.gnn(x=x, batch=batch, edge_index=edge_index_batch.to(dtype=torch.int32))
-
+        return self.gnn(x=x, batch=batch, edge_index=edge_index_batch.to(dtype=torch.long))

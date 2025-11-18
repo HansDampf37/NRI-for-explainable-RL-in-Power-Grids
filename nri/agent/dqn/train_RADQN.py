@@ -51,6 +51,9 @@ def main(cfg: DictConfig):
     # create env
     env = get_env(cfg)
 
+    if cfg.rl.model.use_graphormer:
+        group += "/graphormer"
+
     # create policy kwargs
     policy_kwargs = {
         "net_arch": cfg.rl.dqn.sb3.policy_kwargs.net_arch,
@@ -61,6 +64,7 @@ def main(cfg: DictConfig):
             "num_edge_types": cfg.rl.dqn.sb3.policy_kwargs.features_extractor_kwargs.num_edge_types,
             "num_layers": cfg.rl.dqn.sb3.policy_kwargs.features_extractor_kwargs.num_layers,
             "dropout_prob": cfg.rl.dqn.sb3.policy_kwargs.features_extractor_kwargs.dropout_prob,
+            "use_graphormer": cfg.rl.model.use_graphormer,
             # TODO optionally include edge index here to restrict edges for nri
         }
     }
