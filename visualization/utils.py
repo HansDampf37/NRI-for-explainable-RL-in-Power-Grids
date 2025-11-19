@@ -1,4 +1,6 @@
+import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional, List
 
 import networkx as nx
@@ -8,7 +10,7 @@ import pandas as pd
 import seaborn as sns
 from grid2op.Environment import Environment
 from grid2op.PlotGrid import PlotMatplot
-from matplotlib import pyplot as plt
+from matplotlib import pyplot as plt, gridspec
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 
@@ -34,6 +36,136 @@ class PlottingArgs:
     latent_edge_weight: float = 5.0
     do_weight_sweep: bool = False
     skip_last_edge_type: bool = True
+
+
+@dataclass
+class AgentMetrics:
+    label: str
+    returns: List[float]
+    survival_duration: List[int]
+
+
+def visualize_agent_survival(datasets: List[AgentMetrics]):
+    sns.set_theme(style="whitegrid", palette="muted", font_scale=1.2)
+
+    # Define figure with a GridSpec: widths [1, 2, 1]
+    fig = plt.figure(figsize=(20, 5))
+    gs = gridspec.GridSpec(1, 3, width_ratios=[1, 2, 1], figure=fig)
+
+    axes = [fig.add_subplot(gs[i]) for i in range(3)]
+
+    max_survival_duration = max(max(data.survival_duration) for data in datasets)
+
+    # --- Strip Plot ---
+    records = []
+    for data in datasets:
+        records.extend([{"Agent": data.label, "Survival Duration": d}
+                        for d in data.survival_duration])
+    df = pd.DataFrame(records)
+
+    sns.stripplot(
+        data=df,
+        y="Survival Duration",
+        x="Agent",
+        hue="Agent",
+        ax=axes[0],
+        dodge=True,
+        alpha=0.6
+    )
+
+    axes[0].set_title("Survival Duration (Strip Plot)")
+    axes[0].set_ylabel("Time Steps")
+    axes[0].set_xlabel("Agent")
+
+    # --- KDE Plot ---
+    for data in datasets:
+        sns.kdeplot(
+            data.survival_duration,
+            ax=axes[1],
+            label=data.label,
+            bw_adjust=0.5
+        )
+
+    axes[1].set_xlim(0, max_survival_duration)
+    axes[1].set_title("Survival Duration Distribution (KDE) per Agent")
+    axes[1].set_xlabel("Time Steps")
+    axes[1].set_ylabel("Density")
+    axes[1].legend(title="Agent")
+
+    # --- Boxplot ---
+    sns.boxplot(
+        data=df,
+        x="Agent",
+        y="Survival Duration",
+        hue="Agent",
+        ax=axes[2],
+        palette="muted",
+        legend=False
+    )
+
+    axes[2].set_title("Survival Duration Boxplot per Agent")
+    axes[2].set_xlabel("Agent")
+    axes[2].set_ylabel("Time Steps")
+
+    plt.tight_layout()
+    plt.show()
+
+    for data in datasets:
+        print(f"Average survival ratios {data.label}: {sum(data.survival_duration) / len(data.survival_duration)}")
+
+
+def visualize_performance_vs_prior(datasets: List[AgentMetrics]):
+    sns.set_theme(style="whitegrid", palette="muted", font_scale=1.2)
+
+    # Define figure with a GridSpec: widths [1, 2, 1]
+    plt.figure(figsize=(20, 5))
+
+    # --- Strip Plot ---
+    records = []
+    for data in datasets:
+        records.extend([{"Agent": data.label, "Survival Duration": d} for d in data.survival_duration])
+    df = pd.DataFrame(records)
+
+    sns.boxplot(
+        data=df,
+        y="Survival Duration",
+        x="Agent",
+    )
+
+    plt.title("Survival Duration (Strip Plot)")
+    plt.ylabel("Time Steps")
+    plt.xlabel("Prior Probability for powerline edges imposed on NRI encoder")
+    plt.show()
+
+
+
+def visualize_agent_survival_return_relationship(datasets: List[AgentMetrics]):
+    plt.figure(figsize=(10, 5))
+    for data in datasets:
+        sns.scatterplot(
+            x=data.survival_duration,
+            y=data.returns,
+            label=data.label
+        )
+    plt.title("Returns vs Survival Duration")
+    plt.xlabel("Survival Duration (Time Steps)")
+    plt.ylabel("Return")
+    plt.legend()
+    plt.show()
+
+
+def get_evaluation_metrics(path, agent_name: str) -> AgentMetrics:
+    survival_duration = []
+    returns = []
+    for folder in path.iterdir():
+        if folder.is_dir():
+            with Path.joinpath(folder, "episode_meta.json").open() as f:
+                episode_metadata = json.load(f)
+                survival_duration.append(episode_metadata["nb_timestep_played"])
+                returns.append(episode_metadata["cumulative_reward"])
+
+    return AgentMetrics(agent_name, returns, survival_duration)
+
 
 
 def visualize_graph(args: PlottingArgs) -> Figure:
