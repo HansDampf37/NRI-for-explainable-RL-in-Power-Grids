@@ -5,4 +5,4 @@ defaults:
     -   train: default
     -   eval: default
     -   obs_space: bus_connectivity_graph_obs_space
-    -   act_space: discrete_set_bus
+    -   act_space: reduced_act_space

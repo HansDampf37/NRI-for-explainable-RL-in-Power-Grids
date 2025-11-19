@@ -1,4 +1,4 @@
-net_arch: [ 100, 100, 100 ]
+net_arch: [ 256, 256, 256 ]
 prior_for_graph_edges_existing: 0.9
 temperature: 0.2
 name_suffix: ~

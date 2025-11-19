@@ -1,0 +1,2 @@
+_target_: common.action_space.ReducedActionSpace_
+path: common/action_spaces/medha.json

@@ -18,8 +18,7 @@ class G2OpGymEnv(Env):
 
     This class wraps a Grid2Op environment and exposes it through a standard Gymnasium interface.
     This wrapper implements the same logic as GymEnvWithRecoWithDN (automatically reconnect powerlines do nothing if load is low).
-    Additionally, the do-nothing action is applied
-    whenever the maximum line load is lower than safe_max_rho.
+    Additionally, the do-nothing action is applied whenever the maximum line load is lower than safe_max_rho.
     """
 
     def __init__(self,
