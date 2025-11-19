@@ -9,3 +9,5 @@ features_extractor_kwargs:
     num_edge_types: 2
     num_layers: 2
     dropout_prob: 0
+    max_degree: 7 # todo change if bigger envs are considered
+    max_path_distance: 9 # todo change if bigger envs are considered

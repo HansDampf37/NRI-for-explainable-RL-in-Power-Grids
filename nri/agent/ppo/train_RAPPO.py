@@ -67,6 +67,8 @@ def main(cfg: DictConfig):
             "num_layers": cfg.rl.ppo.sb3.policy_kwargs.features_extractor_kwargs.num_layers,
             "dropout_prob": cfg.rl.ppo.sb3.policy_kwargs.features_extractor_kwargs.dropout_prob,
             "use_graphormer": cfg.rl.model.use_graphormer,
+            "max_degree": cfg.rl.model.features_extractor_kwargs.max_degree,
+            "max_path_distance": cfg.rl.model.features_extractor_kwargs.max_path_distance,
             # TODO optionally include edge index here to restrict edges for nri
         }
     }

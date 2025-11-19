@@ -142,9 +142,12 @@ class RAFeatureExtractorSB3(BaseFeaturesExtractor):
             num_edge_types: int,
             dropout_prob: float = 0.0,
             use_graphormer: bool = True,
+            max_degree: Optional[int] = None,
+            max_path_distance: Optional[int] = None,
     ):
         BaseFeaturesExtractor.__init__(self, observation_space, features_dim=out_dim)
         if use_graphormer:
+            assert max_degree is not None and max_path_distance is not None
             self.gnn_feature_extractor = RAGraphormerFeatureExtractor(
                 x_dim=observation_space.x_dim,
                 hidden_dim=hidden_dim,
@@ -152,8 +155,8 @@ class RAFeatureExtractorSB3(BaseFeaturesExtractor):
                 num_layers=num_layers,
                 num_edge_types=num_edge_types,
                 dropout_prob=dropout_prob,
-                max_degree=7, # TODO hardcoded
-                max_path_distance=9
+                max_degree=max_degree,
+                max_path_distance=max_path_distance
             )
         else:
             self.gnn_feature_extractor = RAFeatureExtractor(
