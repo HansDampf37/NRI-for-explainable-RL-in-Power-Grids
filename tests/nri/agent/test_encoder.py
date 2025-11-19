@@ -96,5 +96,3 @@ class TestEncoder(unittest.TestCase):
         # )).show()
 
         # visualize_posterior(edge_probs, prior).show()
-
-
