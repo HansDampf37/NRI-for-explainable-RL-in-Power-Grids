@@ -1,4 +1,3 @@
-# ...existing code...
 import unittest
 import torch
 from nri.agent.dqn.HuberKLLoss import HuberKLLoss
@@ -35,8 +34,3 @@ class TestHuberKLLoss(unittest.TestCase):
         posterior = torch.tensor([[1.0, 0.0, 0.0]])
         kl = loss_module.kl_divergence_to_prior(posterior)
         self.assertTrue(torch.isfinite(kl))
-
-
-if __name__ == '__main__':
-    unittest.main()
-

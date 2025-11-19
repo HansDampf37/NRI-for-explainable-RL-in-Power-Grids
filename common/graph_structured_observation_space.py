@@ -13,6 +13,8 @@ from grid2op.Observation import BaseObservation, ObservationSpace
 from gymnasium.spaces import Dict, Box
 from torch_geometric.data import Data
 
+from .constants import logger
+
 NODES = "node_features"
 EDGES = "edge_features"
 EDGE_INDEX = "edge_index"
@@ -100,6 +102,8 @@ class BusConnectivityGraphObsSpace(GraphObservationSpace):
             EDGE_MASK: Box(low=0, high=1, shape=(max_n_edge,), dtype=np.bool),
             GLOBAL: Box(low=-np.inf, high=np.inf, shape=(global_dim, )),
         })
+
+        logger.info(f"Using graph observation space with {self.num_nodes} nodes, ≤ {self.max_num_edges} edges and {self.x_dim} features per node ({", ".join(self.node_feature_names)}).")
 
     def to_gym(self, g2op_obs: BaseObservation) -> dict[str, npt.NDArray]:
         # get data

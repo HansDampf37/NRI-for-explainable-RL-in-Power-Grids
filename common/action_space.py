@@ -1,9 +1,10 @@
 import json
 from os import PathLike
 
-from grid2op.Action import BaseAction
-from grid2op.Environment import BaseEnv
+from grid2op.Action import BaseAction, ActionSpace
 from gymnasium.spaces import Discrete
+
+from .constants import logger
 
 
 class ReducedActionSpace(Discrete):
@@ -20,6 +21,7 @@ class ReducedActionSpace(Discrete):
         # get all possible single-substation bus change actions
         super().__init__(len(allowed_actions))
         self._allowed_actions = allowed_actions
+        logger.info(f"Using reduced action space with {len(allowed_actions)} actions")
 
     def from_gym(self, action_index: int):
         """
@@ -32,26 +34,26 @@ class ReducedActionSpace(Discrete):
 
 
 class ReducedActionSpace_(ReducedActionSpace):
-    def __init__(self, path: PathLike, env: BaseEnv):
+    def __init__(self, path: PathLike, grid2op_action_space: ActionSpace):
         """
         Constructor.
 
         :param path: The path to the .json file containing the allowed actions
         """
-        allowed_actions = load_actions(path, env)
-        do_nothing_action = env.action_space({})
+        allowed_actions = load_actions(path, grid2op_action_space)
+        do_nothing_action = grid2op_action_space({})
         allowed_actions.append(do_nothing_action)
         super().__init__(allowed_actions)
 
 
-def load_actions(path: PathLike, env: BaseEnv) -> list[BaseAction]:
+def load_actions(path: PathLike, grid2op_action_space: ActionSpace) -> list[BaseAction]:
     """
     Loads the .json with specified topology actions.
     """
     with open(path, "rt", encoding="utf-8") as action_set_file:
         return list(
             (
-                env.action_space(action_dict)
+                grid2op_action_space(action_dict)
                 for action_dict in json.load(action_set_file)
             )
         )
