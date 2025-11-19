@@ -32,6 +32,12 @@ class ReducedActionSpace(Discrete):
         """
         return self._allowed_actions[action_index]
 
+    def close(self):
+        """
+        You just have to love grid2op
+        """
+        pass
+
 
 class ReducedActionSpace_(ReducedActionSpace):
     def __init__(self, path: PathLike, grid2op_action_space: ActionSpace):
