@@ -8,9 +8,8 @@ from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
 from stable_baselines3 import PPO
 
-from baselines.baseline_agent import evaluate_topology_policy
-from common import G2OpGymEnv
-from common.constants import LOGS_PATH, MODELS_PATH
+from baselines.baseline_agent import evaluate_topology_policy, evaluate_sb3_alg
+from common import G2OpGymEnv, LOGS_PATH, MODELS_PATH
 from nri.agent.RAFeatureExtractor import BaselineFeatureExtractorSB3
 from nri.agent.ppo.PPOTopoPolicy import Sb3PPOTopologyPolicy
 
