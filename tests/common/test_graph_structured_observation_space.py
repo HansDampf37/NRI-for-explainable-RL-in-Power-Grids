@@ -50,3 +50,18 @@ class TestBusConnectivityGraphObsSpace(unittest.TestCase):
         c = Counter(cols)
         missing_mask = np.array([c[(y, x)] == 0 for (x, y) in cols])
         self.assertTrue(np.all(np.logical_not(missing_mask)))
+
+    def test_normalized_features(self):
+        self.gym_env.observation_space = BusConnectivityGraphObsSpace(self.env.observation_space, {
+            "active_power_forecast": [-122.4, 116666],
+            "active_power": [-122.4, 116666],
+            "reactive_power_forecast": [-85.7, 107.228],
+            "reactive_power": [-85.7, 107.228],
+            "voltage": [-142.1, 142.1],
+            "voltage_angle": [-14.212, 1.246],
+            "current": [0, 1512],
+            "rho": [0, 1]
+        })
+        obs, _ = self.gym_env.reset()
+        self.assertTrue(np.all(obs[NODES] > -0.1))
+        self.assertTrue(np.all(obs[NODES] < 1.2))

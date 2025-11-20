@@ -87,7 +87,7 @@ class BusConnectivityGraphObsSpace(GraphObservationSpace):
     - current
     equivalent to https://beta-grid2op.readthedocs.io/en/latest/grid_graph.html#graph3-the-connectivity-graph
     """
-    def __init__(self, grid2op_observation_space: ObservationSpace):
+    def __init__(self, grid2op_observation_space: ObservationSpace, normalization_boundaries: Optional[dict] = None):
         obs_space = grid2op_observation_space
         num_node = obs_space.n_gen + obs_space.n_load + 2 * obs_space.n_line
         num_connections = obs_space.sub_info
@@ -95,6 +95,12 @@ class BusConnectivityGraphObsSpace(GraphObservationSpace):
         max_n_edge = (num_connections * (num_connections - 1)).sum() + 2 * num_line
         x_dim = len(self.node_feature_names)
         global_dim = 6
+        if normalization_boundaries is not None:
+            self.normalization_min = np.array([normalization_boundaries[name][0] for name in self.node_feature_names])
+            self.normalization_max = np.array([normalization_boundaries[name][1] for name in self.node_feature_names])
+        else:
+            self.normalization_min = None
+            self.normalization_max = None
 
         super().__init__({
             NODES: Box(low=-np.inf, high=np.inf, shape=(num_node, x_dim)),
@@ -149,8 +155,7 @@ class BusConnectivityGraphObsSpace(GraphObservationSpace):
 
         return np.array(edge_index).transpose().astype(np.int32)
 
-    @staticmethod
-    def get_node_features(g2op_obs: BaseObservation) -> npt.NDArray[np.float32]:
+    def get_node_features(self, g2op_obs: BaseObservation) -> npt.NDArray[np.float32]:
         """
         Compute [N, X_dim]-shaped node features from a grid2op observation.
         :param g2op_obs: The g2op observation
@@ -198,7 +203,16 @@ class BusConnectivityGraphObsSpace(GraphObservationSpace):
             rho,
         ]
 
-        return np.array(features).transpose().astype(np.float32)
+        node_features = np.array(features).transpose().astype(np.float32)
+        return self.normalize(node_features)
+
+    def normalize(self, node_features: np.ndarray) -> np.ndarray:
+        if self.normalization_max is None:
+            return node_features
+        else:
+            return (node_features - self.normalization_min) / (self.normalization_max - self.normalization_min)
+
+
 
     @staticmethod
     def get_global_features(g2op_obs: BaseObservation) -> npt.NDArray[np.float32]:
