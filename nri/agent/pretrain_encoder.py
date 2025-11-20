@@ -44,7 +44,7 @@ def main(cfg: DictConfig):
 
     # train encoder
     log_path = Path(LOGS_PATH, group, name)
-    tensorboard_logger = SummaryWriter(log_path)
+    tensorboard_logger = None #SummaryWriter(log_path)
     logger.info(f"Logging to {log_path}")
 
     env: G2OpGymEnv = get_env(cfg)
@@ -83,13 +83,13 @@ def train(
     """
     # create prior and dataset
     prior = prior_from_env(prior_for_graph_edges, env)
-    ds: GraphDataset = create_dataset(env, prior, 128)
-    loader = DataLoader(ds, batch_size=2, shuffle=True)
+    ds: GraphDataset = create_dataset(env, prior, 1)
+    loader = DataLoader(ds, batch_size=1, shuffle=True)
 
     # pretrain encoder to predict prior for every observation
-    optimizer = torch.optim.Adam(encoder.parameters(), lr=0.1)
-    num_epochs = 10
-    eps = 0.0000001
+    optimizer = torch.optim.Adam(encoder.parameters(), lr=0.01)
+    num_epochs = 1000
+    eps = 0.00001
     for epoch in tqdm(range(num_epochs), f"Training {num_epochs} epochs"):
         total_loss = 0.0
         for batch_ in loader:
@@ -108,10 +108,18 @@ def train(
             optimizer.step()
             total_loss += loss.item()
 
+        grads_abs = torch.cat([
+            p.grad.abs().view(-1)
+            for p in encoder.parameters()
+            if p.requires_grad and p.grad is not None
+        ])
+
         if tensorboard_logger is not None:
+            tensorboard_logger.add_scalar("logits max", edge_logits.max(), epoch)
+            tensorboard_logger.add_histogram("grads_abs/global", grads_abs, epoch)
             tensorboard_logger.add_scalar("loss", total_loss, epoch)
         else:
-            logger.info(f"Epoch {epoch}, Loss: {total_loss / len(ds)}")
+            logger.info(f"Epoch {epoch}, Loss: {total_loss / len(ds)}, Max Grads: {grads_abs.max()}, logits max: {edge_logits.max()}")
 
     return encoder
 

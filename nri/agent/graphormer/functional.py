@@ -4,6 +4,7 @@ from typing import Tuple, Dict, List
 
 import networkx as nx
 import torch
+from torch import Tensor
 from torch_geometric.data import Data
 from torch_geometric.utils.convert import to_networkx
 from torch_geometric.utils import degree
@@ -72,25 +73,21 @@ def batched_shortest_path_distance(data) -> Tuple[Dict[int, List[int]], Dict[int
 
     return node_paths, edge_paths
 
-def precalculate_custom_attributes(data):
+def get_in_out_degree(data: Data) -> Tuple[Tensor, Tensor]:
     """
     Precalculate some graph attributes for faster access, including:
-    - in_degree of each node (tensor)
-    - out_degree of each node (tensor)
 
     :param data: a PyG Data object
-    :return: a PyG Data object with in_degree and out_degree attributes
+    :return: in and out degrees per node
     """
-
     # Calculate in_degree and out_degree
     num_nodes = data.num_nodes
     edge_index = data.edge_index
-    data.in_degree = degree(index=edge_index[1], num_nodes=num_nodes).long()
-    data.out_degree = degree(index=edge_index[0], num_nodes=num_nodes).long()
+    in_degree = degree(index=edge_index[1], num_nodes=num_nodes).long()
+    out_degree = degree(index=edge_index[0], num_nodes=num_nodes).long()
+    return in_degree, out_degree
 
-    return data
-
-def precalculate_paths(data: Data):
+def precalculate_paths(data: Data) -> Tensor:
     """
     Precalculate node_paths and edge_paths for a data batch, along with path lengths as tensor
     and a 3D tensor of edge paths.
@@ -98,12 +95,7 @@ def precalculate_paths(data: Data):
     :param data: a PyG Data object or Batch object
     :return: node_paths_length: tensor of shape [num_nodes, num_nodes] containing path lengths
     """
-
-    if type(data) == Data:
-        node_paths_dict, edge_paths_dict = shortest_path_distance(data)
-    else:
-        node_paths_dict, edge_paths_dict = batched_shortest_path_distance(data)
-    
+    node_paths_dict, edge_paths_dict = shortest_path_distance(data)
     # Create node path lengths tensor
     num_nodes = data.num_nodes
     node_paths_length = torch.zeros((num_nodes, num_nodes), dtype=torch.long)
@@ -114,6 +106,5 @@ def precalculate_paths(data: Data):
             # But for SpatialEncoding, we need len(path) (number of nodes)
             node_paths_length[src, dst] = len(node_paths_dict[src][dst])
             
-    data.node_paths_length = node_paths_length
-    return data
+    return node_paths_length
 

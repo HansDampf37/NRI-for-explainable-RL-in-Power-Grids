@@ -1,8 +1,10 @@
 from typing import Tuple, Optional
 
 import torch
-from torch import nn
+from torch import nn, LongTensor
 import torch.nn.functional as F
+from torch_geometric.utils import to_dense_batch
+
 
 class CentralityEncoding(nn.Module):
     def __init__(self, max_degree: int, node_dim: int):
@@ -20,7 +22,6 @@ class CentralityEncoding(nn.Module):
         :param degree: degree of each node
         :return: torch.Tensor, node embeddings after Centrality encoding
         """
-
         return self.z[torch.clamp(degree, min=0, max=self.max_degree - 1)]
 
 
@@ -48,17 +49,18 @@ class SpatialEncoding(nn.Module):
 
 
 class GraphormerAttentionHead(nn.Module):
-    def __init__(self, dim_in: int, dim_q: int, dim_k: int):
+    def __init__(self, dim_in: int, dim_qk: int, dim_v: int):
         """
         :param dim_in: node feature matrix input number of dimension
-        :param dim_q: query node feature matrix input number dimension
-        :param dim_k: key node feature matrix input number of dimension
+        :param dim_qk: key/query node feature matrix input number dimension
+        :param dim_v: value node feature matrix input number of dimension
         """
         super().__init__()
+        self.dim_qk = dim_qk
 
-        self.q = nn.Linear(dim_in, dim_q)
-        self.k = nn.Linear(dim_in, dim_k)
-        self.v = nn.Linear(dim_in, dim_k)
+        self.q = nn.Linear(dim_in, dim_qk)
+        self.k = nn.Linear(dim_in, dim_qk)
+        self.v = nn.Linear(dim_in, dim_v)
 
     def forward(self,
                 x: torch.Tensor,
@@ -66,8 +68,8 @@ class GraphormerAttentionHead(nn.Module):
                 batch: Optional[torch.LongTensor]=None,
                 return_attn_logits: bool = False) -> torch.Tensor:
         """
-        :param x: node feature matrix
-        :param b: spatial encoding
+        :param x: node feature matrix [BxN, x_dim],
+        :param b: spatial encoding in the shape [B, N, N]
         :param batch: pointer tensor for batching [N, ]
         :param return_attn_logits: whether to return attention-logits (before softmax) instead of the scaled values
         :return: torch.Tensor, node embeddings after attention operation
@@ -114,28 +116,28 @@ class GraphormerAttentionHead(nn.Module):
 
 # FIX: PyG attention instead of regular attention, due to specificity of GNNs
 class GraphormerMultiHeadAttention(nn.Module):
-    def __init__(self, num_heads: int, dim_in: int, dim_q: int, dim_k: int):
+    def __init__(self, num_heads: int, dim_in: int, dim_qk: int, dim_v: int):
         """
         :param num_heads: number of attention heads
         :param dim_in: node feature matrix input number of dimension
-        :param dim_q: query node feature matrix input number dimension
-        :param dim_k: key node feature matrix input number of dimension
+        :param dim_qk: query/key node feature matrix input number dimension
+        :param dim_v: value node feature matrix input number of dimension
         """
         super().__init__()
-        self.heads = nn.ModuleList([GraphormerAttentionHead(dim_in, dim_q, dim_k) for _ in range(num_heads)])
-        self.linear = nn.Linear(num_heads * dim_k, dim_in)
+        self.heads = nn.ModuleList([GraphormerAttentionHead(dim_in, dim_qk, dim_v) for _ in range(num_heads)])
+        self.linear = nn.Linear(num_heads * dim_v, dim_in)
 
     def forward(self,
                 x: torch.Tensor,
                 b: torch.Tensor,
-                ptr=None) -> torch.Tensor:
+                batch: Optional[LongTensor]=None) -> torch.Tensor:
         """
-        :param x: node feature matrix
-        :param b: spatial Encoding matrix
-        :param ptr: batch pointer that shows graph indexes in batch of graphs
-        :return: torch.Tensor, node embeddings after all attention heads
+        :param x: node feature matrix [BxN, x_dim]
+        :param b: spatial Encoding matrix [B, N, N]
+        :param batch: batch pointer that shows graph indexes in batch of graphs [BxN,]
+        :return: torch.Tensor, node embeddings after all attention heads [BxN, x_dim]
         """
-        return self.linear(torch.cat([attention_head(x, b, ptr) for attention_head in self.heads], dim=-1))
+        return self.linear(torch.cat([attention_head(x, b, batch) for attention_head in self.heads], dim=-1))
 
 
 class GraphormerEncoderLayer(nn.Module):
@@ -152,8 +154,8 @@ class GraphormerEncoderLayer(nn.Module):
 
         self.attention = GraphormerMultiHeadAttention(
             dim_in=node_dim,
-            dim_k=node_dim,
-            dim_q=node_dim,
+            dim_v=node_dim,
+            dim_qk=node_dim,
             num_heads=n_heads,
         )
         self.ln_1 = nn.LayerNorm(self.node_dim)
@@ -167,18 +169,18 @@ class GraphormerEncoderLayer(nn.Module):
 
     def forward(self,
                 x: torch.Tensor,
-                b: torch,
-                ptr=None) -> Tuple[torch.Tensor, torch.Tensor]:
+                b: torch.Tensor,
+                batch: Optional[LongTensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         h′(l) = MHA(LN(h(l−1))) + h(l−1)
         h(l) = FFN(LN(h′(l))) + h′(l)
 
         :param x: node feature matrix
         :param b: spatial Encoding matrix
-        :param ptr: batch pointer that shows graph indexes in batch of graphs
+        :param batch: batch pointer that shows graph indexes in batch of graphs
         :return: torch.Tensor, node embeddings after Graphormer layer operations
         """
-        x_prime = self.attention(self.ln_1(x), b, ptr) + x
+        x_prime = self.attention(self.ln_1(x), b, batch) + x
         x_new = self.ff(self.ln_2(x_prime)) + x_prime
 
         return x_new

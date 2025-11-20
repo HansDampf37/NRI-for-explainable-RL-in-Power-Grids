@@ -4,9 +4,9 @@ import torch
 from torch import nn, Tensor, LongTensor
 from torch_geometric.data import Data
 
-from .layers import GraphormerEncoderLayer, CentralityEncoding, SpatialEncoding, GraphormerAttentionHead
-from .graph_data_cacher import GraphDataRetriever
 from nri import fully_connected_edge_index_per_batch
+from .graph_data_cacher import GraphDataRetriever
+from .layers import GraphormerEncoderLayer, CentralityEncoding, SpatialEncoding, GraphormerAttentionHead
 
 
 class GraphormerNRIEncoder(nn.Module):
@@ -68,37 +68,45 @@ class GraphormerNRIEncoder(nn.Module):
 
         # predict attention logits for each edge prob
         self.edge_prob_layer = nn.ModuleList([
-            GraphormerAttentionHead(dim_in=hidden_dim, dim_k=hidden_dim, dim_q=hidden_dim) for _ in range(num_edge_types)
+            GraphormerAttentionHead(dim_in=hidden_dim, dim_qk=hidden_dim, dim_v=hidden_dim) for _ in range(num_edge_types)
         ])
 
 
     def forward(self, x: Tensor, powerline_edge_index: Tensor, edge_set: Optional[Tensor] = None, batch: Optional[LongTensor] = None) -> Tensor:
         """
-        Predicts edge< type for each edge in edge_index.
-        :param x: node features [N, X_dim]
+        Predicts posterior interaction type probabilities for each edge in edge_set given x and the adjacency
+        information powerline edge index.
+
+        :param x: node features [BxN, X_dim]
         :param powerline_edge_index: edge index indicating existing edges [2, E'].
-        :param edge_set: node adjacency [2, E]. Only latent edges that are included in this argument are detected. Per default this is fully meshed.
+        :param edge_set: node adjacency [2, E]. Only latent edges that are included in this argument are detected. Per default this is fully meshed for each graph.
         :param batch: indicates which batch each node belongs to [N, ]
         :return: edge type prediction [E, num_edge_types]
         """
-        N, _ = x.shape
-        batch = batch if batch is not None else torch.zeros(N, device=x.device, dtype=torch.long)
+        BxN, _ = x.shape
+        batch = batch if batch is not None else torch.zeros(BxN, device=x.device, dtype=torch.long)
+        B = batch.unique().numel()
+        N = BxN // B
         edge_set = edge_set if edge_set is not None else fully_connected_edge_index_per_batch(batch, x.device)
+
         # Get graph attributes
         graph_data = Data(x=x, edge_index=powerline_edge_index, batch=batch)
-        graph_data = self.graph_data.get(graph_data=graph_data)
+        in_deg, out_deg, path_dists = self.graph_data.get(graph_data=graph_data)
+        blocks = [path_dists[i] for i in range(path_dists.size(0))]
+        path_dists = torch.block_diag(*blocks)
+        node_deg = torch.max(in_deg, out_deg)
 
         x = self.node_in_lin(x)
 
         # get encodings
-        x = x + self.centrality_encoding(torch.max(graph_data.in_degree, graph_data.out_degree))
-        b = self.spatial_encoding(graph_data.node_paths_length)
+        x = x + self.centrality_encoding(node_deg)
+        b = self.spatial_encoding(path_dists)
 
         # Apply encoder layers
         x = self.l1(x, b, batch)
 
         edge_probs_logits = torch.stack([
-            edge_prob_layer(x, self.spatial_encodings_edge_probs[i](graph_data.node_paths_length), batch, return_attn_logits=True)
+            edge_prob_layer(x, self.spatial_encodings_edge_probs[i](path_dists), batch, return_attn_logits=True)
             for i, edge_prob_layer in enumerate(self.edge_prob_layer)
         ], dim=-1)
 
