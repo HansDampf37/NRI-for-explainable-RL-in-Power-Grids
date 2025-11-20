@@ -1,9 +1,8 @@
 from typing import Tuple, Optional
 
 import torch
-from torch import nn, LongTensor
 import torch.nn.functional as F
-from torch_geometric.utils import to_dense_batch
+from torch import nn, LongTensor
 
 
 class CentralityEncoding(nn.Module):
