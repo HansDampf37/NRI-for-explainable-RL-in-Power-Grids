@@ -55,3 +55,11 @@ class G2OpGymEnv(Env):
 
     def step(self, action):
         return self._gym_env.step(action)
+
+    def do_nothing(self):
+        """
+        Applies the DoNothing action
+        :return: observation, reward, done, truncated, info
+        """
+        obs, reward, done, info = self._g2op_env.step(self._g2op_env.action_space({}))
+        return self.observation_space.to_gym(obs), reward, done, False, info
