@@ -103,6 +103,7 @@ class RADQN(DQN, RARL):
         huber_losses = []
         kl_divs = []
         mean_posteriors = []
+        var_posteriors = []
 
         for _ in range(gradient_steps):
             # Sample replay buffer
@@ -137,6 +138,7 @@ class RADQN(DQN, RARL):
             huber_losses.append(huber.item())
             kl_divs.append(kl.item())
             mean_posteriors.append(posterior_distributions.mean(dim=0).detach().cpu().numpy()) # mean over batch dim -> [E, K]
+            var_posteriors.append(posterior_distributions.var(dim=0).detach().cpu().numpy()) # mean over batch dim -> [E, K]
 
             # Optimize the policy
             self.policy.optimizer.zero_grad()
@@ -161,7 +163,10 @@ class RADQN(DQN, RARL):
         if tb_formatter is not None:
             writer = tb_formatter.writer  # this is the SummaryWriter
             mean_posterior = np.mean(mean_posteriors, axis=0) # mean over iterations -> [E, K]
+            var_posterior = np.stack(var_posteriors, axis=0)
+
             writer.add_histogram("latent_edges/posterior example", mean_posterior, global_step=self.num_timesteps, bins=40)
+            writer.add_histogram("latent_edges/variance posterior", var_posterior[:, :, :-1], global_step=self.num_timesteps)
             posterior_hist_image = visualize_posterior(mean_posterior, self.loss_fn.prior.detach().cpu().numpy())
             writer.add_figure("latent_edges/posterior_vs_prior", posterior_hist_image, global_step=self.num_timesteps)
             if self.plotting_args is not None:

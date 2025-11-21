@@ -114,6 +114,7 @@ class RAPPO(PPO, RARL):
         pg_losses, value_losses = [], []
         clip_fractions = []
         mean_posteriors = []
+        var_posteriors = []
         kl_divs = []
 
         continue_training = True
@@ -149,6 +150,7 @@ class RAPPO(PPO, RARL):
                 clip_fraction = torch.mean((torch.abs(ratio - 1) > clip_range).float()).item()
                 clip_fractions.append(clip_fraction)
                 mean_posteriors.append(posterior_distributions.mean(dim=0).detach().cpu().numpy())  # mean over batch dim -> [E, K]
+                var_posteriors.append(posterior_distributions.var(dim=0).detach().cpu().numpy())  # var over batch dim -> [E, K]
 
                 if self.clip_range_vf is None:
                     # No clipping
@@ -236,7 +238,10 @@ class RAPPO(PPO, RARL):
         if tb_formatter is not None:
             writer = tb_formatter.writer  # this is the SummaryWriter
             mean_posterior = np.mean(mean_posteriors, axis=0)  # mean over iterations -> [E, K]
+            var_posterior = np.stack(var_posteriors, axis=0)
+
             writer.add_histogram("latent_edges/mean posterior", mean_posterior[:, :-1], global_step=self.num_timesteps)
+            writer.add_histogram("latent_edges/variance posterior", var_posterior[:, :, :-1], global_step=self.num_timesteps)
             hist_image = visualize_posterior(mean_posterior, self.prior.detach().cpu().numpy())
             writer.add_figure("latent_edges/posterior_vs_prior", hist_image, global_step=self.num_timesteps)
             if self.plotting_args is not None:
