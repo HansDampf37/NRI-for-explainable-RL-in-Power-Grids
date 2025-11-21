@@ -120,7 +120,7 @@ class GraphormerNRIEncoder(nn.Module):
         # stack attention maps in new dimension, normalize and transform to pyg-batching style
         # the normalization is done to prevent softmax from converging to one-hot distributions for large logits
         attention_logits = torch.stack(attention_logits, dim=-1)
-        attention_logits = attention_logits / attention_logits.max(dim=-1, keepdim=True)[0] * 4
+        attention_logits = attention_logits - attention_logits.max(dim=-1, keepdim=True)[0]
         return attention_logits[batch[edge_set[0]], edge_set[0] % N, edge_set[1] % N]
 
 

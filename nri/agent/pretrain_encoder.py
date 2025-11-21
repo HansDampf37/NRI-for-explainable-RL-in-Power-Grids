@@ -7,7 +7,7 @@ from the environment.
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Union, Optional, List
+from typing import Union, Optional, List, Tuple
 
 import hydra
 import torch
@@ -20,12 +20,13 @@ from torch_geometric.data import Data, InMemoryDataset
 from torch_geometric.loader import DataLoader
 from tqdm import tqdm
 
-from common import NODES, EDGE_INDEX, MODELS_PATH, LOGS_PATH, G2OpGymEnv, logger, EDGE_MASK
+from common import NODES, EDGE_INDEX, MODELS_PATH, LOGS_PATH, G2OpGymEnv, EDGE_MASK, logger
 from nri import prior_from_env
 from nri.agent import Encoder
 from nri.agent.graphormer.GraphormerEncoder import GraphormerNRIEncoder
 from nri.agent.ppo.train_RAPPO import get_env
 
+_eps = 0.00001
 
 class GraphDataset(InMemoryDataset):
     def __init__(self, data_list):
@@ -36,7 +37,7 @@ class GraphDataset(InMemoryDataset):
 @hydra.main(config_path="../../hydra_configs", config_name="config", version_base="1.3")
 def main(cfg: DictConfig):
     """
-    Pretrains and returns a graphormer encoder.
+    Pretrains a graphormer encoder.
     :param cfg: the hydra config
     :return: the graphormer encoder
     """
@@ -49,12 +50,18 @@ def main(cfg: DictConfig):
     else:
         name = f"graphormer_{timestamp}_{name_suffix}_{uuid.uuid4().hex}"
 
-    # train encoder
+    # setup logging
     log_path = Path(LOGS_PATH, group, name)
-    tensorboard_logger = None #SummaryWriter(log_path)
+    tensorboard_logger = SummaryWriter(log_path)
     logger.info(f"Logging to {log_path}")
 
+    # collect data
     env: G2OpGymEnv = get_env(cfg)
+    prior = prior_from_env(cfg.rl.model.prior_for_graph_edges_existing, env)
+    ds: GraphDataset = create_dataset(env, prior, 1000)
+    eval_ds: GraphDataset = create_dataset(get_env(cfg), prior, 100)
+
+    # train encoder
     encoder = GraphormerNRIEncoder(
         x_dim=env.observation_space.x_dim,
         hidden_dim=cfg.rl.model.features_extractor_kwargs.hidden_dim,
@@ -63,10 +70,12 @@ def main(cfg: DictConfig):
         max_degree=cfg.rl.model.features_extractor_kwargs.max_degree,
         max_path_distance=cfg.rl.model.features_extractor_kwargs.max_path_distance
     )
-    prior = prior_from_env(cfg.rl.model.prior_for_graph_edges_existing, env)
-
-    ds: GraphDataset = create_dataset(env, prior, 1000)
-    train(encoder, ds, tensorboard_logger)
+    train(
+        encoder=encoder,
+        ds=ds,
+        testing_ds=eval_ds,
+        tensorboard_logger=tensorboard_logger
+    )
 
     # save encoder
     save_path = Path(MODELS_PATH, group, name + ".pt")
@@ -78,32 +87,34 @@ def main(cfg: DictConfig):
 def train(
         encoder: Union[GraphormerNRIEncoder, Encoder],
         ds: GraphDataset,
+        testing_ds: Optional[GraphDataset] = None,
+        evaluate_every_k_epochs: int = 10,
         tensorboard_logger: Optional[SummaryWriter] = None,
         batch_size: int = 32,
         num_epochs: int = 100,
-        lr: float = 0.005) -> List[float]:
+        lr: float = 0.005) -> List[Tuple[float, float]]:
     """
-    Pretrains an encoder on observations obtained by resetting the given environment. Since there is no training signal
+    Pretrains an encoder on observations obtained by observing the given environment. Since there is no training signal
     from a downstream agent this pretraining trains the encoder solely on the objective of reproducing the prior (the
     prior is a per edge distribution that the posterior distribution is pushed towards) given various observations sampled
     from the environment.
 
     @param encoder: the encoder that should predict graph structures
-    @param ds: the dataset
+    @param ds: the dataset to train on
+    @param testing_ds: the dataset to test on
+    @param evaluate_every_k_epochs: the number of training epochs between one evaluation
     @param tensorboard_logger: Optional Tensorboard logger.
     @param batch_size: the batch size to use
     @param num_epochs: the number of epochs to train
     @param lr: the learning rate
-    @return: the training loss curve
+    @return: the loss curves (training, testing)
     """
-    # pretrain encoder to predict prior for every observation
     loader = DataLoader(ds, batch_size=batch_size, shuffle=True)
     optimizer = torch.optim.Adam(encoder.parameters(), lr=lr)
-    eps = 0.00001
     loss_per_episode = []
-    for epoch in range(num_epochs): # tqdm(range(num_epochs), f"Training {num_epochs} epochs"):
+    pbar = tqdm(total=num_epochs)
+    for epoch in range(num_epochs):
         total_loss = 0.0
-
         for batch_ in loader:
             x = batch_.x
             edge_index = batch_.edge_index
@@ -112,33 +123,77 @@ def train(
 
             optimizer.zero_grad()
 
+            # compute loss
             edge_logits = encoder.forward(x, batch=batch, powerline_edge_index=edge_index)
             edge_probs = F.softmax(edge_logits, dim=-1)
+            loss = (edge_probs * (torch.log(edge_probs + _eps) - torch.log(y + _eps))).sum(dim=-1).mean()
+            total_loss += loss.item()
 
-            loss = (edge_probs * (torch.log(edge_probs + eps) - torch.log(y + eps))).sum(dim=-1).mean()
+            # update weights
             loss.backward()
             clip_grad_norm_(encoder.parameters(), 1)
             optimizer.step()
-            total_loss += loss.item()
 
-        loss_per_episode.append(total_loss)
+        # evaluate occasionally
+        if epoch % evaluate_every_k_epochs == 0 and testing_ds is not None:
+            testing_loss = evaluate(encoder, testing_ds, batch_size)
+        else:
+            testing_loss = None
+
+        training_loss = total_loss / len(ds)
+        loss_per_episode.append((training_loss, testing_loss))
+
+        # logging results for this epoch
         grads_abs = torch.cat([
             p.grad.abs().view(-1)
             for p in encoder.parameters()
             if p.requires_grad and p.grad is not None
         ])
-
         if tensorboard_logger is not None:
             tensorboard_logger.add_scalar("max-logit", edge_logits.max(), epoch)
             tensorboard_logger.add_histogram("grads_abs/global", grads_abs, epoch)
-            tensorboard_logger.add_scalar("loss", total_loss, epoch)
-        else:
-            logger.info(f"Epoch {epoch}, "
-                        f"Loss: {total_loss / len(ds):.8f}, "
-                        f"Max Grads: {grads_abs.max():.2f}, "
-                        f"logits max: {edge_logits.max():.2f}, ")
+            tensorboard_logger.add_scalar("loss/train", training_loss, epoch)
+            if testing_loss is not None:
+                tensorboard_logger.add_scalar("loss/eval", testing_loss, epoch)
+
+        message = f"Epoch {epoch}, " \
+             f"Loss: {training_loss:.8f}, " \
+             f"Max Grads: {grads_abs.max():.2f}, " \
+             f"logits max: {edge_logits.max():.2f}"
+        if testing_loss is not None:
+            message += f", Evaluation loss: {testing_loss:.8f}"
+        pbar.update(1)
+        pbar.desc = message
 
     return loss_per_episode
+
+def evaluate(
+        encoder: Union[GraphormerNRIEncoder, Encoder],
+        eval_ds: GraphDataset,
+        batch_size: int = 32) -> float:
+    """
+    Evaluate an encoder on the evaluation dataset.
+
+    @param encoder: The encoder
+    @param eval_ds: the dataset to evaluate on
+    @param batch_size: the batch size to use
+    @return: the evaluation loss
+    """
+    eval_loss = 0
+    eval_loader = DataLoader(eval_ds, batch_size=batch_size, shuffle=False)
+    for batch_ in eval_loader:
+        x = batch_.x
+        edge_index = batch_.edge_index
+        batch = batch_.batch
+        y = batch_.y
+
+        edge_logits = encoder.forward(x, batch=batch, powerline_edge_index=edge_index)
+        edge_probs = F.softmax(edge_logits, dim=-1)
+
+        loss = (edge_probs * (torch.log(edge_probs + _eps) - torch.log(y + _eps))).sum(dim=-1).mean()
+        eval_loss += loss.item()
+
+    return eval_loss / len(eval_ds)
 
 
 def create_dataset(env: G2OpGymEnv, prior: Tensor, ds_size: int) -> GraphDataset:
@@ -150,7 +205,6 @@ def create_dataset(env: G2OpGymEnv, prior: Tensor, ds_size: int) -> GraphDataset
     :param ds_size: the dataset size
     :return: the dataset
     """
-    # create dataset
     data_list = []
     pbar = tqdm(range(ds_size), desc="Create dataset")
     while len(data_list) < ds_size:
