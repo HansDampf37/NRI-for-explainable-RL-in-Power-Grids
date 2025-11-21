@@ -1,8 +1,9 @@
-from typing import Tuple, Optional
+from typing import Optional
 
 import torch
 import torch.nn.functional as F
 from torch import nn, LongTensor
+from torch_geometric.utils import to_dense_batch
 
 
 class CentralityEncoding(nn.Module):
@@ -73,44 +74,37 @@ class GraphormerAttentionHead(nn.Module):
         :param return_attn_logits: whether to return attention-logits (before softmax) instead of the scaled values
         :return: torch.Tensor, node embeddings after attention operation
         """
-        N, _ = x.shape
-        # OPTIMIZE: get rid of slices: rewrite to torch
-        if type(batch) == type(None):
-            # all graphs belong to the same batch
-            batch_mask_neg_inf = torch.ones(size=(N, N)).to(next(self.parameters()).device)
-            batch_mask_zeros = torch.ones(size=(N, N)).to(next(self.parameters()).device)
-        else:
-            batch_mask_neg_inf = torch.full(size=(N, N), fill_value=-1e6).to(next(self.parameters()).device)
-            batch_mask_zeros = torch.zeros(size=(N, N)).to(next(self.parameters()).device)
-            for i in range(N):
-                batch_mask_neg_inf[batch == batch[i]] = 1
-                batch_mask_zeros[batch == batch[i]] = 1
+        # use separate batch dimension
+        BxN = x.shape[-2]
+        batch = batch if batch is not None else torch.zeros(BxN, dtype=torch.long, device=x.device)
+        x_dense, mask = to_dense_batch(x, batch)
+        B, N, _ = x_dense.shape
+        assert torch.all(mask), "Different number of nodes across batches is not allowed."
 
-        query = self.q(x)
-        key = self.k(x)
+        query = self.q(x_dense) # [B, N, dim_qk]
+        key = self.k(x_dense) # [B, N, dim_qk]
 
-        a = self.compute_a(key, query, batch)
-        a = (a + b) * batch_mask_neg_inf
+        a = self.compute_a(key, query) + b # [B, N, N]
 
         if return_attn_logits:
             return a
 
-        value = self.v(x)
-        softmax = torch.softmax(a, dim=-1) * batch_mask_zeros
-        x = softmax.mm(value)
+        value = self.v(x_dense) # [B, N, dim_v]
+        softmax = torch.softmax(a, dim=-1) # [B, N, N]
+        x = torch.matmul(softmax, value) # [B, N, dim_v]
+
+        x = x.view(B * N, -1)
         return x
 
-    @staticmethod
-    def compute_a(key: torch.Tensor, query: torch.Tensor, ptr: Optional[torch.Tensor]=None):
-        if type(ptr) == type(None):
-            a = query.mm(key.transpose(0, 1)) / query.size(-1) ** 0.5
-        else:
-            a = torch.zeros((query.shape[0], query.shape[0]), device=key.device)
-            for i in range(len(ptr) - 1):
-                a[ptr[i]:ptr[i + 1], ptr[i]:ptr[i + 1]] = query[ptr[i]:ptr[i + 1]].mm(
-                    key[ptr[i]:ptr[i + 1]].transpose(0, 1)) / query.size(-1) ** 0.5
+    def compute_a(self, key: torch.Tensor, query: torch.Tensor):
+        """
+        Computes attention weights between query and key.
 
-        return a
+        :param key: the key [B, N, dim_qk]
+        :param query: the query [B, N, dim_qk]
+        :return: attention weights [B, N, N]
+        """
+        return torch.matmul(query, key.transpose(1, 2)) / self.dim_qk ** 0.5
 
 
 # FIX: PyG attention instead of regular attention, due to specificity of GNNs
@@ -169,7 +163,7 @@ class GraphormerEncoderLayer(nn.Module):
     def forward(self,
                 x: torch.Tensor,
                 b: torch.Tensor,
-                batch: Optional[LongTensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
+                batch: Optional[LongTensor] = None) -> torch.Tensor:
         """
         h′(l) = MHA(LN(h(l−1))) + h(l−1)
         h(l) = FFN(LN(h′(l))) + h′(l)

@@ -1,7 +1,13 @@
+"""
+Pretrains an encoder on observations obtained by resetting the given environment. Since there is no training signal
+from a downstream agent this pretraining trains the encoder solely on the objective of reproducing the prior (the
+prior is a per edge distribution that the posterior distribution is pushed towards) given various observations sampled
+from the environment.
+"""
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Union, Optional
+from typing import Union, Optional, List
 
 import hydra
 import torch
@@ -9,6 +15,7 @@ from omegaconf import DictConfig, OmegaConf
 from tensorboardX import SummaryWriter
 from torch import Tensor
 from torch.nn import functional as F
+from torch.nn.utils import clip_grad_norm_
 from torch_geometric.data import Data, InMemoryDataset
 from torch_geometric.loader import DataLoader
 from tqdm import tqdm
@@ -51,11 +58,15 @@ def main(cfg: DictConfig):
     encoder = GraphormerNRIEncoder(
         x_dim=env.observation_space.x_dim,
         hidden_dim=cfg.rl.model.features_extractor_kwargs.hidden_dim,
+        num_layers=cfg.rl.model.features_extractor_kwargs.num_layers,
         num_edge_types=cfg.rl.model.features_extractor_kwargs.num_edge_types,
         max_degree=cfg.rl.model.features_extractor_kwargs.max_degree,
         max_path_distance=cfg.rl.model.features_extractor_kwargs.max_path_distance
     )
-    train(encoder, env, cfg.rl.model.prior_for_graph_edges_existing, tensorboard_logger)
+    prior = prior_from_env(cfg.rl.model.prior_for_graph_edges_existing, env)
+
+    ds: GraphDataset = create_dataset(env, prior, 1000)
+    train(encoder, ds, tensorboard_logger)
 
     # save encoder
     save_path = Path(MODELS_PATH, group, name + ".pt")
@@ -66,9 +77,11 @@ def main(cfg: DictConfig):
 
 def train(
         encoder: Union[GraphormerNRIEncoder, Encoder],
-        env: G2OpGymEnv,
-        prior_for_graph_edges: float,
-        tensorboard_logger: Optional[SummaryWriter] = None) -> Union[GraphormerNRIEncoder, Encoder]:
+        ds: GraphDataset,
+        tensorboard_logger: Optional[SummaryWriter] = None,
+        batch_size: int = 32,
+        num_epochs: int = 100,
+        lr: float = 0.005) -> List[float]:
     """
     Pretrains an encoder on observations obtained by resetting the given environment. Since there is no training signal
     from a downstream agent this pretraining trains the encoder solely on the objective of reproducing the prior (the
@@ -76,22 +89,21 @@ def train(
     from the environment.
 
     @param encoder: the encoder that should predict graph structures
-    @param env: the environment to sample observations from
-    @param prior_for_graph_edges: prior existence probability of powergrid edges
+    @param ds: the dataset
     @param tensorboard_logger: Optional Tensorboard logger.
-    @return: the trained encoder
+    @param batch_size: the batch size to use
+    @param num_epochs: the number of epochs to train
+    @param lr: the learning rate
+    @return: the training loss curve
     """
-    # create prior and dataset
-    prior = prior_from_env(prior_for_graph_edges, env)
-    ds: GraphDataset = create_dataset(env, prior, 1)
-    loader = DataLoader(ds, batch_size=1, shuffle=True)
-
     # pretrain encoder to predict prior for every observation
-    optimizer = torch.optim.Adam(encoder.parameters(), lr=0.01)
-    num_epochs = 1000
+    loader = DataLoader(ds, batch_size=batch_size, shuffle=True)
+    optimizer = torch.optim.Adam(encoder.parameters(), lr=lr)
     eps = 0.00001
-    for epoch in tqdm(range(num_epochs), f"Training {num_epochs} epochs"):
+    loss_per_episode = []
+    for epoch in range(num_epochs): # tqdm(range(num_epochs), f"Training {num_epochs} epochs"):
         total_loss = 0.0
+
         for batch_ in loader:
             x = batch_.x
             edge_index = batch_.edge_index
@@ -105,9 +117,11 @@ def train(
 
             loss = (edge_probs * (torch.log(edge_probs + eps) - torch.log(y + eps))).sum(dim=-1).mean()
             loss.backward()
+            clip_grad_norm_(encoder.parameters(), 1)
             optimizer.step()
             total_loss += loss.item()
 
+        loss_per_episode.append(total_loss)
         grads_abs = torch.cat([
             p.grad.abs().view(-1)
             for p in encoder.parameters()
@@ -115,13 +129,16 @@ def train(
         ])
 
         if tensorboard_logger is not None:
-            tensorboard_logger.add_scalar("logits max", edge_logits.max(), epoch)
+            tensorboard_logger.add_scalar("max-logit", edge_logits.max(), epoch)
             tensorboard_logger.add_histogram("grads_abs/global", grads_abs, epoch)
             tensorboard_logger.add_scalar("loss", total_loss, epoch)
         else:
-            logger.info(f"Epoch {epoch}, Loss: {total_loss / len(ds)}, Max Grads: {grads_abs.max()}, logits max: {edge_logits.max()}")
+            logger.info(f"Epoch {epoch}, "
+                        f"Loss: {total_loss / len(ds):.8f}, "
+                        f"Max Grads: {grads_abs.max():.2f}, "
+                        f"logits max: {edge_logits.max():.2f}, ")
 
-    return encoder
+    return loss_per_episode
 
 
 def create_dataset(env: G2OpGymEnv, prior: Tensor, ds_size: int) -> GraphDataset:

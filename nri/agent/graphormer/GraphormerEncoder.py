@@ -18,12 +18,14 @@ class GraphormerNRIEncoder(nn.Module):
     def __init__(self,
                  x_dim: int,
                  hidden_dim: int,
+                 num_layers: int,
                  num_edge_types: int,
                  max_degree: int,
                  max_path_distance: int):
         """
         :param x_dim: input dimension of node features
         :param hidden_dim: hidden dimensions of node features
+        :param num_layers: number of graphormer layers
         :param num_edge_types: number of attention heads
         :param max_degree: max in degree of nodes
         :param max_path_distance: max pairwise distance between two nodes
@@ -33,6 +35,7 @@ class GraphormerNRIEncoder(nn.Module):
         self.x_dim = x_dim
         self.hidden_dim = hidden_dim
         self.num_edge_types = num_edge_types
+        self.num_layers = num_layers
         self.ff_dim = hidden_dim
         self.max_degree = max_degree
         self.max_path_distance = max_path_distance
@@ -55,11 +58,13 @@ class GraphormerNRIEncoder(nn.Module):
         )
 
         # one layer to have global information for every node
-        self.l1 = GraphormerEncoderLayer(
-            node_dim=self.hidden_dim,
-            n_heads=self.num_edge_types,
-            ff_dim=self.ff_dim
-        )
+        self.graphormer_layers = nn.ModuleList([
+            GraphormerEncoderLayer(
+                node_dim=self.hidden_dim,
+                n_heads=self.num_edge_types,
+                ff_dim=self.ff_dim
+            ) for _ in range(self.num_layers)
+        ])
 
         # per edge type spatial encodings
         self.spatial_encodings_edge_probs = nn.ModuleList([
@@ -70,6 +75,8 @@ class GraphormerNRIEncoder(nn.Module):
         self.edge_prob_layer = nn.ModuleList([
             GraphormerAttentionHead(dim_in=hidden_dim, dim_qk=hidden_dim, dim_v=hidden_dim) for _ in range(num_edge_types)
         ])
+
+        self.init_weights()
 
 
     def forward(self, x: Tensor, powerline_edge_index: Tensor, edge_set: Optional[Tensor] = None, batch: Optional[LongTensor] = None) -> Tensor:
@@ -90,26 +97,42 @@ class GraphormerNRIEncoder(nn.Module):
         edge_set = edge_set if edge_set is not None else fully_connected_edge_index_per_batch(batch, x.device)
 
         # Get graph attributes
-        graph_data = Data(x=x, edge_index=powerline_edge_index, batch=batch)
-        in_deg, out_deg, path_dists = self.graph_data.get(graph_data=graph_data)
-        blocks = [path_dists[i] for i in range(path_dists.size(0))]
-        path_dists = torch.block_diag(*blocks)
-        node_deg = torch.max(in_deg, out_deg)
+        with torch.no_grad():
+            graph_data = Data(x=x, edge_index=powerline_edge_index, batch=batch)
+            in_deg, out_deg, path_dists = self.graph_data.get(graph_data=graph_data) # [BxN,], [BxN,], [B,N,N]
+            node_deg = torch.max(in_deg, out_deg)
 
+        # embed x
         x = self.node_in_lin(x)
-
-        # get encodings
         x = x + self.centrality_encoding(node_deg)
+
+        # Apply encoder layer
         b = self.spatial_encoding(path_dists)
+        for layer in self.graphormer_layers:
+            x = layer(x, b, batch)
 
-        # Apply encoder layers
-        x = self.l1(x, b, batch)
+        # predict edge logits
+        attention_logits = [
+            edge_prob_layer(x, spatial_enc(path_dists), batch, return_attn_logits=True)
+            for edge_prob_layer, spatial_enc in zip(self.edge_prob_layer, self.spatial_encodings_edge_probs)
+        ]
 
-        edge_probs_logits = torch.stack([
-            edge_prob_layer(x, self.spatial_encodings_edge_probs[i](path_dists), batch, return_attn_logits=True)
-            for i, edge_prob_layer in enumerate(self.edge_prob_layer)
-        ], dim=-1)
+        # stack attention maps in new dimension, normalize and transform to pyg-batching style
+        # the normalization is done to prevent softmax from converging to one-hot distributions for large logits
+        attention_logits = torch.stack(attention_logits, dim=-1)
+        attention_logits = attention_logits / attention_logits.max(dim=-1, keepdim=True)[0] * 4
+        return attention_logits[batch[edge_set[0]], edge_set[0] % N, edge_set[1] % N]
 
-        edge_probs_logits = edge_probs_logits[edge_set[0], edge_set[1], :]
 
-        return edge_probs_logits
+    def init_weights(self):
+        """
+        Initializes the model's weights
+        @return:
+        """
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_normal_(m.weight.data)
+                m.bias.data.fill_(0.1)
+            elif isinstance(m, nn.BatchNorm1d) or isinstance(m, nn.LayerNorm):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
