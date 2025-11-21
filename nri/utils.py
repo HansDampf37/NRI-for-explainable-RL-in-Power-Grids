@@ -92,7 +92,7 @@ def prior_from_env(prob_graph_edge_exists: float, env: G2OpGymEnv, temperature: 
     N = obs_space.num_nodes
     num_graph_edges = obs_space.max_num_edges
     num_non_graph_edges = N * (N - 1) // 2 - num_graph_edges
-    prior_for_graph_edges, prior_for_non_graph_edges = get_priors(prob_graph_edge_exists, num_graph_edges, num_non_graph_edges)
+    prior_for_graph_edges, prior_for_non_graph_edges = get_priors(prob_graph_edge_exists, num_graph_edges, num_non_graph_edges, temperature)
     logger.info(f"Prior for graph edges: {prior_for_graph_edges}, Prior for non graph edges: {prior_for_non_graph_edges}")
     powergrid_edge_index = torch.from_numpy(env.reset()[0][EDGE_INDEX])  # [2, E]
     all_edges = fully_connected_edge_index(N)  # [2, E']

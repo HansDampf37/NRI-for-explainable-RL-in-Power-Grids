@@ -125,8 +125,10 @@ def train(
 
             # compute loss
             edge_logits = encoder.forward(x, batch=batch, powerline_edge_index=edge_index)
-            edge_probs = F.softmax(edge_logits, dim=-1)
-            loss = (edge_probs * (torch.log(edge_probs + _eps) - torch.log(y + _eps))).sum(dim=-1).mean()
+            edge_log_probs = F.log_softmax(edge_logits, dim=-1)
+            edge_probs = edge_log_probs.exp()
+            loss = (0.9 * (edge_probs * (edge_log_probs - torch.log(y + _eps))).sum(dim=-1).mean() +
+                    0.1 * (y * (torch.log(y + _eps) - edge_log_probs)).sum(dim=-1).mean())
             total_loss += loss.item()
 
             # update weights
@@ -140,7 +142,7 @@ def train(
         else:
             testing_loss = None
 
-        training_loss = total_loss / len(ds)
+        training_loss = total_loss / len(loader)
         loss_per_episode.append((training_loss, testing_loss))
 
         # logging results for this epoch
@@ -181,19 +183,20 @@ def evaluate(
     """
     eval_loss = 0
     eval_loader = DataLoader(eval_ds, batch_size=batch_size, shuffle=False)
-    for batch_ in eval_loader:
-        x = batch_.x
-        edge_index = batch_.edge_index
-        batch = batch_.batch
-        y = batch_.y
+    with torch.no_grad():
+        for batch_ in eval_loader:
+            x = batch_.x
+            edge_index = batch_.edge_index
+            batch = batch_.batch
+            y = batch_.y
 
-        edge_logits = encoder.forward(x, batch=batch, powerline_edge_index=edge_index)
-        edge_probs = F.softmax(edge_logits, dim=-1)
+            edge_logits = encoder.forward(x, batch=batch, powerline_edge_index=edge_index)
+            edge_log_probs = F.log_softmax(edge_logits, dim=-1)
+            edge_probs = edge_log_probs.exp()
+            loss = (edge_probs * (edge_log_probs - torch.log(y + _eps))).sum(dim=-1).mean()
+            eval_loss += loss.item()
 
-        loss = (edge_probs * (torch.log(edge_probs + _eps) - torch.log(y + _eps))).sum(dim=-1).mean()
-        eval_loss += loss.item()
-
-    return eval_loss / len(eval_ds)
+    return eval_loss / len(eval_loader)
 
 
 def create_dataset(env: G2OpGymEnv, prior: Tensor, ds_size: int) -> GraphDataset:
