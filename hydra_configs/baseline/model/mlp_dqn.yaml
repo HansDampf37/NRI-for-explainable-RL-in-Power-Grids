@@ -1,9 +1,0 @@
-defaults:
-    - dqn_base
-
-name: dqn-mlp
-
-sb3:
-    policy: "MlpPolicy"
-    policy_kwargs:
-        net_arch: [ 100, 100, 100 ]

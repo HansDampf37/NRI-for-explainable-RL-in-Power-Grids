@@ -5,6 +5,7 @@ name_suffix: ~
 use_graphormer: true
 features_extractor_kwargs:
     hidden_dim: 16
+    out_dim: 256
     num_edge_types: 2
     num_layers: 2
     dropout_prob: 0

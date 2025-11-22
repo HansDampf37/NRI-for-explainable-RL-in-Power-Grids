@@ -4,10 +4,10 @@ import torch
 from torch import nn, Tensor
 from torch.nn import functional as f
 
-from nri.Decoder import Decoder
-from nri.Encoder import Encoder
-from nri.Sampling import GumbelSoftmax
-from nri.utils import fully_connected_edge_index
+from .Decoder import Decoder
+from .Encoder import Encoder
+from .Sampling import GumbelSoftmax
+from .utils import fully_connected_edge_index
 
 
 class NRIModule(nn.Module):

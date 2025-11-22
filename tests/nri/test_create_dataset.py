@@ -4,7 +4,7 @@ import grid2op
 from grid2op.Agent import DoNothingAgent, RandomAgent
 from grid2op.Observation import BaseObservation
 
-from common import NODES, EDGE_INDEX, EDGE_MASK, BusConnectivityGraphObsSpace
+from common.graph_structured_observation_space import NODES, EDGE_INDEX, EDGE_MASK, BusConnectivityGraphObsSpace
 from nri.create_dataset import sample_trajectory, AgentFailsEarly, generate_dataset
 
 

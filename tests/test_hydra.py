@@ -5,8 +5,9 @@ import hydra
 from grid2op.gym_compat import DiscreteActSpace, BoxGymObsSpace
 from hydra.utils import instantiate
 
-from common import G2OpGymEnv
+from common.env import G2OpGymEnv
 from common.graph_structured_observation_space import BusConnectivityGraphObsSpace
+
 
 class TestHydra(unittest.TestCase):
     def test_hydra_obs_space(self):

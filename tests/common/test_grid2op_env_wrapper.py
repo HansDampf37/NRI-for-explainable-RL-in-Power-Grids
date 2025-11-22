@@ -43,3 +43,6 @@ class TestGrid2opEnvWrapper(unittest.TestCase):
         self.assertIsInstance(rew, float)
         self.assertIsInstance(done, bool)
         self.assertIsInstance(truncated, bool)
+
+    def test_to_nothing(self):
+        self.env.do_nothing() # test that it works in the beginning of the episodes it should not fail

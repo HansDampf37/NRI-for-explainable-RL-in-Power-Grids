@@ -16,9 +16,9 @@ from lightsim2grid import LightSimBackend
 from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 
-from baselines.train_stable_baseline import build_agent
-from common import NRI_DATASETS_PATH, logger, EDGE_INDEX, EDGE_MASK, GraphObservationSpace, MazeRLReward
-
+from common.constants import NRI_DATASETS_PATH, logger
+from common.graph_structured_observation_space import EDGE_INDEX, EDGE_MASK, GraphObservationSpace
+from common.rewards import MazeRLReward
 
 
 class AgentFailsEarly(Exception):
@@ -120,8 +120,6 @@ def main(cfg: DictConfig):
         agent = TopologyGreedy(env_train.action_space)
         logger.warning("You have configured the topology greedy agent that will simulate every topology action. "
                        "This is only feasible for small environments.")
-    elif cfg.nri.dataset_creation.agent == 'baseline':
-        agent = build_agent(cfg, load_weights_from=cfg.nri.dataset_creation.model_path)
     else:
         raise NotImplementedError(f"Unknown agent '{cfg.nri.dataset_creation.agent}'")
 

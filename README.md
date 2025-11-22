@@ -44,10 +44,10 @@ Now your home directory (under linux, for other os I don't know) will contain th
 Furthermore, it is split into training, testing, and validation episodes.
 # Project
 This project contains the following packages:
-- **baselines**: Trains and evaluates baseline agents
 - **common**: Code that is needed by various packages
 - **hydra_configs**: I use hydra to inject experiment parameters. The configs containing these parameters are in this package.
-- **nri**: Implements the latent edge discovery as well as an GNN-agent on these hidden edges
+- **nri**: Implements the latent edge discovery inspired by Kipf et al.
+- **ra_agents**: Combines NRI encoder with downstream RL-agent and use their training signal to learn
 - **test**: Unittests
 - **visualization**: Notebooks to create figures
 

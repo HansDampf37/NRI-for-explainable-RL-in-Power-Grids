@@ -3,7 +3,7 @@ from typing import Optional
 import torch
 from torch import nn, Tensor
 
-from common import MLP
+from common.MLP import MLP
 from .utils import fully_connected_edge_index, Node2Edge, Edge2Node
 
 

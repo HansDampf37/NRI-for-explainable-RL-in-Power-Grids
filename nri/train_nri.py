@@ -16,7 +16,9 @@ from torch.utils.data import Dataset, DataLoader, TensorDataset
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
-from common import LOGS_PATH, MODELS_PATH, EDGE_PROBS_PATH, logger, EDGE_INDEX, GraphObservationSpace, get_feature_mask
+from common.constants import LOGS_PATH, MODELS_PATH, EDGE_PROBS_PATH, logger
+from common.graph_structured_observation_space import  EDGE_INDEX, GraphObservationSpace
+from common.mask_observations import get_feature_mask
 from .ElboObjective import ElboLoss
 from .NRI import NRIModule
 from .utils import warn_large_loss

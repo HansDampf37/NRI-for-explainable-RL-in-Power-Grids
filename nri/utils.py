@@ -6,7 +6,10 @@ import torch
 from torch import Tensor, nn
 from torch_geometric.utils import dense_to_sparse
 
-from common import G2OpGymEnv, GraphObservationSpace, EDGE_INDEX, MLP, logger
+from common.env import G2OpGymEnv
+from common.graph_structured_observation_space import  GraphObservationSpace, EDGE_INDEX
+from common.MLP import MLP
+from common.constants import logger
 
 
 def fully_connected_edge_index(num_nodes: int, device: str = "cpu", self_loops: bool = False) -> Tensor:

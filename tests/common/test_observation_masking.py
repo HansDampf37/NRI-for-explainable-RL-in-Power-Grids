@@ -4,7 +4,7 @@ import grid2op
 import numpy as np
 from numpy.testing import assert_array_equal
 
-from common import BusConnectivityGraphObsSpace, NODES
+from common.graph_structured_observation_space import BusConnectivityGraphObsSpace, NODES
 from common.mask_observations import get_feature_mask
 
 
