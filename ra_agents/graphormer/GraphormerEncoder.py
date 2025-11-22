@@ -127,7 +127,6 @@ class GraphormerNRIEncoder(nn.Module):
     def init_weights(self):
         """
         Initializes the model's weights
-        @return:
         """
         for m in self.modules():
             if isinstance(m, nn.Linear):
