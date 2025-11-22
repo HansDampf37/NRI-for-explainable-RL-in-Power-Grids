@@ -17,9 +17,9 @@ from stable_baselines3.common.type_aliases import GymEnv, Schedule, PyTorchObs
 from stable_baselines3.common.utils import explained_variance
 from torch import Tensor
 
-from common import GraphObservationSpace, BusConnectivityGraphObsSpace
-from ..RARL import RARL
+from common.graph_structured_observation_space import GraphObservationSpace, BusConnectivityGraphObsSpace
 from visualization.utils import visualize_graph, PlottingArgs, visualize_posterior
+from ..RARL import RARL
 
 
 class RAPPO(PPO, RARL):

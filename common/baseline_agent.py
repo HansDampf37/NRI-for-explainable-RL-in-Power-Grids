@@ -3,7 +3,6 @@ This script implements a baseline agent. The agent is a greedy agent meaning it 
 _get_tested_action method and execute the one with the highest simulated reward.
 """
 import json
-import logging
 import os
 from abc import abstractmethod, ABC
 from pathlib import Path
@@ -16,12 +15,7 @@ from grid2op.Environment import Environment
 from grid2op.Observation import BaseObservation
 from grid2op.Runner import Runner
 from gymnasium import Env
-from omegaconf import DictConfig
 from stable_baselines3.common.base_class import BaseAlgorithm
-
-from .constants import EVAL_PATH
-
-logger = logging.getLogger(__name__)
 
 
 class TopologyPolicy(ABC):
@@ -83,7 +77,8 @@ class BaselineAgent(RecoPowerlineAgent):
             return reconnection_actions + topology_actions
 
 
-def evaluate_agent(agent: BaseAgent, env: Environment, path_results: Path, num_episodes: int, max_episode_length: Optional[int] = None):
+def evaluate_agent(agent: BaseAgent, env: Environment, path_results: Path, num_episodes: int,
+                   max_episode_length: Optional[int] = None):
     """
     Runs an agent on an environment for evaluation.
     :param agent: The agent
@@ -115,47 +110,18 @@ def evaluate_agent(agent: BaseAgent, env: Environment, path_results: Path, num_e
     print("Evaluation finished. To plot evaluation results use the notebook in the visualization folder.")
 
 
-def evaluate_topology_policy(topology_policy: TopologyPolicy, group: str, name: str, cfg: DictConfig):
+def evaluate_sb3_alg(alg: BaseAlgorithm, env: Env, path_results: Path, num_episodes: int):
     """
-    This method evaluates a topology policy by creating a BaselineAgent using it and evaluating it on train, test and val
-    The evaluation results are stored in under EVAL_PATH/group/name
-
-    :param topology_policy: The topology policy to evaluate
-    :param group: The group name for storing results
-    :param name: The name for storing results
-    :param cfg: The hydra config
-    """
-    import grid2op
-    from lightsim2grid import LightSimBackend
-    for dataset in ["train", "test", "val"]:
-        from common.rewards import MazeRLReward
-        grid2op_env = grid2op.make(f"{cfg.env.name}_{dataset}", backend=LightSimBackend(), reward_class=MazeRLReward)
-        agent = BaselineAgent(
-            grid2op_env.action_space,
-            topology_policy,
-            safe_max_rho=cfg.env.safe_max_rho,
-        )
-        evaluate_agent(
-            agent=agent,
-            env=grid2op_env,
-            num_episodes=cfg.baseline.eval.nb_episodes,
-            path_results=Path(EVAL_PATH, group, name, dataset)
-        )
-
-def evaluate_sb3_alg(alg: BaseAlgorithm, env: Env, group: str, name: str, dataset: str, cfg: DictConfig):
-    """
-    This method evaluates a stable-baseline3 algorithm on a given gym env.
-    The evaluation results are stored in under EVAL_PATH/group/name/dataset.
+    This method evaluates a stable-baseline3 algorithm on a given gymnasium env.
+    The evaluation results are stored in under path_results.
     This is different from evaluating agents in the sense that heuristic actions are not part of the evaluation.
 
     :param alg: The BaseAlgorithm to evaluate
     :param env: The env to evaluate on
-    :param group: The group name for storing results
-    :param name: The name for storing results
-    :param dataset: the name of the dataset (train, test, val)
-    :param cfg: The hydra config
+    :param path_results: where to store the results
+    :param num_episodes: the number of episodes to run
     """
-    for _ in range(cfg.baseline.eval.nb_episodes):
+    for _ in range(num_episodes):
         obs, info = env.reset()
         cumulative_reward = 0
         episode_length = 0
@@ -168,7 +134,7 @@ def evaluate_sb3_alg(alg: BaseAlgorithm, env: Env, group: str, name: str, datase
             episode_length += 1
         print(f"Survived {episode_length} steps with a return of {cumulative_reward:.2f}")
         name_chronic = os.path.basename(info['time_series_id'])
-        base_path = Path(EVAL_PATH, group, name, "gymnasium", dataset, name_chronic)
+        base_path = Path(path_results, name_chronic)
         base_path.mkdir(parents=True, exist_ok=True)
         with open(base_path.joinpath("episode_meta.json"), 'w') as f:
             json.dump({

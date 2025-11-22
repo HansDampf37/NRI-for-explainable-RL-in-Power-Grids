@@ -1,8 +1,10 @@
+from pathlib import Path
 from typing import Optional
 
 from grid2op.gym_compat import BoxGymObsSpace
 from hydra.utils import instantiate
 
+from common.baseline_agent import BaselineAgent, evaluate_agent, evaluate_sb3_alg
 from common.env import G2OpGymEnv
 
 
@@ -35,3 +37,33 @@ def get_env_mlp_baseline(cfg, env_name: Optional[str] = None) -> G2OpGymEnv:
         act_space_creation=lambda e: instantiate(cfg.rl.act_space, grid2op_action_space=e.action_space)
     )
     return env
+
+
+def evaluate(algorithm, topology_policy, path_results, cfg):
+    """
+    Evaluates an algorithm on test train and validation envs.
+    Evaluates the associated agent on test train and validation envs.
+    @param algorithm: the algorithm to evaluate
+    @param topology_policy: the topology policy (used inside the agent)
+    @param path_results: where to store the results
+    @param cfg: the hydra config
+    """
+    for dataset in ["train", "test", "val"]:
+        env_dataset = get_env(cfg, f"{cfg.env.name}_{dataset}")
+        agent = BaselineAgent(
+            env_dataset.action_space,
+            topology_policy,
+            safe_max_rho=cfg.env.max_rho,
+        )
+        evaluate_agent(
+            agent=agent,
+            env=env_dataset,
+            path_results=Path(path_results, "agent", dataset),
+            num_episodes=cfg.rl.eval.nb_episodes,
+        )
+        evaluate_sb3_alg(
+            alg=algorithm,
+            env=env_dataset,
+            path_results=Path(path_results, "rl_algorithm", dataset),
+            num_episodes=cfg.rl.eval.nb_episodes
+        )

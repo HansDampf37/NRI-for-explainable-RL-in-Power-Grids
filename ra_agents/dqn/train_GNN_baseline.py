@@ -1,16 +1,16 @@
 import os
 import uuid
 from datetime import datetime
+from pathlib import Path
 
 import hydra
 from omegaconf import DictConfig, OmegaConf
 from stable_baselines3 import DQN
 
-from common.baseline_agent import evaluate_topology_policy, evaluate_sb3_alg
-from common.constants import LOGS_PATH, MODELS_PATH
+from common.constants import LOGS_PATH, MODELS_PATH, EVAL_PATH
 from .DQNTopoPolicy import Sb3DQNTopologyPolicy
 from ..RAFeatureExtractor import BaselineFeatureExtractorSB3
-from ..utils import get_env
+from ..utils import get_env, evaluate
 
 
 @hydra.main(config_path="../../hydra_configs", config_name="config", version_base="1.3")
@@ -61,13 +61,11 @@ def main(cfg: DictConfig):
     # train
     algorithm.learn(total_timesteps=cfg.rl.train.timesteps, tb_log_name=name, log_interval=cfg.rl.train.log_interval)
     algorithm.save(os.path.join(MODELS_PATH, group, name))
-    topology_policy = Sb3DQNTopologyPolicy(algorithm)
 
     # evaluate
-    evaluate_topology_policy(topology_policy, group, name, cfg)
-    for dataset in ["train", "test", "val"]:
-        env_dataset = get_env(cfg, f"l2rpn_case14_sandbox_{dataset}")
-        evaluate_sb3_alg(algorithm, env_dataset, group, name, dataset, cfg)
+    topology_policy = Sb3DQNTopologyPolicy(algorithm)
+    path_results = Path(EVAL_PATH, group, name)
+    evaluate(algorithm, topology_policy, path_results, cfg)
 
 
 if __name__ == "__main__":

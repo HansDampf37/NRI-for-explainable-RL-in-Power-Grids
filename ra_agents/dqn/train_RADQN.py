@@ -7,8 +7,7 @@ import hydra
 import torch
 from omegaconf import DictConfig, OmegaConf
 
-from common.baseline_agent import evaluate_topology_policy, evaluate_sb3_alg
-from common.constants import LOGS_PATH, MODELS_PATH, EDGE_PROBS_PATH
+from common.constants import LOGS_PATH, MODELS_PATH, EDGE_PROBS_PATH, EVAL_PATH
 from common.graph_structured_observation_space import EDGE_INDEX, BusConnectivityGraphObsSpace
 from nri.utils import prior_from_env
 from visualization.utils import PlottingArgs, get_node_styles
@@ -18,7 +17,7 @@ from .RADQN import RADQN
 from ..RAFeatureExtractor import RAFeatureExtractorSB3
 from ..get_edge_probs import save_edge_probs
 from ..pretrain_encoder import main as pretrain_encoder
-from ..utils import get_env
+from ..utils import get_env, evaluate
 
 
 @hydra.main(config_path="../../hydra_configs", config_name="config", version_base="1.3")
@@ -88,21 +87,19 @@ def main(cfg: DictConfig):
     )
 
     # pretrain and set encoder
-    graphormer_encoder1 = pretrain_encoder(cfg)
-    graphormer_encoder2 = pretrain_encoder(cfg)
-    algorithm.q_net.features_extractor.gnn_feature_extractor.encoder = graphormer_encoder1
-    algorithm.q_net_target.features_extractor.gnn_feature_extractor.encoder = graphormer_encoder2
+    encoder1 = pretrain_encoder(cfg)
+    encoder2 = pretrain_encoder(cfg)
+    algorithm.q_net.features_extractor.gnn_feature_extractor.encoder = encoder1
+    algorithm.q_net_target.features_extractor.gnn_feature_extractor.encoder = encoder2
 
     # train
     algorithm.learn(total_timesteps=cfg.rl.train.timesteps, tb_log_name=name, log_interval=cfg.rl.train.log_interval)
     algorithm.save(os.path.join(MODELS_PATH, group, name))
-    topology_policy = Sb3DQNTopologyPolicy(algorithm)
 
     # evaluate
-    evaluate_topology_policy(topology_policy, group, name, cfg)
-    for dataset in ["train", "test", "val"]:
-        env_dataset = get_env(cfg, f"l2rpn_case14_sandbox_{dataset}")
-        evaluate_sb3_alg(algorithm, env_dataset, group, name, dataset, cfg)
+    topology_policy = Sb3DQNTopologyPolicy(algorithm)
+    path_results = Path(EVAL_PATH, group, name)
+    evaluate(algorithm, topology_policy, path_results, cfg)
 
     # save edge probs
     save_edge_probs(algorithm, env, save_path=Path(EDGE_PROBS_PATH, group, name + ".npy"))

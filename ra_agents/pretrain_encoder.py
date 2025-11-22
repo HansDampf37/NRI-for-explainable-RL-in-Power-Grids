@@ -64,14 +64,22 @@ def main(cfg: DictConfig):
     eval_ds: GraphDataset = create_dataset(get_env(cfg), prior, 100)
 
     # train encoder
-    encoder = GraphormerNRIEncoder(
-        x_dim=env.observation_space.x_dim,
-        hidden_dim=cfg.rl.model.features_extractor_kwargs.hidden_dim,
-        num_layers=cfg.rl.model.features_extractor_kwargs.num_layers,
-        num_edge_types=cfg.rl.model.features_extractor_kwargs.num_edge_types,
-        max_degree=cfg.rl.model.features_extractor_kwargs.max_degree,
-        max_path_distance=cfg.rl.model.features_extractor_kwargs.max_path_distance
-    )
+    if cfg.rl.model.use_graphormer:
+        encoder = GraphormerNRIEncoder(
+            x_dim=env.observation_space.x_dim,
+            hidden_dim=cfg.rl.model.features_extractor_kwargs.hidden_dim,
+            num_layers=cfg.rl.model.features_extractor_kwargs.num_layers,
+            num_edge_types=cfg.rl.model.features_extractor_kwargs.num_edge_types,
+            max_degree=cfg.rl.model.features_extractor_kwargs.max_degree,
+            max_path_distance=cfg.rl.model.features_extractor_kwargs.max_path_distance
+        )
+    else:
+        encoder = Encoder(
+            x_dim=env.observation_space.x_dim,
+            hidden_dim=cfg.rl.model.features_extractor_kwargs.hidden_dim,
+            num_edge_types=cfg.rl.model.features_extractor_kwargs.num_edge_types,
+        )
+
     train(
         encoder=encoder,
         ds=ds,
