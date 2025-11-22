@@ -175,7 +175,7 @@ class RADQN(DQN, RARL):
                 writer.add_figure("latent_edges/latent-edges", mean_latent_edges_image, global_step=self.num_timesteps)
 
     def get_edge_type_posterior(self, obs: Union[np.ndarray, dict[str, np.ndarray]]) -> Tensor:
-        _, edge_type_posterior = self.q_net(self.q_net.obs_to_tensor(obs))
+        _, edge_type_posterior = self.q_net(self.q_net.obs_to_tensor(obs)[0])
         return edge_type_posterior
 
 

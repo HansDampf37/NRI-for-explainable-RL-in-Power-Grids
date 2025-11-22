@@ -1,6 +1,9 @@
 """
-This script implements a baseline agent. The agent is a greedy agent meaning it will simulate all actions returned by its
-_get_tested_action method and execute the one with the highest simulated reward.
+This script implements a baseline agent. The agent is a greedy agent meaning it will simulate several actions
+returned by its _get_tested_action method and execute the one with the highest simulated reward.
+Besides the heuristic actions like reconnecting powerlines and doing nothing the agent receives action candidates from
+topology policies. These policies may implement a RL-component to predict topological actions. The RL-component evaluates
+the actions the topology policy returns the k best actions to the agent to simulate.
 """
 import json
 import os
@@ -110,7 +113,8 @@ def evaluate_agent(agent: BaseAgent, env: Environment, path_results: Path, num_e
     print("Evaluation finished. To plot evaluation results use the notebook in the visualization folder.")
 
 
-def evaluate_sb3_alg(alg: BaseAlgorithm, env: Env, path_results: Path, num_episodes: int):
+def evaluate_sb3_alg(alg: BaseAlgorithm, env: Env, path_results: Path, num_episodes: int,
+                     max_episode_length: Optional[int] = None):
     """
     This method evaluates a stable-baseline3 algorithm on a given gymnasium env.
     The evaluation results are stored in under path_results.
@@ -120,12 +124,14 @@ def evaluate_sb3_alg(alg: BaseAlgorithm, env: Env, path_results: Path, num_episo
     :param env: The env to evaluate on
     :param path_results: where to store the results
     :param num_episodes: the number of episodes to run
+    :param max_episode_length: the maximum number of steps to take per episode
     """
+    max_episode_length = max_episode_length if max_episode_length is not None else 9999999
     for _ in range(num_episodes):
         obs, info = env.reset()
         cumulative_reward = 0
         episode_length = 0
-        while True:
+        for _ in range(max_episode_length):
             act, _ = alg.predict(obs, deterministic=True)
             obs, reward, done, truncated, info = env.step(act)
             if done or truncated:

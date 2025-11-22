@@ -411,10 +411,9 @@ def visualize_posterior(latent_edge_posterior: npt.NDArray, latent_edge_prior: n
                  ["prior"] * len(latent_edge_prior.flatten())
     })
 
-    sns.histplot(data=data, x="value", hue="group", bins=bins, multiple="layer")
+    sns.histplot(data=data, x="value", hue="group", bins=bins, multiple="layer", legend=True)
 
     plt.xlim((0, 1))
-    plt.legend()
     plt.xlabel("Probability")
     plt.ylabel("Number of Edges")
     plt.title("Histogram of Latent Edge Probabilities (Prior & Posterior)")

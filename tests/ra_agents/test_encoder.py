@@ -2,14 +2,13 @@ import unittest
 
 import numpy as np
 import torch
-import torch.nn.functional as f
-from torch.utils.data import TensorDataset, DataLoader
-from tqdm import tqdm
 
 from common.env import G2OpGymEnv
-from common.graph_structured_observation_space import BusConnectivityGraphObsSpace, NODES, EDGE_INDEX
+from common.graph_structured_observation_space import BusConnectivityGraphObsSpace, EDGE_INDEX
 from nri.utils import prior_from_env
 from ra_agents.Encoder import Encoder
+from torch.nn import functional as F
+from ra_agents.pretrain_encoder import GraphDataset, create_dataset, train
 
 
 class TestEncoder(unittest.TestCase):
@@ -49,51 +48,28 @@ class TestEncoder(unittest.TestCase):
         self.assertEqual(out.size(1), num_edge_types)
         self.assertFalse(torch.isnan(out).any())
 
-
     def test_encoder_learns_prior(self):
         env = G2OpGymEnv(obs_space_creation=lambda e: BusConnectivityGraphObsSpace(e.observation_space))
         prior = prior_from_env(0.9, env)
-        ds_size = 1
-        node_features = []
-        edge_indices = []
-        outputs = []
-        for _ in tqdm(range(ds_size), "Create Dataset"):
-            node_features.append(torch.from_numpy(env.reset()[0][NODES]))
-            edge_indices.append(torch.from_numpy(env.reset()[0][EDGE_INDEX]))
-            outputs.append(prior)
 
-        ds = TensorDataset(torch.stack(node_features, 0), torch.stack(edge_indices, 0), torch.stack(outputs, 0))
-        loader = DataLoader(ds, batch_size=1, shuffle=True)
+        ds: GraphDataset = create_dataset(env, prior, 1)
+        ds_test: GraphDataset = create_dataset(env, prior, 1)
         encoder = Encoder(x_dim=env.observation_space.x_dim, hidden_dim=2, num_edge_types=2, dropout_prob=0.0)
-        optimizer = torch.optim.Adam(encoder.parameters(), lr=0.1)
+        train(encoder=encoder, ds=ds, num_epochs=2000)
 
-        for epoch in range(500):
-            total_loss = 0.0
-            for x, edge_index, label in loader:
-                optimizer.zero_grad()
-                B, N, X_dim = x.shape
-                E = N * (N - 1)
-                x = x.reshape(B * N, -1)
-                batch = torch.arange(B).repeat_interleave(N)
-                edge_logits = encoder.forward(x, batch=batch, powerline_edge_index=edge_index[0])
-                edge_probs = f.softmax(edge_logits, dim=-1).reshape(B, E, 2)
-                loss = (edge_probs * (torch.log(edge_probs + 0.0000001) - torch.log(label + 0.0000001))).sum(dim=-1).mean()
-                loss.backward()
-                optimizer.step()
-                total_loss += loss.item()
+        x = ds_test.get(0).x
+        edge_index = ds_test.get(0).edge_index
+        edge_logits = encoder.forward(x, powerline_edge_index=edge_index)
+        edge_probs = F.softmax(edge_logits, dim=-1).detach().cpu().numpy()
+        self.assertLessEqual(np.abs(edge_probs - prior.numpy()).max(), 0.05)  # all probs within 5% of prior
 
-            print(f"Epoch {epoch}, Loss: {total_loss/len(ds)}")
-
-        x = node_features[0]
-        edge_logits = encoder.forward(x, powerline_edge_index=edge_indices[0])
-        edge_probs = f.softmax(edge_logits, dim=-1).detach().cpu().numpy()
-        self.assertLessEqual(np.abs(edge_probs - prior.numpy()).max(), 0.1) # all probs within 10% of prior
-        # from visualization.utils import visualize_graph, PlottingArgs, get_node_styles, visualize_posterior
-        # visualize_graph(PlottingArgs(
-        #     env.observation_space.num_nodes,
-        #     get_node_styles(env._g2op_env, env.observation_space.__class__),
-        #     env.reset()[0][EDGE_INDEX],
-        #     latent_edge_probs=edge_probs,
-        # )).show()
-
-        # visualize_posterior(edge_probs, prior).show()
+        visualize = False
+        if visualize:
+            from visualization import visualize_graph, PlottingArgs, get_node_styles, visualize_posterior
+            visualize_graph(PlottingArgs(
+                env.observation_space.num_nodes,
+                get_node_styles(env._g2op_env, env.observation_space.__class__),
+                env.reset()[0][EDGE_INDEX],
+                latent_edge_probs=edge_probs,
+            )).show()
+            visualize_posterior(edge_probs, prior).show()

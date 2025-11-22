@@ -10,6 +10,7 @@ from typing import Optional
 import numpy as np
 import torch
 from gymnasium import Env
+from tqdm import tqdm
 
 from common.constants import EDGE_PROBS_PATH, logger
 from .RARL import RARL
@@ -19,12 +20,14 @@ def get_edge_type_probabilities(
         RARL_model: RARL,
         env: Env,
         verbose: bool = True,
+        num_samples: int = 1000,
 ) -> np.ndarray:
     """
     Runs the specified RARL alg on the specified environment and returns the averaged edge type probabilities.
     :param RARL_model: the RARL alg to run
     :param env: the env to run the module on
     :param verbose: whether to print info
+    :param num_samples: number of samples to average over
     :return: the averaged edge type probabilities as numpy array of shape [E, NUM_EDGE_TYPES]
     """
     # Accumulate sum over all samples to compute a true dataset-wide average
@@ -33,7 +36,8 @@ def get_edge_type_probabilities(
 
     # Move edge_index once if provided
     with torch.no_grad():
-        while total_count < 1000:
+        pbar = tqdm(total=num_samples, desc="Averaging edges")
+        while total_count < num_samples:
             obs, _ = env.reset()
             done = False
             while not done:
@@ -44,6 +48,7 @@ def get_edge_type_probabilities(
                 else:
                     running_sum += latent_edges
                 total_count += 1
+                pbar.update(1)
                 # step
                 obs, _, done, truncated, _ = env.step(act)
                 done = done or truncated
@@ -67,18 +72,21 @@ def save_edge_probs(
         RARL_model: RARL,
         env: Env,
         save_path: Optional[Path] = None,
+        num_samples: int = 1000,
 ) -> np.ndarray:
     """
     Runs the specified RARL alg on the specified environment and saves the averaged edge type probabilities.
     :param RARL_model: the RARL alg to run
     :param env: the env to run the module on
     :param save_path: optional output path. If None, uses data/edge_probabilities if it exists, otherwise data/edge_probs
+    :param num_samples: number of samples to average over
     :return: the averaged edge type probabilities as numpy array of shape [E, NUM_EDGE_TYPES]
     """
     edge_probs = get_edge_type_probabilities(
         RARL_model,
         env,
         verbose=True,
+        num_samples=num_samples,
     )
 
     # Smart default for output directory

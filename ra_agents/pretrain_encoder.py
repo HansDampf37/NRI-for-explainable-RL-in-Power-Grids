@@ -60,8 +60,8 @@ def main(cfg: DictConfig):
     # collect data
     env: G2OpGymEnv = get_env(cfg)
     prior = prior_from_env(cfg.rl.model.prior_for_graph_edges_existing, env)
-    ds: GraphDataset = create_dataset(env, prior, 1000)
-    eval_ds: GraphDataset = create_dataset(get_env(cfg), prior, 100)
+    ds: GraphDataset = create_dataset(env, prior, cfg.rl.train.pretrain_encoder.ds_size)
+    eval_ds: GraphDataset = create_dataset(get_env(cfg), prior, cfg.rl.train.pretrain_encoder.test_ds_size)
 
     # train encoder
     if cfg.rl.model.use_graphormer:
@@ -84,7 +84,11 @@ def main(cfg: DictConfig):
         encoder=encoder,
         ds=ds,
         testing_ds=eval_ds,
-        tensorboard_logger=tensorboard_logger
+        tensorboard_logger=tensorboard_logger,
+        evaluate_every_k_epochs=cfg.rl.train.pretrain_encoder.evaluate_every_k_epochs,
+        batch_size=cfg.rl.train.pretrain_encoder.batch_size,
+        num_epochs=cfg.rl.train.pretrain_encoder.num_epochs,
+        lr=cfg.rl.train.pretrain_encoder.learning_rate,
     )
 
     # save encoder

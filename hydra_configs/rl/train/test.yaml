@@ -1,2 +1,9 @@
 timesteps: 10
 log_interval: 1
+pretrain_encoder:
+    ds_size: 1
+    test_ds_size: 1
+    num_epochs: 1
+    batch_size: 1
+    learning_rate: 0.005
+    evaluate_every_k_epochs: 1

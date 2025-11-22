@@ -71,7 +71,7 @@ def main(cfg: DictConfig):
     # evaluate
     topology_policy = Sb3PPOTopologyPolicy(algorithm)
     path_results = Path(EVAL_PATH, group, name)
-    evaluate(algorithm, topology_policy, path_results, cfg)
+    evaluate(algorithm, topology_policy, get_env, path_results, cfg)
 
 if __name__ == "__main__":
     main()

@@ -1,6 +1,5 @@
 defaults:
     -   env: case14
-    -   baseline: gnn_dqn
     -   nri: default
     -   rl: default
     - _self_

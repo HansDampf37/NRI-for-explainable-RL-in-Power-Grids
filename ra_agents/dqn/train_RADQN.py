@@ -99,10 +99,15 @@ def main(cfg: DictConfig):
     # evaluate
     topology_policy = Sb3DQNTopologyPolicy(algorithm)
     path_results = Path(EVAL_PATH, group, name)
-    evaluate(algorithm, topology_policy, path_results, cfg)
+    evaluate(algorithm, topology_policy, get_env, path_results, cfg)
 
     # save edge probs
-    save_edge_probs(algorithm, env, save_path=Path(EDGE_PROBS_PATH, group, name + ".npy"))
+    save_edge_probs(
+        RARL_model=algorithm,
+        env=env,
+        save_path=Path(EDGE_PROBS_PATH, group, name + ".npy"),
+        num_samples=cfg.rl.eval.num_samples_for_edge_average,
+    )
 
 
 if __name__ == "__main__":

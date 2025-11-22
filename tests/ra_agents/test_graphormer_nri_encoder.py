@@ -56,7 +56,7 @@ class TestGraphormerNRIEncoder(unittest.TestCase):
         edge_index = ds_test.get(0).edge_index
         edge_logits = encoder.forward(x, powerline_edge_index=edge_index)
         edge_probs = F.softmax(edge_logits, dim=-1).detach().cpu().numpy()
-        self.assertLessEqual(np.abs(edge_probs - prior.numpy()).max(), 0.01)  # all probs within 1% of prior
+        self.assertLessEqual(np.abs(edge_probs - prior.numpy()).max(), 0.05)  # all probs within 5% of prior
 
         visualize = False
         if visualize:

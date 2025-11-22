@@ -3,8 +3,10 @@ from typing import Optional
 
 from grid2op.gym_compat import BoxGymObsSpace
 from hydra.utils import instantiate
+from omegaconf import DictConfig
+from stable_baselines3.common.base_class import BaseAlgorithm
 
-from common.baseline_agent import BaselineAgent, evaluate_agent, evaluate_sb3_alg
+from common.baseline_agent import BaselineAgent, evaluate_agent, evaluate_sb3_alg, TopologyPolicy
 from common.env import G2OpGymEnv
 
 
@@ -39,31 +41,34 @@ def get_env_mlp_baseline(cfg, env_name: Optional[str] = None) -> G2OpGymEnv:
     return env
 
 
-def evaluate(algorithm, topology_policy, path_results, cfg):
+def evaluate(algorithm: BaseAlgorithm, topology_policy: TopologyPolicy, env_creation, path_results: Path, cfg: DictConfig):
     """
     Evaluates an algorithm on test train and validation envs.
     Evaluates the associated agent on test train and validation envs.
     @param algorithm: the algorithm to evaluate
     @param topology_policy: the topology policy (used inside the agent)
+    @param env_creation: a method that takes an env cfg, name and returns a G2OpGymEnv
     @param path_results: where to store the results
     @param cfg: the hydra config
     """
     for dataset in ["train", "test", "val"]:
-        env_dataset = get_env(cfg, f"{cfg.env.name}_{dataset}")
+        env_dataset: G2OpGymEnv = env_creation(cfg, f"{cfg.env.name}_{dataset}")
         agent = BaselineAgent(
-            env_dataset.action_space,
+            env_dataset._g2op_env.action_space,
             topology_policy,
-            safe_max_rho=cfg.env.max_rho,
+            safe_max_rho=cfg.env.safe_max_rho,
         )
         evaluate_agent(
             agent=agent,
-            env=env_dataset,
+            env=env_dataset._g2op_env,
             path_results=Path(path_results, "agent", dataset),
             num_episodes=cfg.rl.eval.nb_episodes,
+            max_episode_length=cfg.rl.eval.max_episode_length,
         )
         evaluate_sb3_alg(
             alg=algorithm,
             env=env_dataset,
             path_results=Path(path_results, "rl_algorithm", dataset),
-            num_episodes=cfg.rl.eval.nb_episodes
+            num_episodes=cfg.rl.eval.nb_episodes,
+            max_episode_length=cfg.rl.eval.max_episode_length,
         )
