@@ -137,7 +137,6 @@ dependencies:
   - nomkl=1.0=h5ca1d4c_0
   - notebook=7.4.5=pyhd8ed1ab_0
   - notebook-shim=0.2.4=pyhd8ed1ab_1
-  - numpy=2.3.3=py312h33ff503_0
   - openjpeg=2.5.4=h55fea9a_0
   - openssl=3.5.3=h26f9b46_1
   - optree=0.17.0=py312hd9148b4_1
@@ -256,6 +255,7 @@ dependencies:
       - msgpack==1.1.1
       - mujoco==3.3.6
       - numba==0.62.0
+      - numpy==2.2.6
       - nvidia-cublas-cu12==12.8.4.1
       - nvidia-cuda-cupti-cu12==12.8.90
       - nvidia-cuda-nvrtc-cu12==12.8.93
@@ -271,6 +271,7 @@ dependencies:
       - nvidia-nvjitlink-cu12==12.8.93
       - nvidia-nvtx-cu12==12.8.90
       - omegaconf==2.3.0
+      - opencv-python==4.12.0.88
       - orderly-set==5.5.0
       - ormsgpack==1.7.0
       - pandapower==3.1.2

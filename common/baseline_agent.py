@@ -1,8 +1,8 @@
 """
 This script implements a baseline agent. The agent is a greedy agent meaning it will simulate several actions
 returned by its _get_tested_action method and execute the one with the highest simulated reward.
-Besides the heuristic actions like reconnecting powerlines and doing nothing the agent receives action candidates from
-topology policies. These policies may implement a RL-component to predict topological actions. The RL-component evaluates
+Besides the heuristic actions candidates like reconnecting powerlines and doing nothing the agent receives action candidates
+from topology policies. These policies may implement a RL-component to predict topological actions. The RL-component evaluates
 the actions the topology policy returns the k best actions to the agent to simulate.
 """
 import json

@@ -6,7 +6,6 @@ from typing import Union, Optional, Tuple, Any, Dict, List
 import numpy as np
 import torch
 from gymnasium import spaces
-from stable_baselines3 import DQN
 from stable_baselines3.common.buffers import ReplayBuffer
 from stable_baselines3.common.logger import TensorBoardOutputFormat
 from stable_baselines3.common.type_aliases import GymEnv, PyTorchObs, Schedule
@@ -16,11 +15,12 @@ from torch import nn, Tensor
 from common.graph_structured_observation_space import GraphObservationSpace
 from visualization.utils import visualize_graph, PlottingArgs, visualize_posterior
 from .HuberKLLoss import HuberKLLoss
+from .SoftmaxDQN import SoftmaxDQN
 from ..RAFeatureExtractor import RAFeatureExtractorSB3
 from ..RARL import RARL
 
 
-class RADQN(DQN, RARL):
+class RADQN(SoftmaxDQN, RARL):
     """
     This class implements the DQN interface from sb3. It uses an Encoder + downstream RA-GNN to predict the q_values.
     The loss is extended, to include the distance between posterior p(z|x) to the prior p(z).

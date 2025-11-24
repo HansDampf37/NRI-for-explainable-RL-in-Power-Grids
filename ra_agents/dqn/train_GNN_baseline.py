@@ -5,10 +5,10 @@ from pathlib import Path
 
 import hydra
 from omegaconf import DictConfig, OmegaConf
-from stable_baselines3 import DQN
 
 from common.constants import LOGS_PATH, MODELS_PATH, EVAL_PATH
 from .DQNTopoPolicy import Sb3DQNTopologyPolicy
+from .SoftmaxDQN import SoftmaxDQN
 from ..RAFeatureExtractor import BaselineFeatureExtractorSB3
 from ..utils import get_env, evaluate
 
@@ -40,7 +40,7 @@ def main(cfg: DictConfig):
     }
 
     # create algorithm
-    algorithm = DQN(
+    algorithm = SoftmaxDQN(
         env=env,
         policy="MultiInputPolicy",
         tensorboard_log=os.path.join(LOGS_PATH, group),
