@@ -53,7 +53,9 @@ class RADQN(SoftmaxDQN, RARL):
                  verbose: int = 0,
                  seed: Optional[int] = None,
                  device: Union[torch.device, str] = "auto",
-                 _init_setup_model: bool = True) -> None:
+                 _init_setup_model: bool = True,
+                 tau_start: float = 0.5,
+                 tau_end: float = 0.0000001) -> None:
         """
         Constructor.
         @param env: the environment
@@ -85,7 +87,9 @@ class RADQN(SoftmaxDQN, RARL):
             verbose,
             seed,
             device,
-            _init_setup_model)
+            _init_setup_model,
+            tau_start=tau_start,
+            tau_end=tau_end)
         assert isinstance(env.observation_space, GraphObservationSpace), "RADQN requires a graph observation space"
         self.loss_fn = loss_fn
         self.plotting_args = plotting_args

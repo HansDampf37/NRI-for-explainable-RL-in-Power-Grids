@@ -1,12 +1,12 @@
 import os.path
-import uuid
 from datetime import datetime
 from pathlib import Path
 
 import hydra
 from omegaconf import DictConfig, OmegaConf
+from stable_baselines3 import DQN
 
-from common.constants import LOGS_PATH, MODELS_PATH, EVAL_PATH
+from common.constants import LOGS_PATH, MODELS_PATH, EVAL_PATH, set_experiment_name
 from .DQNTopoPolicy import Sb3DQNTopologyPolicy
 from .SoftmaxDQN import SoftmaxDQN
 from ..utils import get_env_mlp_baseline, evaluate
@@ -15,21 +15,29 @@ from ..utils import get_env_mlp_baseline, evaluate
 @hydra.main(config_path="../../hydra_configs", config_name="config", version_base="1.3")
 def main(cfg: DictConfig):
     print(OmegaConf.to_yaml(cfg))
-    timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M')
+    set_experiment_name(cfg.experiment_name)
+    timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     group = "rl/relation-unaware-baselines/dqn"
     name_suffix = cfg.rl.model.name_suffix
     if name_suffix is None:
-        name = f"mlp_{timestamp}_{uuid.uuid4().hex}"
+        name = f"mlp_{timestamp}"
     else:
-        name = f"mlp_{timestamp}_{name_suffix}_{uuid.uuid4().hex}"
+        name = f"mlp_{timestamp}_{name_suffix}"
 
     # create env
     env = get_env_mlp_baseline(cfg)
 
+    if cfg.rl.dqn.exploration == "Softmax":
+        DQNClass = SoftmaxDQN
+    else:
+        DQNClass = DQN
+
     # create algorithm
-    algorithm = SoftmaxDQN(
+    algorithm = DQNClass(
         env=env,
         policy="MlpPolicy",
+        tau_start=cfg.rl.dqn.sb3.tau_start,
+        tau_end=cfg.rl.dqn.sb3.tau_end,
         tensorboard_log=os.path.join(LOGS_PATH, group),
         verbose=cfg.rl.dqn.sb3.verbose,
         train_freq=cfg.rl.dqn.sb3.train_freq,

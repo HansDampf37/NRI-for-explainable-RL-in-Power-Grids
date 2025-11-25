@@ -19,8 +19,9 @@ class SoftmaxDQN(DQN):
     come from applying softmax over the q-values. Softmax is weighted with a temperature parameter that is annealed over
     time.
     """
-    def __init__(self, *args, tau_start=0.5, tau_end=0.00001, **kwargs):
+    def __init__(self, *args, tau_start=0.5, tau_end=0.000001, **kwargs):
         super().__init__(*args, **kwargs)
+        logger.info("Using softmax action selection")
         self.tau_start = tau_start
         self.tau_end = tau_end
         self.tau = tau_start

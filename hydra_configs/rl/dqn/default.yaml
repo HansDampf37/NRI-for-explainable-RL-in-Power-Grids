@@ -1,9 +1,11 @@
 sb3:
-    _target_: nri/agent/RADQN
+    _target_: ra_agents/dqn/SoftmaxDQN/SoftmaxDQN
     verbose: 1
     train_freq: 16
     gradient_steps: 8
     gamma: 0.99
+    tau_start: 0.5
+    tau_end: 0.0000001
     exploration_fraction: 0.2
     exploration_final_eps: 0.07
     target_update_interval: 600
@@ -20,20 +22,7 @@ sb3:
             num_layers: ${rl.model.features_extractor_kwargs.num_layers}
             dropout_prob: ${rl.model.features_extractor_kwargs.dropout_prob}
 
-ray:
-    exploration_fraction: ${ra_dqn.model.sb3.exploration_fraction}
-    exploration_final_eps: ${ra_dqn.model.sb3.exploration_final_eps}
-    target_network_update_freq: ${ra_dqn.model.sb3.target_update_interval}
-    num_steps_sampled_before_learning_starts: ${ra_dqn.model.sb3.learning_starts}
-    lr: ${ra_dqn.model.sb3.learning_rate}
-    double_q: true
-    dueling: true
-    train_batch_size_per_learner: ${ra_dqn.model.sb3.batch_size}
-    replay_buffer_config:
-        type: PrioritizedEpisodeReplayBuffer
-        capacity: ${ra_dqn.model.sb3.buffer_size}
-        alpha: 0.5,
-        beta: 0.5,
+exploration: "Softmax"
 
 loss:
     alpha: 0.02
