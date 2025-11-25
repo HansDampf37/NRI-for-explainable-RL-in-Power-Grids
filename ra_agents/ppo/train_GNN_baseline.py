@@ -1,5 +1,4 @@
 import os
-import uuid
 from datetime import datetime
 from pathlib import Path
 
@@ -7,7 +6,7 @@ import hydra
 from omegaconf import DictConfig, OmegaConf
 from stable_baselines3 import PPO
 
-from common.constants import EVAL_PATH
+from common.constants import EVAL_PATH, set_experiment_name
 from common.constants import LOGS_PATH, MODELS_PATH
 from .PPOTopoPolicy import Sb3PPOTopologyPolicy
 from ..RAFeatureExtractor import BaselineFeatureExtractorSB3
@@ -17,13 +16,14 @@ from ..utils import get_env, evaluate
 @hydra.main(config_path="../../hydra_configs", config_name="config", version_base="1.3")
 def main(cfg: DictConfig):
     print(OmegaConf.to_yaml(cfg))
-    timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M')
+    set_experiment_name(cfg.experiment_name)
+    timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     group = "rl/relation-unaware-baselines/ppo"
     name_suffix = cfg.rl.model.name_suffix
     if name_suffix is None:
-        name = f"gnn_{timestamp}_{uuid.uuid4().hex}"
+        name = f"gnn_{timestamp}"
     else:
-        name = f"gnn_{timestamp}_{name_suffix}_{uuid.uuid4().hex}"
+        name = f"gnn_{timestamp}_{name_suffix}"
 
     # create env
     env = get_env(cfg)
