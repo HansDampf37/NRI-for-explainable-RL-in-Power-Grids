@@ -18,7 +18,7 @@ sbatch << EOF
 module load devel/miniforge
 conda activate RL
 
-python test_cuda.py && PYTHONPATH=$(pwd) python training_scripts/train_gnn_dqn_baseline.py experiment_name=${experiment_name} rl.model.exploration=Softmax rl.model.name_suffix=softmax
+python test_cuda.py && PYTHONPATH=$(pwd) python training_scripts/train_gnn_dqn_baseline.py experiment_name=${experiment_name} rl.dqn.exploration=Softmax rl.model.name_suffix=softmax
 EOF
 
 sbatch << EOF
@@ -36,5 +36,5 @@ sbatch << EOF
 module load devel/miniforge
 conda activate RL
 
-python test_cuda.py && PYTHONPATH=$(pwd) python training_scripts/train_gnn_dqn_baseline.py experiment_name=${experiment_name} rl.model.name_suffix=epsilon_greedy rl.model.name_suffix=epsilon_greedy
+python test_cuda.py && PYTHONPATH=$(pwd) python training_scripts/train_gnn_dqn_baseline.py experiment_name=${experiment_name} rl.dqn.exploration=epsilon_greedy rl.model.name_suffix=epsilon_greedy
 EOF
