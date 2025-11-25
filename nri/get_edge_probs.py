@@ -17,7 +17,8 @@ from torch import Tensor
 from torch.utils.data import DataLoader, TensorDataset, Dataset
 from tqdm import tqdm
 
-from common.constants import MODELS_PATH, EDGE_PROBS_PATH
+from common.graph_structured_observation_space import EDGE_INDEX
+from visualization import visualize_graph, PlottingArgs, get_node_styles
 from .NRI import NRIModule
 
 logger = logging.getLogger(__name__)
@@ -97,6 +98,7 @@ def save_edge_probs(
     :param save_path: optional output path. If None, uses data/edge_probabilities if it exists, otherwise data/edge_probs
     :return: the averaged edge type probabilities as numpy array of shape [E, NUM_EDGE_TYPES]
     """
+    from common.constants import EDGE_PROBS_PATH
     edge_probs = get_edge_type_probabilities(
         nri_module,
         dataset,
@@ -105,13 +107,12 @@ def save_edge_probs(
         edge_index=edge_index,
     )
 
-    # Smart default for output directory
     if save_path is None:
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
-        file_name = f"edge_probs_{timestamp}.npy"
+        file_name = f"edge_probabilities_{timestamp}.npy"
         save_path = Path(EDGE_PROBS_PATH, file_name)
 
-    os.makedirs(save_path, exist_ok=True)
+    os.makedirs(save_path.parent, exist_ok=True)
     np.save(save_path, edge_probs)
     return edge_probs
 
@@ -121,6 +122,7 @@ def _find_latest_checkpoint_by_name(name_prefix: str) -> Optional[str]:
     Finds the newest checkpoint file in data/models/nri whose filename starts with the given name_prefix.
     Returns absolute path or None if not found.
     """
+    from common.constants import MODELS_PATH
     base_dir = to_absolute_path(os.path.join(MODELS_PATH, "nri"))
     if not os.path.isdir(base_dir):
         return None

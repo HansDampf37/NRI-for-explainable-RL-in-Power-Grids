@@ -5,7 +5,7 @@ from pathlib import Path
 import hydra
 from omegaconf import DictConfig, OmegaConf
 
-from common.constants import LOGS_PATH, MODELS_PATH, EVAL_PATH, set_experiment_name
+from common.constants import set_experiment_name, logger
 from .DQNTopoPolicy import Sb3DQNTopologyPolicy
 from .SoftmaxDQN import SoftmaxDQN
 from ..RAFeatureExtractor import BaselineFeatureExtractorSB3
@@ -14,7 +14,7 @@ from ..utils import get_env, evaluate
 
 @hydra.main(config_path="../../hydra_configs", config_name="config", version_base="1.3")
 def main(cfg: DictConfig):
-    print(OmegaConf.to_yaml(cfg))
+    logger.info(OmegaConf.to_yaml(cfg))
     set_experiment_name(cfg.experiment_name)
     from common.constants import EVAL_PATH,LOGS_PATH, MODELS_PATH
     timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')

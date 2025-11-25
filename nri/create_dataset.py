@@ -16,7 +16,7 @@ from lightsim2grid import LightSimBackend
 from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 
-from common.constants import NRI_DATASETS_PATH, logger
+from common.constants import logger, set_experiment_name
 from common.graph_structured_observation_space import EDGE_INDEX, EDGE_MASK, GraphObservationSpace
 from common.rewards import MazeRLReward
 
@@ -99,7 +99,9 @@ def generate_dataset(num_sims: int, length: int, agent: BaseAgent, env: Environm
 
 @hydra.main(config_path="../hydra_configs", config_name="config", version_base="1.3")
 def main(cfg: DictConfig):
-    print(OmegaConf.to_yaml(cfg))
+    logger.info(OmegaConf.to_yaml(cfg))
+    set_experiment_name(cfg.experiment_name)
+    from common.constants import NRI_DATASETS_PATH
     # create env + observation space
     env_train = grid2op.make(cfg.nri.dataset_creation.env_name + "_train", backend=LightSimBackend(), reward_class=MazeRLReward)
     env_test = grid2op.make(cfg.nri.dataset_creation.env_name + "_test", backend=LightSimBackend(), reward_class=MazeRLReward)
@@ -130,8 +132,8 @@ def main(cfg: DictConfig):
     timestamp = datetime.now().strftime("%Y-%m-%d_%H:%M")
     for grid_entity in train_data:
         np.save(Path(NRI_DATASETS_PATH, f'train_{grid_entity}_{cfg.nri.dataset_creation.env_name}_{timestamp}_.npy'), train_data[grid_entity])
-        np.save(Path(NRI_DATASETS_PATH, f'data/nri_dataset/test_{grid_entity}_{cfg.nri.dataset_creation.env_name}_{timestamp}_.npy'), test_data[grid_entity])
-        np.save(Path(NRI_DATASETS_PATH, f'data/nri_dataset/val_{grid_entity}_{cfg.nri.dataset_creation.env_name}_{timestamp}_.npy'), val_data[grid_entity])
+        np.save(Path(NRI_DATASETS_PATH, f'test_{grid_entity}_{cfg.nri.dataset_creation.env_name}_{timestamp}_.npy'), test_data[grid_entity])
+        np.save(Path(NRI_DATASETS_PATH, f'val_{grid_entity}_{cfg.nri.dataset_creation.env_name}_{timestamp}_.npy'), val_data[grid_entity])
 
 
 if __name__ == '__main__':

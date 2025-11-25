@@ -11,7 +11,7 @@ import pandas as pd
 import seaborn as sns
 from grid2op.Environment import Environment
 from grid2op.PlotGrid import PlotMatplot
-from matplotlib import pyplot as plt, gridspec
+from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 
@@ -80,6 +80,56 @@ def visualize_agent_survival(datasets: List[AgentMetrics], save_to: Optional[Pat
 
     for data in datasets:
         print(f"Average survival ratios {data.label}: {sum(data.survival_duration) / len(data.survival_duration)}")
+
+
+def compare_experiment_runs(experiment_path: Path):
+    """
+    This method assumes a folder structure like this:
+    - experiment_name/
+        - variant_1/
+            - agent/
+            - rl_algorithm/
+        - variant_2/
+            - agent/
+            - rl_algorithm/
+
+    Generates and stores root level comparison plots for the different runs.
+
+    @param experiment_path: the path to the experiment folder
+    @return: a list of figure comparing the variants
+    """
+    if not experiment_path.exists() or not experiment_path.is_dir():
+        raise FileNotFoundError(f"Experiment folder {experiment_path} does not exist")
+
+    if len(os.listdir(experiment_path)) == 0:
+        raise FileNotFoundError(f"Experiment folder {experiment_path} does not contain any files")
+
+    metrics = {}
+
+    for variant in os.listdir(experiment_path):
+        for sub_variant in ["agent", "rl_algorithm"]:
+            variant_path = Path(experiment_path, variant, sub_variant)
+            if not variant_path.exists() or not variant_path.is_dir():
+                logger.warning(f"Folder {variant_path} does not exist")
+                continue
+
+            if len(os.listdir(variant_path)) == 0:
+                logger.warning(f"Folder {variant_path} does not contain any files")
+                continue
+
+            for dataset in os.listdir(sub_variant):
+                metrics[dataset][sub_variant][variant] = get_evaluation_metrics(
+                    Path(experiment_path, variant, sub_variant, dataset),
+                    variant
+                )
+
+    for dataset in metrics.keys():
+        for sub_variant in metrics[dataset].keys():
+            visualize_agent_survival(
+                datasets=metrics[dataset][sub_variant],
+                save_to=Path(experiment_path, f"compare_{sub_variant}_on_{dataset}.png"),
+                show=False
+            )
 
 
 def visualize_performance_vs_prior(datasets: List[AgentMetrics]):

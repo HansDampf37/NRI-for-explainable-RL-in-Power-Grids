@@ -1,8 +1,10 @@
-from typing import Union, Tuple
+from typing import Union, Tuple, Optional
 
 import numpy as np
 import numpy.typing as npt
 import torch
+from hydra.utils import instantiate
+from omegaconf import DictConfig
 from torch import Tensor, nn
 from torch_geometric.utils import dense_to_sparse
 
@@ -11,6 +13,20 @@ from common.graph_structured_observation_space import  GraphObservationSpace, ED
 from common.MLP import MLP
 from common.constants import logger
 
+
+def get_env(cfg: DictConfig, env_name: Optional[str] = None) -> G2OpGymEnv:
+    """
+    Creates a Grid2opWrapperEnvironment with fitting action and observation spaces from hydra config.
+
+    :param cfg: The hydra config
+    :param env_name: Optional override for the environment name
+    :return: The environment
+    """
+    env: G2OpGymEnv = G2OpGymEnv(
+        cfg.env.training_env.env_name if env_name is None else env_name,
+        obs_space_creation=lambda e: instantiate(cfg.nri.dataset_creation.obs_space, grid2op_observation_space=e.observation_space),
+    )
+    return env
 
 def fully_connected_edge_index(num_nodes: int, device: str = "cpu", self_loops: bool = False) -> Tensor:
     """

@@ -9,16 +9,18 @@ from typing import Optional
 
 import numpy as np
 import torch
-from gymnasium import Env
 from tqdm import tqdm
 
-from common.constants import EDGE_PROBS_PATH, logger
+from common.constants import logger
+from common.env import G2OpGymEnv
+from common.graph_structured_observation_space import EDGE_INDEX
+from visualization import visualize_graph, PlottingArgs, get_node_styles
 from .RARL import RARL
 
 
 def get_edge_type_probabilities(
         RARL_model: RARL,
-        env: Env,
+        env: G2OpGymEnv,
         verbose: bool = True,
         num_samples: int = 1000,
 ) -> np.ndarray:
@@ -42,7 +44,7 @@ def get_edge_type_probabilities(
             done = False
             while not done:
                 act, _ = RARL_model.predict(obs)
-                latent_edges = RARL_model.get_edge_type_posterior(obs).detach().cpu().numpy()
+                latent_edges = RARL_model.get_edge_type_posterior(obs).detach().cpu().numpy().squeeze(0)
                 if running_sum is None:
                     running_sum = latent_edges
                 else:
@@ -70,7 +72,7 @@ def get_edge_type_probabilities(
 
 def save_edge_probs(
         RARL_model: RARL,
-        env: Env,
+        env: G2OpGymEnv,
         save_path: Optional[Path] = None,
         num_samples: int = 1000,
 ) -> np.ndarray:
@@ -78,10 +80,11 @@ def save_edge_probs(
     Runs the specified RARL alg on the specified environment and saves the averaged edge type probabilities.
     :param RARL_model: the RARL alg to run
     :param env: the env to run the module on
-    :param save_path: optional output path. If None, uses data/edge_probabilities if it exists, otherwise data/edge_probs
+    :param save_path: optional output path. If None, uses data/edge_probabilities
     :param num_samples: number of samples to average over
     :return: the averaged edge type probabilities as numpy array of shape [E, NUM_EDGE_TYPES]
     """
+    from common.constants import EDGE_PROBS_PATH
     edge_probs = get_edge_type_probabilities(
         RARL_model,
         env,
@@ -89,12 +92,19 @@ def save_edge_probs(
         num_samples=num_samples,
     )
 
-    # Smart default for output directory
     if save_path is None:
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
-        file_name = f"edge_probs_{timestamp}.npy"
+        file_name = f"edge_probabilities_{timestamp}.npy"
         save_path = Path(EDGE_PROBS_PATH, file_name)
 
     os.makedirs(save_path.parent, exist_ok=True)
     np.save(save_path, edge_probs)
+
+    figure = visualize_graph(PlottingArgs(
+        num_nodes=env.observation_space.num_nodes,
+        node_styles=get_node_styles(env._g2op_env, env.observation_space.__class__),
+        powerline_edge_index=env.reset()[0][EDGE_INDEX],
+        latent_edge_probs=edge_probs,
+    ))
+    figure.savefig(Path(save_path.parent, "latent_graph.png"))
     return edge_probs

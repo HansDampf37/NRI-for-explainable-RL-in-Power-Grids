@@ -16,12 +16,13 @@ from torch.utils.data import Dataset, DataLoader, TensorDataset
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
-from common.constants import LOGS_PATH, MODELS_PATH, EDGE_PROBS_PATH, logger
+from common.constants import logger, set_experiment_name
+from common.env import G2OpGymEnv
 from common.graph_structured_observation_space import  EDGE_INDEX, GraphObservationSpace
 from common.mask_observations import get_feature_mask
 from .ElboObjective import ElboLoss
 from .NRI import NRIModule
-from .utils import warn_large_loss
+from .utils import warn_large_loss, get_env
 from .get_edge_probs import save_edge_probs
 from visualization import visualize_graph, get_node_styles, latent_edge_hist, PlottingArgs
 
@@ -288,9 +289,11 @@ def evaluate_nri_module(
 @hydra.main(config_path="../hydra_configs", config_name="config", version_base="1.3")
 def main(cfg: DictConfig):
     logger.info(OmegaConf.to_yaml(cfg))
-    timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M')
+    set_experiment_name(cfg.experiment_name)
+    from common.constants import LOGS_PATH, MODELS_PATH, EDGE_PROBS_PATH
+    timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     group = "nri"
-    name = f"{cfg.nri.name}_{timestamp}_{uuid.uuid4().hex}"
+    name = f"{cfg.nri.name}_{timestamp}"
 
     tensorboard_logger = SummaryWriter(os.path.join(LOGS_PATH, group, name))
 
@@ -301,20 +304,18 @@ def main(cfg: DictConfig):
     test_dataset = TensorDataset(torch.from_numpy(test_data))
 
     # prepare plotting args
-    env = grid2op.make(cfg.env.env_name)
-    observation_space: GraphObservationSpace = instantiate(cfg.nri.dataset_creation.obs_space,
-                                                           grid2op_observation_space=env.observation_space)
-    edge_index = observation_space.to_gym(env.reset())[EDGE_INDEX]
+    env: G2OpGymEnv = get_env(cfg)
+    edge_index = env.reset()[0][EDGE_INDEX]
     plotting_args = PlottingArgs(
-        num_nodes=train_data.shape[-2],
-        node_styles=get_node_styles(env, observation_space.__class__),
+        num_nodes=env.observation_space.num_nodes,
+        node_styles=get_node_styles(env._g2op_env, env.observation_space.__class__),
         powerline_edge_index=edge_index,
         latent_edge_weight=5.0,
         skip_last_edge_type=cfg.nri.model.skip_last,
     )
 
     # Prepare feature mask
-    feature_mask = torch.from_numpy(get_feature_mask(observation_space, cfg.nri.train.features_to_predict))
+    feature_mask = torch.from_numpy(get_feature_mask(env.observation_space, cfg.nri.train.features_to_predict))
 
     # prepare model
     nri_module: NRIModule = instantiate(cfg.nri.model, x_dim=train_data.shape[-1])
@@ -341,10 +342,23 @@ def main(cfg: DictConfig):
     save_path = Path(MODELS_PATH, group, name + ".pt")
     save_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(nri_module.state_dict(), save_path)
-    save_edge_probs(nri_module, train_dataset, cfg.nri.train.batch_size,
-                    save_path=Path(EDGE_PROBS_PATH, group, name + "_training.npy"))
-    save_edge_probs(nri_module, test_dataset, cfg.nri.train.batch_size,
-                    save_path=Path(EDGE_PROBS_PATH, group, name + "_testing.npy"))
+    edge_probs_train = save_edge_probs(nri_module, train_dataset, cfg.nri.train.batch_size, save_path=Path(EDGE_PROBS_PATH, group, name + "_training.npy"))
+    edge_probs_test = save_edge_probs(nri_module, test_dataset, cfg.nri.train.batch_size, save_path=Path(EDGE_PROBS_PATH, group, name + "_testing.npy"))
+
+    figure = visualize_graph(PlottingArgs(
+        num_nodes=env.observation_space.num_nodes,
+        node_styles=get_node_styles(env._g2op_env, env.observation_space.__class__),
+        powerline_edge_index=env.reset()[0][EDGE_INDEX],
+        latent_edge_probs=edge_probs_train,
+    ))
+    figure.savefig(Path(save_path.parent, "latent_graph_training.png"))
+    figure = visualize_graph(PlottingArgs(
+        num_nodes=env.observation_space.num_nodes,
+        node_styles=get_node_styles(env._g2op_env, env.observation_space.__class__),
+        powerline_edge_index=env.reset()[0][EDGE_INDEX],
+        latent_edge_probs=edge_probs_test,
+    ))
+    figure.savefig(Path(save_path.parent, "latent_graph_testing.png"))
     tensorboard_logger.close()
 
 

@@ -50,6 +50,8 @@ class SoftmaxDQN(DQN):
         # get q-values
         obs_tensor, _ = self.policy.obs_to_tensor(self._last_obs)
         q_values = self.q_net(obs_tensor)
+        if type(q_values) == tuple:
+            q_values = q_values[0]
 
         # softmax sampling
         probs = F.softmax(q_values / self.tau, dim=1)
