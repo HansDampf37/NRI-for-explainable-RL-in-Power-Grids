@@ -1,8 +1,8 @@
-from typing import Optional
+from typing import Tuple, Optional
 
 import torch
-import torch.nn.functional as F
 from torch import nn, LongTensor
+import torch.nn.functional as F
 from torch_geometric.utils import to_dense_batch
 
 
@@ -84,7 +84,8 @@ class GraphormerAttentionHead(nn.Module):
         query = self.q(x_dense) # [B, N, dim_qk]
         key = self.k(x_dense) # [B, N, dim_qk]
 
-        a = self.compute_a(key, query) + b # [B, N, N]
+        a = self.compute_a(key, query) # [B, N, N]
+        a = (a + b)
 
         if return_attn_logits:
             return a
@@ -104,7 +105,7 @@ class GraphormerAttentionHead(nn.Module):
         :param query: the query [B, N, dim_qk]
         :return: attention weights [B, N, N]
         """
-        return torch.matmul(query, key.transpose(1, 2)) / self.dim_qk ** 0.5
+        return torch.matmul(query, key.transpose(1, 2)) / query.size(-1) ** 0.5
 
 
 # FIX: PyG attention instead of regular attention, due to specificity of GNNs
