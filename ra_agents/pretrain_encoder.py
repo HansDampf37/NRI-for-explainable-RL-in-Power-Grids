@@ -80,6 +80,8 @@ def main(cfg: DictConfig):
             num_edge_types=cfg.rl.model.features_extractor_kwargs.num_edge_types,
         )
 
+    encoder.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+
     train(
         encoder=encoder,
         ds=ds,

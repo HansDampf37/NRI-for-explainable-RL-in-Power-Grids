@@ -11,7 +11,7 @@ sbatch << EOF
 #SBATCH --error=out/relations_aware/error_radqn_${p}.%j.log             # Error file
 #SBATCH --ntasks=1                                                      # Number of tasks
 #SBATCH --gres=gpu:1                                                    # Request 1 GPU
-#SBATCH --time=9:00:00                                                 # Max wall time (HH:MM:SS)
+#SBATCH --time=48:00:00                                                 # Max wall time (HH:MM:SS)
 #SBATCH --mem=64G                                                       # Memory requirement
 #SBATCH --partition=gpu_h100,gpu_a100_il,gpu_h100_il #,gpu_mi300        # Specify the GPU partition
 
@@ -20,6 +20,6 @@ cd ..
 module load devel/miniforge
 conda activate RL
 
-python test_cuda.py && PYTHONPATH=\$(pwd) python nri/agent/dqn/train_RADQN.py rl.model.name_suffix=${p} rl.model.prior_for_graph_edges_existing=${p} rl.model.use_graphormer=false
+python test_cuda.py && PYTHONPATH=\$(pwd) python ra_agents/dqn/train_RADQN.py rl.model.name_suffix=${p} rl.model.prior_for_graph_edges_existing=${p} rl.model.use_graphormer=false
 EOF
 done
