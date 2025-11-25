@@ -125,6 +125,7 @@ def train(
     @param lr: the learning rate
     @return: the loss curves (training, testing)
     """
+    device = next(encoder.parameters()).device
     loader = DataLoader(ds, batch_size=batch_size, shuffle=True)
     optimizer = torch.optim.Adam(encoder.parameters(), lr=lr)
     loss_per_episode = []
@@ -132,10 +133,10 @@ def train(
     for epoch in range(num_epochs):
         total_loss = 0.0
         for batch_ in loader:
-            x = batch_.x
-            edge_index = batch_.edge_index
-            batch = batch_.batch
-            y = batch_.y
+            x = batch_.x.to(device=device)
+            edge_index = batch_.edge_index.to(device=device)
+            batch = batch_.batch.to(device=device)
+            y = batch_.y.to(device=device)
 
             optimizer.zero_grad()
 
@@ -199,12 +200,13 @@ def evaluate(
     """
     eval_loss = 0
     eval_loader = DataLoader(eval_ds, batch_size=batch_size, shuffle=False)
+    device = next(encoder.parameters()).device
     with torch.no_grad():
         for batch_ in eval_loader:
-            x = batch_.x
-            edge_index = batch_.edge_index
-            batch = batch_.batch
-            y = batch_.y
+            x = batch_.x.to(device=device)
+            edge_index = batch_.edge_index.to(device=device)
+            batch = batch_.batch.to(device=device)
+            y = batch_.y.to(device=device)
 
             edge_logits = encoder.forward(x, batch=batch, powerline_edge_index=edge_index)
             edge_log_probs = F.log_softmax(edge_logits, dim=-1)

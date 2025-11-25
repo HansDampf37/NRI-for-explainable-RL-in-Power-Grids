@@ -9,8 +9,8 @@ sbatch << EOF
 #!/bin/bash
 
 #SBATCH --job-name=rappo_${p}_graphormer                                           # Name of the job
-#SBATCH --output=data/experiments/${experiment_name}/relations_aware/ppo/graphormer/rappo_${p}.%j.log                  # Output file
-#SBATCH --error=data/experiments/${experiment_name}/relations_aware/ppo/graphormer/error_rappo_${p}.%j.log             # Error file
+#SBATCH --output=data/experiments/${experiment_name}/out/rappo_graphormer${p}.%j.log                  # Output file
+#SBATCH --error=data/experiments/${experiment_name}/out/rappo_graphormer_error${p}.%j.log             # Error file
 #SBATCH --ntasks=1                                                      # Number of tasks
 #SBATCH --gres=gpu:1                                                    # Request 1 GPU
 #SBATCH --time=16:00:00                                                 # Max wall time (HH:MM:SS)
@@ -27,8 +27,8 @@ sbatch << EOF
 #!/bin/bash
 
 #SBATCH --job-name=rappo_${p}_nri_encoder                                           # Name of the job
-#SBATCH --output=data/experiments/${experiment_name}/relations_aware/ppo/rappo_${p}_nri_encoder.%j.log                  # Output file
-#SBATCH --error=data/experiments/${experiment_name}/relations_aware/ppo/error_rappo_${p}_nri_encoder.%j.log             # Error file
+#SBATCH --output=data/experiments/${experiment_name}/out/rappo_nri_enc${p}.%j.log                  # Output file
+#SBATCH --error=data/experiments/${experiment_name}/out/rappo_nri_enc_error${p}.%j.log             # Error file
 #SBATCH --ntasks=1                                                      # Number of tasks
 #SBATCH --gres=gpu:1                                                    # Request 1 GPU
 #SBATCH --time=16:00:00                                                 # Max wall time (HH:MM:SS)

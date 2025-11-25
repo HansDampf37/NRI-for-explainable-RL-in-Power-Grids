@@ -41,31 +41,45 @@ def main(cfg: DictConfig):
         }
     }
 
-    if cfg.rl.dqn.exploration == "Softmax":
-        DQNClass = SoftmaxDQN
-    else:
-        DQNClass = DQN
-
     # create algorithm
-    algorithm = DQNClass(
-        env=env,
-        policy="MultiInputPolicy",
-        tau_start=cfg.rl.dqn.sb3.tau_start,
-        tau_end=cfg.rl.dqn.sb3.tau_end,
-        tensorboard_log=os.path.join(LOGS_PATH, group),
-        policy_kwargs=policy_kwargs,
-        verbose=cfg.rl.dqn.sb3.verbose,
-        train_freq=cfg.rl.dqn.sb3.train_freq,
-        gradient_steps=cfg.rl.dqn.sb3.gradient_steps,
-        gamma=cfg.rl.dqn.sb3.gamma,
-        exploration_fraction=cfg.rl.dqn.sb3.exploration_fraction,
-        exploration_final_eps=cfg.rl.dqn.sb3.exploration_final_eps,
-        target_update_interval=cfg.rl.dqn.sb3.target_update_interval,
-        learning_starts=cfg.rl.dqn.sb3.learning_starts,
-        buffer_size=cfg.rl.dqn.sb3.buffer_size,
-        batch_size=cfg.rl.dqn.sb3.batch_size,
-        learning_rate=cfg.rl.dqn.sb3.learning_rate,
-    )
+    if cfg.rl.dqn.exploration == "Softmax":
+        algorithm = SoftmaxDQN(
+            env=env,
+            policy="MultiInputPolicy",
+            tau_start=cfg.rl.dqn.sb3.tau_start,
+            tau_end=cfg.rl.dqn.sb3.tau_end,
+            tensorboard_log=os.path.join(LOGS_PATH, group),
+            policy_kwargs=policy_kwargs,
+            verbose=cfg.rl.dqn.sb3.verbose,
+            train_freq=cfg.rl.dqn.sb3.train_freq,
+            gradient_steps=cfg.rl.dqn.sb3.gradient_steps,
+            gamma=cfg.rl.dqn.sb3.gamma,
+            exploration_fraction=cfg.rl.dqn.sb3.exploration_fraction,
+            exploration_final_eps=cfg.rl.dqn.sb3.exploration_final_eps,
+            target_update_interval=cfg.rl.dqn.sb3.target_update_interval,
+            learning_starts=cfg.rl.dqn.sb3.learning_starts,
+            buffer_size=cfg.rl.dqn.sb3.buffer_size,
+            batch_size=cfg.rl.dqn.sb3.batch_size,
+            learning_rate=cfg.rl.dqn.sb3.learning_rate,
+        )
+    else:
+        algorithm = DQN(
+            env=env,
+            policy="MultiInputPolicy",
+            tensorboard_log=os.path.join(LOGS_PATH, group),
+            policy_kwargs=policy_kwargs,
+            verbose=cfg.rl.dqn.sb3.verbose,
+            train_freq=cfg.rl.dqn.sb3.train_freq,
+            gradient_steps=cfg.rl.dqn.sb3.gradient_steps,
+            gamma=cfg.rl.dqn.sb3.gamma,
+            exploration_fraction=cfg.rl.dqn.sb3.exploration_fraction,
+            exploration_final_eps=cfg.rl.dqn.sb3.exploration_final_eps,
+            target_update_interval=cfg.rl.dqn.sb3.target_update_interval,
+            learning_starts=cfg.rl.dqn.sb3.learning_starts,
+            buffer_size=cfg.rl.dqn.sb3.buffer_size,
+            batch_size=cfg.rl.dqn.sb3.batch_size,
+            learning_rate=cfg.rl.dqn.sb3.learning_rate,
+        )
 
     # train
     algorithm.learn(total_timesteps=cfg.rl.train.timesteps, tb_log_name=name, log_interval=cfg.rl.train.log_interval)

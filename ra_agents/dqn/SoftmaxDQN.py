@@ -33,7 +33,7 @@ class SoftmaxDQN(DQN):
         Update tau, the weight used for computing the softmax.
         """
         # progress ratio in [0,1]
-        frac = min(self.num_timesteps / self._total_timesteps, 1.0)
+        frac = min(self.num_timesteps / 0.8 * self._total_timesteps, 1.0)
         # linearly interpolate between start and end
         self.tau = self.tau_start + frac * (self.tau_end - self.tau_start)
         self.logger.record("rollout/tau", self.tau)
