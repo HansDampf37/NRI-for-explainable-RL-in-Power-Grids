@@ -4,6 +4,7 @@ from pathlib import Path
 
 import hydra
 from omegaconf import DictConfig, OmegaConf
+from stable_baselines3 import DQN
 
 from common.constants import set_experiment_name, logger
 from .DQNTopoPolicy import Sb3DQNTopologyPolicy
@@ -40,8 +41,13 @@ def main(cfg: DictConfig):
         }
     }
 
+    if cfg.rl.dqn.exploration == "Softmax":
+        DQNClass = SoftmaxDQN
+    else:
+        DQNClass = DQN
+
     # create algorithm
-    algorithm = SoftmaxDQN(
+    algorithm = DQNClass(
         env=env,
         policy="MultiInputPolicy",
         tau_start=cfg.rl.dqn.sb3.tau_start,
