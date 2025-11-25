@@ -20,6 +20,6 @@ cd ..
 module load devel/miniforge
 conda activate RL
 
-python test_cuda.py && PYTHONPATH=\$(pwd) python ra_agents/ppo/train_RAPPO.py rl.model.name_suffix=${p} rl.model.prior_for_graph_edges_existing=${p} rl.model.use_graphormer=false
+python test_cuda.py && PYTHONPATH=\$(pwd) python training_scripts/train_relations_aware_ppo.py rl.model.name_suffix=${p} rl.model.prior_for_graph_edges_existing=${p} rl.model.use_graphormer=false
 EOF
 done

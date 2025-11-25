@@ -1,13 +1,18 @@
+import os
 import unittest
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import grid2op
-from tempfile import TemporaryDirectory
+import hydra
 from grid2op.Agent import DoNothingAgent
 from grid2op.gym_compat import GymEnv, DiscreteActSpace
 from stable_baselines3 import DQN
 
 from common.baseline_agent import evaluate_agent, evaluate_sb3_alg
+from ra_agents.dqn import Sb3DQNTopologyPolicy
+from ra_agents.utils import evaluate, get_env_mlp_baseline
+
 
 class TestAgentEvaluation(unittest.TestCase):
     def setUp(self):
@@ -23,6 +28,9 @@ class TestAgentEvaluation(unittest.TestCase):
                 num_episodes=1,
                 max_episode_length=100
             )
+            # assert that tmpdir folder is not empty
+            self.assertTrue(len(os.listdir(tmpdir)) != 0)
+
 
     def test_evaluate_sb3_alg(self):
         gym_env = GymEnv(self.env)
@@ -37,3 +45,23 @@ class TestAgentEvaluation(unittest.TestCase):
                 path_results=path_results,
                 num_episodes=1,
             )
+            # assert that tmpdir folder is not empty
+            self.assertTrue(len(os.listdir(tmpdir)) != 0)
+
+    def test_evaluate(self):
+        with hydra.initialize(config_path="../../hydra_configs", version_base="1.3"):
+            cfg = hydra.compose(config_name="config")
+            cfg.rl.eval.nb_episodes = 1
+            cfg.rl.eval.max_episode_length = 10
+            with TemporaryDirectory() as tmpdir:
+                env = get_env_mlp_baseline(cfg, cfg.env.name)
+                dqn = DQN(env=env, policy="MlpPolicy")
+                topo_policy = Sb3DQNTopologyPolicy(dqn)
+                evaluate(
+                    algorithm=dqn,
+                    topology_policy=topo_policy,
+                    env_creation=get_env_mlp_baseline,
+                    path_results=Path(tmpdir),
+                    cfg=cfg
+                )
+                self.assertTrue(len(os.listdir(tmpdir)) != 0)

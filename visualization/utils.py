@@ -1,4 +1,5 @@
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, List
@@ -14,6 +15,7 @@ from matplotlib import pyplot as plt, gridspec
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 
+from common.constants import logger
 from common.graph_structured_observation_space import GraphObservationSpace, BusConnectivityGraphObsSpace
 from nri.utils import fully_connected_edge_index
 
@@ -45,70 +47,36 @@ class AgentMetrics:
     survival_duration: List[int]
 
 
-def visualize_agent_survival(datasets: List[AgentMetrics]):
-    sns.set_theme(style="whitegrid", palette="muted", font_scale=1.2)
-
-    # Define figure with a GridSpec: widths [1, 2, 1]
-    fig = plt.figure(figsize=(20, 5))
-    gs = gridspec.GridSpec(1, 3, width_ratios=[1, 2, 1], figure=fig)
-
-    axes = [fig.add_subplot(gs[i]) for i in range(3)]
-
-    max_survival_duration = max(max(data.survival_duration) for data in datasets)
-
-    # --- Strip Plot ---
+def visualize_agent_survival(datasets: List[AgentMetrics], save_to: Optional[Path] = None, show: bool = True):
     records = []
     for data in datasets:
         records.extend([{"Agent": data.label, "Survival Duration": d}
                         for d in data.survival_duration])
     df = pd.DataFrame(records)
 
-    sns.stripplot(
-        data=df,
-        y="Survival Duration",
-        x="Agent",
-        hue="Agent",
-        ax=axes[0],
-        dodge=True,
-        alpha=0.6
-    )
-
-    axes[0].set_title("Survival Duration (Strip Plot)")
-    axes[0].set_ylabel("Time Steps")
-    axes[0].set_xlabel("Agent")
-
-    # --- KDE Plot ---
-    for data in datasets:
-        sns.kdeplot(
-            data.survival_duration,
-            ax=axes[1],
-            label=data.label,
-            bw_adjust=0.5
-        )
-
-    axes[1].set_xlim(0, max_survival_duration)
-    axes[1].set_title("Survival Duration Distribution (KDE) per Agent")
-    axes[1].set_xlabel("Time Steps")
-    axes[1].set_ylabel("Density")
-    axes[1].legend(title="Agent")
-
+    sns.set_theme(style="whitegrid", palette="muted", font_scale=1.2)
+    plt.figure(figsize=(15, 5))
     # --- Boxplot ---
     sns.boxplot(
         data=df,
         x="Agent",
         y="Survival Duration",
         hue="Agent",
-        ax=axes[2],
         palette="muted",
         legend=False
     )
 
-    axes[2].set_title("Survival Duration Boxplot per Agent")
-    axes[2].set_xlabel("Agent")
-    axes[2].set_ylabel("Time Steps")
+    plt.title("Survival Duration Boxplot per Agent")
+    plt.xlabel("Agent")
+    plt.ylabel("Time Steps")
 
     plt.tight_layout()
-    plt.show()
+
+    if show:
+        plt.show()
+
+    if save_to is not None:
+        plt.savefig(save_to)
 
     for data in datasets:
         print(f"Average survival ratios {data.label}: {sum(data.survival_duration) / len(data.survival_duration)}")
@@ -138,7 +106,6 @@ def visualize_performance_vs_prior(datasets: List[AgentMetrics]):
     plt.show()
 
 
-
 def visualize_agent_survival_return_relationship(datasets: List[AgentMetrics]):
     plt.figure(figsize=(10, 5))
     for data in datasets:
@@ -165,7 +132,6 @@ def get_evaluation_metrics(path, agent_name: str) -> AgentMetrics:
                 returns.append(episode_metadata["cumulative_reward"])
 
     return AgentMetrics(agent_name, returns, survival_duration)
-
 
 
 def visualize_graph(args: PlottingArgs) -> Figure:
@@ -375,7 +341,8 @@ def get_node_styles(env: Environment, observation_space: type[GraphObservationSp
 
         # compute final node positions as well as other properties
         positions = [pos(sid, np.array(src)) for sid, src in zip(sub_ids, pointing_towards_locs)]
-        colors = ["gray"] * 2 * env.n_line + ["green"] * env.n_gen + ["orange"] * env.n_load + ["purple"] * env.n_storage
+        colors = ["gray"] * 2 * env.n_line + ["green"] * env.n_gen + ["orange"] * env.n_load + [
+            "purple"] * env.n_storage
         shapes = ["o"] * 2 * env.n_line + ["p"] * env.n_gen + ["^"] * env.n_load + ["D"] * env.n_storage
         labels = (["Powerline-Bus-Connection"] * 2 * env.n_line + ["Generator-Bus-Connection"] * env.n_gen +
                   ["Load-Bus-Connection"] * env.n_load + ["Storage-Bus-Connection"] * env.n_storage)
@@ -389,9 +356,10 @@ def get_node_styles(env: Environment, observation_space: type[GraphObservationSp
         return node_styles
     else:
         raise NotImplementedError()
-    
 
-def visualize_posterior(latent_edge_posterior: npt.NDArray, latent_edge_prior: npt.NDArray, skip_last: bool = True) -> Figure:
+
+def visualize_posterior(latent_edge_posterior: npt.NDArray, latent_edge_prior: npt.NDArray,
+                        skip_last: bool = True) -> Figure:
     assert latent_edge_posterior.shape == latent_edge_prior.shape
     assert latent_edge_posterior.ndim == 2
     assert latent_edge_posterior.shape[1] == 2
@@ -419,7 +387,3 @@ def visualize_posterior(latent_edge_posterior: npt.NDArray, latent_edge_prior: n
     plt.title("Histogram of Latent Edge Probabilities (Prior & Posterior)")
 
     return fig
-
-
-
-

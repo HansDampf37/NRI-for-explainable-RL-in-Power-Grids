@@ -6,8 +6,7 @@ import hydra
 from omegaconf import DictConfig, OmegaConf
 from stable_baselines3 import PPO
 
-from common.constants import EVAL_PATH, set_experiment_name
-from common.constants import LOGS_PATH, MODELS_PATH
+from common.constants import set_experiment_name
 from .PPOTopoPolicy import Sb3PPOTopologyPolicy
 from ..RAFeatureExtractor import BaselineFeatureExtractorSB3
 from ..utils import get_env, evaluate
@@ -17,8 +16,9 @@ from ..utils import get_env, evaluate
 def main(cfg: DictConfig):
     print(OmegaConf.to_yaml(cfg))
     set_experiment_name(cfg.experiment_name)
+    from common.constants import EVAL_PATH,LOGS_PATH, MODELS_PATH
     timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    group = "rl/relation-unaware-baselines/ppo"
+    group = "baselines/ppo"
     name_suffix = cfg.rl.model.name_suffix
     if name_suffix is None:
         name = f"gnn_{timestamp}"

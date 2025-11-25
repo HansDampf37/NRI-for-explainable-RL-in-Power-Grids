@@ -15,5 +15,5 @@ cd ..
 module load devel/miniforge
 conda activate RL
 
-python test_cuda.py && PYTHONPATH=$(pwd) python train_baseline_gnn.py
+python test_cuda.py && PYTHONPATH=$(pwd) python training_scripts/train_gnn_ppo_baseline.py
 EOF

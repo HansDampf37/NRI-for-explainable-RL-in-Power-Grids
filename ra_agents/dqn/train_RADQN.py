@@ -23,8 +23,9 @@ from ..utils import get_env, evaluate
 def main(cfg: DictConfig):
     print(OmegaConf.to_yaml(cfg))
     set_experiment_name(cfg.experiment_name)
+    from common.constants import EVAL_PATH,LOGS_PATH, MODELS_PATH
     timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    group = "rl/relation-aware/dqn"
+    group = "relation-aware/dqn"
     name_suffix = cfg.rl.model.name_suffix
     if name_suffix is None:
         name = f"radqn_{timestamp}"

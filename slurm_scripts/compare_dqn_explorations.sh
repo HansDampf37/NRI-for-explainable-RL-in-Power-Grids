@@ -19,7 +19,7 @@ cd ..
 module load devel/miniforge
 conda activate RL
 
-python test_cuda.py && PYTHONPATH=$(pwd) python ra_agents/dqn/train_MLP_baseline.py experiment_name=${experiment_name} rl.model.exploration=Softmax rl.model.exploration=softmax
+python test_cuda.py && PYTHONPATH=$(pwd) python training_scripts/train_mlp_dqn_baseline.py experiment_name=${experiment_name} rl.model.exploration=Softmax rl.model.exploration=softmax
 EOF
 
 sbatch <<'EOF'
@@ -39,5 +39,5 @@ cd ..
 module load devel/miniforge
 conda activate RL
 
-python test_cuda.py && PYTHONPATH=$(pwd) python ra_agents/dqn/train_MLP_baseline.py experiment_name=${experiment_name} rl.model.name_suffix=epsilon_greedy rl.model.exploration=epsilon_greedy
+python test_cuda.py && PYTHONPATH=$(pwd) python training_scripts/train_mlp_dqn_baseline.py experiment_name=${experiment_name} rl.model.name_suffix=epsilon_greedy rl.model.exploration=epsilon_greedy
 EOF

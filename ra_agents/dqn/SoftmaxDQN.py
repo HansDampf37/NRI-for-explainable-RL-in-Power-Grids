@@ -11,6 +11,8 @@ import torch.nn.functional as F
 from stable_baselines3 import DQN
 from stable_baselines3.common.noise import ActionNoise
 
+from common.constants import logger
+
 
 class SoftmaxDQN(DQN):
     """

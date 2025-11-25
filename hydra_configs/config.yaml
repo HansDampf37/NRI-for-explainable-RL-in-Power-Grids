@@ -4,6 +4,8 @@ defaults:
     -   rl: default
     - _self_
 
+experiment_name: ~
+
 hydra:
     run:
         dir: data/output/${now:%Y-%m-%d_%H-%M-%S}

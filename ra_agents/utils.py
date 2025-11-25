@@ -8,6 +8,7 @@ from stable_baselines3.common.base_class import BaseAlgorithm
 
 from common.baseline_agent import BaselineAgent, evaluate_agent, evaluate_sb3_alg, TopologyPolicy
 from common.env import G2OpGymEnv
+from visualization import get_evaluation_metrics, visualize_agent_survival
 
 
 def get_env(cfg, env_name: Optional[str] = None) -> G2OpGymEnv:
@@ -45,6 +46,7 @@ def evaluate(algorithm: BaseAlgorithm, topology_policy: TopologyPolicy, env_crea
     """
     Evaluates an algorithm on test train and validation envs.
     Evaluates the associated agent on test train and validation envs.
+    Stores results together with plots in the path_results folder.
     @param algorithm: the algorithm to evaluate
     @param topology_policy: the topology policy (used inside the agent)
     @param env_creation: a method that takes an env cfg, name and returns a G2OpGymEnv
@@ -72,3 +74,8 @@ def evaluate(algorithm: BaseAlgorithm, topology_policy: TopologyPolicy, env_crea
             num_episodes=cfg.rl.eval.nb_episodes,
             max_episode_length=cfg.rl.eval.max_episode_length,
         )
+
+    metrics_agent = [get_evaluation_metrics(Path(path_results, "agent", dataset), dataset) for dataset in ["train", "test", "val"]]
+    metrics_topo_policy = [get_evaluation_metrics(Path(path_results, "rl_algorithm", dataset), dataset) for dataset in ["train", "test", "val"]]
+    visualize_agent_survival(metrics_agent, Path(path_results, "agent_summary.png"), show=False)
+    visualize_agent_survival(metrics_topo_policy, Path(path_results, "rl_algorithm_summary.png"), show=False)
