@@ -1,5 +1,5 @@
 net_arch: [ 256, 256, 256 ]
-prior_for_graph_edges_existing: 0.9
+prior_for_graph_edges_existing: 1.0
 temperature: 0.2
 name_suffix: ~
 use_graphormer: true

@@ -20,7 +20,7 @@ from torch_geometric.data import Data, InMemoryDataset
 from torch_geometric.loader import DataLoader
 from tqdm import tqdm
 
-from common.constants import MODELS_PATH, LOGS_PATH, logger
+from common.constants import logger, set_experiment_name
 from common.env import G2OpGymEnv
 from common.graph_structured_observation_space import NODES, EDGE_INDEX, EDGE_MASK
 from nri.utils import prior_from_env
@@ -44,8 +44,10 @@ def main(cfg: DictConfig):
     :return: the graphormer encoder
     """
     print(OmegaConf.to_yaml(cfg))
-    timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M')
-    group = "rl/encoder/"
+    set_experiment_name(cfg.experiment_name)
+    from common.constants import MODELS_PATH, LOGS_PATH
+    timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    group = "encoder/"
     name_suffix = cfg.rl.model.name_suffix
     if name_suffix is None:
         name = f"graphormer_{timestamp}_{uuid.uuid4().hex}"
@@ -125,6 +127,7 @@ def train(
     @param lr: the learning rate
     @return: the loss curves (training, testing)
     """
+    device = next(encoder.parameters()).device
     loader = DataLoader(ds, batch_size=batch_size, shuffle=True)
     optimizer = torch.optim.Adam(encoder.parameters(), lr=lr)
     loss_per_episode = []
@@ -132,10 +135,10 @@ def train(
     for epoch in range(num_epochs):
         total_loss = 0.0
         for batch_ in loader:
-            x = batch_.x
-            edge_index = batch_.edge_index
-            batch = batch_.batch
-            y = batch_.y
+            x = batch_.x.to(device=device)
+            edge_index = batch_.edge_index.to(device=device)
+            batch = batch_.batch.to(device=device)
+            y = batch_.y.to(device=device)
 
             optimizer.zero_grad()
 
@@ -199,12 +202,13 @@ def evaluate(
     """
     eval_loss = 0
     eval_loader = DataLoader(eval_ds, batch_size=batch_size, shuffle=False)
+    device = next(encoder.parameters()).device
     with torch.no_grad():
         for batch_ in eval_loader:
-            x = batch_.x
-            edge_index = batch_.edge_index
-            batch = batch_.batch
-            y = batch_.y
+            x = batch_.x.to(device=device)
+            edge_index = batch_.edge_index.to(device=device)
+            batch = batch_.batch.to(device=device)
+            y = batch_.y.to(device=device)
 
             edge_logits = encoder.forward(x, batch=batch, powerline_edge_index=edge_index)
             edge_log_probs = F.log_softmax(edge_logits, dim=-1)

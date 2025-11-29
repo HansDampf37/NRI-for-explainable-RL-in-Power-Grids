@@ -4,7 +4,7 @@ defaults:
     -   rl: default
     - _self_
 
-experiment_name: ~
+experiment_name: compare_ppo_local
 
 hydra:
     run:
