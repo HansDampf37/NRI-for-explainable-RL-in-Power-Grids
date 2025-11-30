@@ -9,8 +9,8 @@ sbatch << EOF
 #!/bin/bash
 
 #SBATCH --job-name=rappo_${p}                                           # Name of the job
-#SBATCH --output=data/experiments/${experiment_name}/relations_aware/ppo/graphormer/rappo_${p}.%j.log                  # Output file
-#SBATCH --error=data/experiments/${experiment_name}/relations_aware/ppo/graphormer/error_rappo_${p}.%j.log             # Error file
+#SBATCH --output=data/experiments/${experiment_name}/out/rappo_graphormer_${p}.%j.log                  # Output file
+#SBATCH --error=data/experiments/${experiment_name}/out/rappo_graphormer_error_${p}.%j.log             # Error file
 #SBATCH --ntasks=1                                                      # Number of tasks
 #SBATCH --gres=gpu:1                                                    # Request 1 GPU
 #SBATCH --time=16:00:00                                                 # Max wall time (HH:MM:SS)
@@ -28,8 +28,8 @@ sbatch << EOF
 #!/bin/bash
 
 #SBATCH --job-name=ppo_mlp_baseline                                           # Name of the job
-#SBATCH --output=data/experiments/${experiment_name}/baselines/ppo/train_baseline_mlp.%j.log            # Output file
-#SBATCH --error=data/experiments/${experiment_name}/baselines/ppo/error_train_baseline_mlp.%j.log       # Error file
+#SBATCH --output=data/experiments/${experiment_name}/out/ppo_mlp_baseline.%j.log            # Output file
+#SBATCH --error=data/experiments/${experiment_name}/out/ppo_mlp_baseline_error.%j.log       # Error file
 #SBATCH --ntasks=1                                                            # Number of tasks
 #SBATCH --gres=gpu:1                                                          # Request 1 GPU
 #SBATCH --time=8:00:00                                                       # Max wall time (HH:MM:SS)
@@ -46,8 +46,8 @@ sbatch << EOF
 #!/bin/bash
 
 #SBATCH --job-name=ppo_gnn_baseline                                           # Name of the job
-#SBATCH --output=data/experiments/${experiment_name}/baselines/ppo/train_baseline_gnn.%j.log            # Output file
-#SBATCH --error=data/experiments/${experiment_name}/baselines/ppo/error_train_baseline_gnn.%j.log       # Error file
+#SBATCH --output=data/experiments/${experiment_name}/out/ppo_gnn_baseline.%j.log            # Output file
+#SBATCH --error=data/experiments/${experiment_name}/out/ppo_gnn_baseline_error.%j.log       # Error file
 #SBATCH --ntasks=1                                                            # Number of tasks
 #SBATCH --gres=gpu:1                                                          # Request 1 GPU
 #SBATCH --time=8:00:00                                                       # Max wall time (HH:MM:SS)

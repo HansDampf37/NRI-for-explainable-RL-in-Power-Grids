@@ -2,4 +2,4 @@
 
 module load devel/miniforge
 conda activate RL
-tensorboard --logdir=data/logs/rl
+tensorboard --logdir=data/experiments

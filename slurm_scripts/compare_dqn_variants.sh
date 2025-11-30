@@ -8,8 +8,8 @@ for p in "${priors[@]}"; do
 sbatch << EOF
 #!/bin/bash
 #SBATCH --job-name=radqn_${p}
-#SBATCH --output=data/experiments/${experiment_name}/relations_aware/radqn_${p}.%j.log
-#SBATCH --error=data/experiments/${experiment_name}/relations_aware/error_radqn_${p}.%j.log
+#SBATCH --output=data/experiments/${experiment_name}/out/radqn_${p}.%j.log
+#SBATCH --error=data/experiments/${experiment_name}/out/error_radqn_${p}.%j.log
 #SBATCH --ntasks=1
 #SBATCH --gres=gpu:1
 #SBATCH --time=16:00:00
@@ -28,8 +28,8 @@ sbatch << EOF
 #!/bin/bash
 
 #SBATCH --job-name=dqn_mlp_baseline                                           # Name of the job
-#SBATCH --output=data/experiments/${experiment_name}/baselines/dqn/train_baseline_mlp.%j.log            # Output file
-#SBATCH --error=data/experiments/${experiment_name}/baselines/dqn/error_train_baseline_mlp.%j.log       # Error file
+#SBATCH --output=data/experiments/${experiment_name}/out/dqn_nlp_baseline.%j.log            # Output file
+#SBATCH --error=data/experiments/${experiment_name}/out/dqn_nlp_baseline_error.%j.log       # Error file
 #SBATCH --ntasks=1                                                            # Number of tasks
 #SBATCH --gres=gpu:1                                                          # Request 1 GPU
 #SBATCH --time=8:00:00                                                       # Max wall time (HH:MM:SS)
@@ -46,8 +46,8 @@ sbatch << EOF
 #!/bin/bash
 
 #SBATCH --job-name=dqn_gnn_baseline                                           # Name of the job
-#SBATCH --output=data/experiments/${experiment_name}/baselines/dqn/train_baseline_gnn.%j.log            # Output file
-#SBATCH --error=data/experiments/${experiment_name}/baselines/dqn/error_train_baseline_gnn.%j.log       # Error file
+#SBATCH --output=data/experiments/${experiment_name}/out/dqn_gnn_baseline.%j.log            # Output file
+#SBATCH --error=data/experiments/${experiment_name}/out/dqn_gnn_baseline_error.%j.log       # Error file
 #SBATCH --ntasks=1                                                            # Number of tasks
 #SBATCH --gres=gpu:1                                                          # Request 1 GPU
 #SBATCH --time=8:00:00                                                       # Max wall time (HH:MM:SS)
