@@ -21,6 +21,7 @@ def get_env(cfg, env_name: Optional[str] = None) -> G2OpGymEnv:
     """
     env: G2OpGymEnv = G2OpGymEnv(
         cfg.env.training_env.env_name if env_name is None else env_name,
+        safe_max_rho=cfg.env.safe_max_rho,
         obs_space_creation=lambda e: instantiate(cfg.rl.obs_space, grid2op_observation_space=e.observation_space),
         act_space_creation=lambda e: instantiate(cfg.rl.act_space, grid2op_action_space=e.action_space)
     )
@@ -36,6 +37,7 @@ def get_env_mlp_baseline(cfg, env_name: Optional[str] = None) -> G2OpGymEnv:
     """
     env: G2OpGymEnv = G2OpGymEnv(
         cfg.env.training_env.env_name if env_name is None else env_name,
+        safe_max_rho=cfg.env.safe_max_rho,
         obs_space_creation=lambda e: BoxGymObsSpace(grid2op_observation_space=e.observation_space),
         act_space_creation=lambda e: instantiate(cfg.rl.act_space, grid2op_action_space=e.action_space)
     )
