@@ -470,3 +470,23 @@ def visualize_posterior(latent_edge_posterior: npt.NDArray, latent_edge_prior: n
     plt.title("Histogram of Latent Edge Probabilities (Prior & Posterior)")
 
     return fig
+
+def visualize_prior(latent_edge_prior: npt.NDArray, skip_last: bool = True) -> Figure:
+
+    if skip_last:
+        latent_edge_prior = latent_edge_prior[:, :1]
+
+    sns.set_theme(style="whitegrid", palette="muted", font_scale=1.2)
+    fig = plt.figure(figsize=(12, 7))
+    bins = np.arange(0, 1.05, 0.05)
+
+    data = pd.DataFrame({"value": latent_edge_prior.flatten()})
+
+    sns.histplot(data=data, x="value", bins=bins, multiple="layer")
+
+    plt.xlim((0, 1))
+    plt.xlabel("Probability")
+    plt.ylabel("Number of Edges")
+    plt.title("Histogram of Latent Edge Probabilities (Prior)")
+
+    return fig
