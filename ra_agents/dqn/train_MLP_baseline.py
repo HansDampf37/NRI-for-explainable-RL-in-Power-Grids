@@ -74,7 +74,7 @@ def main(cfg: DictConfig):
 
     # train
     algorithm.learn(total_timesteps=cfg.rl.train.timesteps, tb_log_name=name, log_interval=cfg.rl.train.log_interval)
-    algorithm.save(os.path.join(MODELS_PATH, group, name))
+    algorithm.save(os.path.join(MODELS_PATH, group, name, ".zip"))
 
     # evaluate
     topology_policy = Sb3DQNTopologyPolicy(algorithm)
