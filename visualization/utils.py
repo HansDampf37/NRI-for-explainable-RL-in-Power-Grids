@@ -171,7 +171,7 @@ def visualize_agent_survival_return_relationship(datasets: List[AgentMetrics]):
     plt.show()
 
 
-def get_evaluation_metrics(path, agent_name: str) -> AgentMetrics:
+def get_evaluation_metrics(path: Path, agent_name: str) -> AgentMetrics:
     survival_duration = []
     returns = []
     for folder in path.iterdir():
@@ -182,6 +182,39 @@ def get_evaluation_metrics(path, agent_name: str) -> AgentMetrics:
                 returns.append(episode_metadata["cumulative_reward"])
 
     return AgentMetrics(agent_name, returns, survival_duration)
+
+
+def get_training_progress(path: Path, agent_name: str) -> AgentMetrics:
+    returns = []
+    with path.open() as f:
+        df = pd.read_csv(f)
+        survival_duration = df["Value"].tolist()
+
+    return AgentMetrics(agent_name, returns, survival_duration)
+
+
+def display_training_progress(metrics: List[AgentMetrics], show: bool = True) -> Figure:
+    fig = plt.figure(figsize=(10, 5))
+    shortest_training_duration = min([len(metrics.survival_duration) for metrics in metrics])
+    xs = np.arange(shortest_training_duration)
+    for metric in metrics:
+        survival_duration = metric.survival_duration[:shortest_training_duration]
+        smooth_survival = smooth_curve(survival_duration)
+        plt.plot(xs, smooth_survival, label=metric.label)
+
+    plt.legend()
+    if show:
+        plt.show()
+
+    return fig
+
+
+def smooth_curve(curve: List[float] | npt.NDArray, alpha=0.1) -> npt.NDArray | List[float]:
+    smoothed = np.zeros_like(curve, dtype=float)
+    smoothed[0] = curve[0]
+    for i in range(1, len(curve)):
+        smoothed[i] = alpha * curve[i] + (1 - alpha) * smoothed[i-1]
+    return smoothed
 
 
 def visualize_graph(args: PlottingArgs) -> Figure:
