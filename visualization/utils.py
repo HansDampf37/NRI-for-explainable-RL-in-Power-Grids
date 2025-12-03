@@ -203,6 +203,11 @@ def display_training_progress(metrics: List[AgentMetrics], show: bool = True) ->
         plt.plot(xs, smooth_survival, label=metric.label)
 
     plt.legend()
+
+    plt.title("Survival Duration vs Steps")
+    plt.xlabel("Training Steps x 10^3")
+    plt.ylabel("Survival Duration")
+
     if show:
         plt.show()
 
