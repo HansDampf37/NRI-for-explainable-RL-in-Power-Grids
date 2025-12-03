@@ -106,5 +106,5 @@ def save_edge_probs(
         powerline_edge_index=env.reset()[0][EDGE_INDEX],
         latent_edge_probs=edge_probs,
     ))
-    figure.savefig(Path(save_path.parent, "latent_graph.png"))
+    figure.savefig(Path(save_path.parent, save_path.stem + "_latent_graph.png"))
     return edge_probs

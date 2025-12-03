@@ -9,12 +9,14 @@ NRI_DATASETS_PATH = Path("data/nri_datasets")
 EVAL_PATH = Path("data/evaluations")
 EDGE_PROBS_PATH = Path("data/edge_probs")
 
+_testing = False
+
 logger: logging.Logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 def set_experiment_name(experiment_name: Optional[str]):
     global LOGS_PATH, MODELS_PATH, NRI_DATASETS_PATH, EVAL_PATH, EDGE_PROBS_PATH
-    if experiment_name is not None:
+    if experiment_name is not None and not _testing:
         LOGS_PATH = Path("data/experiments", experiment_name, "logs")
         MODELS_PATH = Path("data/experiments", experiment_name, "models")
         NRI_DATASETS_PATH = Path("data/experiments", experiment_name, "nri_datasets")
@@ -23,6 +25,8 @@ def set_experiment_name(experiment_name: Optional[str]):
 
 
 def enable_test_mode():
+    global _testing
+    _testing = True
     global LOGS_PATH, MODELS_PATH, NRI_DATASETS_PATH, EVAL_PATH, EDGE_PROBS_PATH
     with tempfile.TemporaryDirectory() as tmpdir:
         LOGS_PATH = Path(tmpdir, "logs")
