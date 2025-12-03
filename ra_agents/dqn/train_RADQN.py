@@ -74,7 +74,6 @@ def main(cfg: DictConfig):
         tau_end=cfg.rl.dqn.sb3.tau_end,
         tensorboard_log=os.path.join(LOGS_PATH, group),
         plotting_args=plotting_args,
-        loss_fn=loss_fn,
         policy_kwargs=policy_kwargs,
         verbose=cfg.rl.dqn.sb3.verbose,
         train_freq=cfg.rl.dqn.sb3.train_freq,
@@ -88,6 +87,7 @@ def main(cfg: DictConfig):
         batch_size=cfg.rl.dqn.sb3.batch_size,
         learning_rate=cfg.rl.dqn.sb3.learning_rate,
     )
+    algorithm.set_loss_function(loss_fn)
 
     # pretrain and set encoder
     encoder1 = pretrain_encoder(cfg)

@@ -123,7 +123,7 @@ class RAGraphormerFeatureExtractor(RAFeatureExtractor):
             x_dim=x_dim,
             hidden_dim=hidden_dim,
             num_edge_types=num_edge_types,
-            num_layers=1,
+            num_layers=num_layers,
             max_degree=max_degree,
             max_path_distance=max_path_distance
         )

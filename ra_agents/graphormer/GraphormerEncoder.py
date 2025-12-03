@@ -25,7 +25,7 @@ class GraphormerNRIEncoder(nn.Module):
         """
         :param x_dim: input dimension of node features
         :param hidden_dim: hidden dimensions of node features
-        :param num_layers: number of graphormer layers
+        :param num_layers: number of graphormer layers (including the last layer)
         :param num_edge_types: number of attention heads
         :param max_degree: max in degree of nodes
         :param max_path_distance: max pairwise distance between two nodes
@@ -63,7 +63,7 @@ class GraphormerNRIEncoder(nn.Module):
                 node_dim=self.hidden_dim,
                 n_heads=self.num_edge_types,
                 ff_dim=self.ff_dim
-            ) for _ in range(self.num_layers)
+            ) for _ in range(self.num_layers - 1)
         ])
 
         # per edge type spatial encodings

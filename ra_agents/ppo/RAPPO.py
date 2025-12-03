@@ -13,13 +13,86 @@ from stable_baselines3.common.buffers import RolloutBuffer
 from stable_baselines3.common.distributions import Distribution
 from stable_baselines3.common.logger import TensorBoardOutputFormat
 from stable_baselines3.common.policies import ActorCriticPolicy
-from stable_baselines3.common.type_aliases import GymEnv, Schedule, PyTorchObs
+from stable_baselines3.common.type_aliases import GymEnv, Schedule, PyTorchObs, MaybeCallback
 from stable_baselines3.common.utils import explained_variance
+from stable_baselines3.ppo.ppo import SelfPPO
 from torch import Tensor
 
 from common.graph_structured_observation_space import GraphObservationSpace, BusConnectivityGraphObsSpace
 from visualization.utils import visualize_graph, PlottingArgs, visualize_posterior
 from ..RARL import RARL
+
+
+class RAPPOPolicy(ActorCriticPolicy):
+    """
+    This Policy is just like the ActorCriticPolicy with the difference that it also passes the predicted posterior edge types
+    """
+
+    def __init__(
+            self,
+            observation_space: BusConnectivityGraphObsSpace,
+            action_space: Discrete,
+            lr_schedule: Schedule,
+            **kwargs,
+    ):
+        share = kwargs.get("share_features_extractor", True)
+        if share is not True:
+            raise NotImplementedError("This Policy requires share_features_extractor=True")
+
+        super().__init__(
+            observation_space=observation_space,
+            action_space=action_space,
+            lr_schedule=lr_schedule,
+            **kwargs,
+        )
+
+    def forward(self, obs: PyTorchObs, deterministic: bool = False) -> tuple[Tensor, Tensor, Tensor]:
+        """
+        Forward pass in all the networks (actor and critic)
+
+        :param obs: Observation
+        :param deterministic: Whether to sample or use deterministic actions
+        :return: action, value and log probability of the action
+        """
+        # Preprocess the observation if needed
+        features, posterior_edge_types = self.extract_features(obs)
+        latent_pi, latent_vf = self.mlp_extractor(features)
+        # Evaluate the values for the given observations
+        values = self.value_net(latent_vf)
+        distribution = self._get_action_dist_from_latent(latent_pi)
+        actions = distribution.get_actions(deterministic=deterministic)
+        log_prob = distribution.log_prob(actions)
+        actions = actions.reshape((-1, *self.action_space.shape))  # type: ignore[misc]
+        return actions, values, log_prob
+
+    def get_distribution(self, obs: PyTorchObs) -> Distribution:
+        features, _ = super().extract_features(obs, self.pi_features_extractor)
+        latent_pi = self.mlp_extractor.forward_actor(features)
+        return self._get_action_dist_from_latent(latent_pi)
+
+    def predict_values(self, obs: PyTorchObs) -> Tensor:
+        features, _ = super().extract_features(obs, self.vf_features_extractor)
+        latent_vf = self.mlp_extractor.forward_critic(features)
+        return self.value_net(latent_vf)
+
+    def evaluate_actions(self, obs: PyTorchObs, actions: Tensor) -> tuple[Tensor, Tensor, Optional[Tensor]]:
+        # Preprocess the observation if needed
+        features, _ = self.extract_features(obs)
+        latent_pi, latent_vf = self.mlp_extractor(features)
+        distribution = self._get_action_dist_from_latent(latent_pi)
+        log_prob = distribution.log_prob(actions)
+        values = self.value_net(latent_vf)
+        entropy = distribution.entropy()
+        return values, log_prob, entropy
+
+    def get_edge_type_posterior(self, obs: PyTorchObs) -> Tensor:
+        """
+        RAPPO predicts type distributions for each edge of the fully connected graph such "exists" / "doesn't exist"
+        @param obs: the input
+        @return: edge type distributions [E, K]
+        """
+        _, edge_type_posterior = self.extract_features(obs)
+        return edge_type_posterior
 
 
 class RAPPO(PPO, RARL):
@@ -30,7 +103,7 @@ class RAPPO(PPO, RARL):
 
     def __init__(self,
                  env: Union[GymEnv, str],
-                 prior: Tensor,
+                 policy: type[RAPPOPolicy] = RAPPOPolicy,
                  plotting_args: Optional[PlottingArgs] = None,
                  learning_rate: Union[float, Schedule] = 3e-4,
                  n_steps: int = 2048,
@@ -60,11 +133,10 @@ class RAPPO(PPO, RARL):
         """
         Constructor.
         @param env: the environment
-        @param prior: tensor of shape [E, K] containing prior distributions that the posterior edge type distributions will be pushed towards.
         @param kl_coef: the weight of the KL term in the objective
         """
         super().__init__(
-            RAPPOPolicy,
+            policy,
             env,
             learning_rate,
             n_steps,
@@ -90,9 +162,9 @@ class RAPPO(PPO, RARL):
             seed,
             device,
             _init_setup_model)
-        assert isinstance(env.observation_space, GraphObservationSpace), "RADQN requires a graph observation space"
+        assert env is None or isinstance(env.observation_space, GraphObservationSpace), "RAPPO requires a graph observation space"
         self.plotting_args = plotting_args
-        self.prior = prior.to(device=self.device, dtype=torch.float32)
+        self.prior: Optional[Tensor] = None
         self.kl_coef = kl_coef
         self.eps = 1e-10
         if seed is not None:
@@ -181,7 +253,8 @@ class RAPPO(PPO, RARL):
                 # compute loss
                 ppo_loss = policy_loss + self.ent_coef * entropy_loss + self.vf_coef * value_loss
                 # Combine loss terms
-                kl_weight = ppo_loss.detach().abs() * self.kl_coef # scale the weight with ppo magnitude to prevent overshadowing
+                # kl_weight = ppo_loss.detach().abs() * self.kl_coef  # scale the weight with ppo magnitude to prevent overshadowing
+                kl_weight = self.kl_coef
                 total_loss = ppo_loss + kl_weight * kl_loss
 
                 # Calculate approximate form of reverse KL Divergence for early stopping
@@ -241,85 +314,26 @@ class RAPPO(PPO, RARL):
             var_posterior = np.stack(var_posteriors, axis=0)
 
             writer.add_histogram("latent_edges/mean posterior", mean_posterior[:, :-1], global_step=self.num_timesteps)
-            writer.add_histogram("latent_edges/variance posterior", var_posterior[:, :, :-1], global_step=self.num_timesteps)
+            writer.add_histogram("latent_edges/variance posterior", var_posterior[:, :, :-1],
+                                 global_step=self.num_timesteps)
             hist_image = visualize_posterior(mean_posterior, self.prior.detach().cpu().numpy())
             writer.add_figure("latent_edges/posterior_vs_prior", hist_image, global_step=self.num_timesteps)
             if self.plotting_args is not None:
-                self.plotting_args.latent_edge_probs = np.mean(mean_posteriors, axis=0) # mean over iterations -> [E, K]
+                self.plotting_args.latent_edge_probs = np.mean(mean_posteriors,
+                                                               axis=0)  # mean over iterations -> [E, K]
                 mean_latent_edges_image = visualize_graph(self.plotting_args)
                 writer.add_figure("latent_edges/latent-edges", mean_latent_edges_image, global_step=self.num_timesteps)
 
     def get_edge_type_posterior(self, obs: Union[np.ndarray, dict[str, np.ndarray]]) -> Tensor:
         return self.policy.get_edge_type_posterior(self.policy.obs_to_tensor(obs)[0])
 
+    def learn(self: SelfPPO, total_timesteps: int, callback: MaybeCallback = None, log_interval: int = 1,
+              tb_log_name: str = "PPO", reset_num_timesteps: bool = True, progress_bar: bool = False) -> SelfPPO:
+        assert self.prior is not None
+        return super().learn(total_timesteps, callback, log_interval, tb_log_name, reset_num_timesteps, progress_bar)
 
-class RAPPOPolicy(ActorCriticPolicy):
-    """
-    This Policy is just like the ActorCriticPolicy with the difference that it also passes the predicted posterior edge types
-    """
-
-    def __init__(
-        self,
-        observation_space: BusConnectivityGraphObsSpace,
-        action_space: Discrete,
-        lr_schedule: Schedule,
-        **kwargs,
-    ):
-        share = kwargs.get("share_features_extractor", True)
-        if share is not True:
-            raise NotImplementedError("This Policy requires share_features_extractor=True")
-
-        super().__init__(
-            observation_space=observation_space,
-            action_space=action_space,
-            lr_schedule=lr_schedule,
-            **kwargs,
-        )
-
-    def forward(self, obs: PyTorchObs, deterministic: bool = False) -> tuple[Tensor, Tensor, Tensor]:
+    def set_prior(self, prior: Tensor):
         """
-        Forward pass in all the networks (actor and critic)
-
-        :param obs: Observation
-        :param deterministic: Whether to sample or use deterministic actions
-        :return: action, value and log probability of the action
+        @param prior: tensor of shape [E, K] containing prior distributions that the posterior edge type distributions will be pushed towards.
         """
-        # Preprocess the observation if needed
-        features, posterior_edge_types = self.extract_features(obs)
-        latent_pi, latent_vf = self.mlp_extractor(features)
-        # Evaluate the values for the given observations
-        values = self.value_net(latent_vf)
-        distribution = self._get_action_dist_from_latent(latent_pi)
-        actions = distribution.get_actions(deterministic=deterministic)
-        log_prob = distribution.log_prob(actions)
-        actions = actions.reshape((-1, *self.action_space.shape))  # type: ignore[misc]
-        return actions, values, log_prob
-
-    def get_distribution(self, obs: PyTorchObs) -> Distribution:
-        features, _ = super().extract_features(obs, self.pi_features_extractor)
-        latent_pi = self.mlp_extractor.forward_actor(features)
-        return self._get_action_dist_from_latent(latent_pi)
-
-    def predict_values(self, obs: PyTorchObs) -> Tensor:
-        features, _ = super().extract_features(obs, self.vf_features_extractor)
-        latent_vf = self.mlp_extractor.forward_critic(features)
-        return self.value_net(latent_vf)
-
-    def evaluate_actions(self, obs: PyTorchObs, actions: Tensor) -> tuple[Tensor, Tensor, Optional[Tensor]]:
-        # Preprocess the observation if needed
-        features, _ = self.extract_features(obs)
-        latent_pi, latent_vf = self.mlp_extractor(features)
-        distribution = self._get_action_dist_from_latent(latent_pi)
-        log_prob = distribution.log_prob(actions)
-        values = self.value_net(latent_vf)
-        entropy = distribution.entropy()
-        return values, log_prob, entropy
-
-    def get_edge_type_posterior(self, obs: PyTorchObs) -> Tensor:
-        """
-        RAPPO predicts type distributions for each edge of the fully connected graph such "exists" / "doesn't exist"
-        @param obs: the input
-        @return: edge type distributions [E, K]
-        """
-        _, edge_type_posterior = self.extract_features(obs)
-        return edge_type_posterior
+        self.prior = prior.to(device=self.device, dtype=torch.float32)

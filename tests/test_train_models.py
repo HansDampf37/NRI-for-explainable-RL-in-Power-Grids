@@ -5,17 +5,17 @@ from pathlib import Path
 
 import hydra
 import numpy as np
-from grid2op.Agent import TopologyGreedy, DoNothingAgent
+from grid2op.Agent import DoNothingAgent
 
 from common.constants import enable_test_mode
 from common.graph_structured_observation_space import NODES
 from nri.create_dataset import generate_dataset
 from nri.train_nri import main as train_nri
-from nri.utils import get_env
-from ra_agents.dqn import train_gnn_baseline as train_gnn_dqn_baseline
+from nri.utils import get_env, prior_from_env
+from ra_agents.dqn import train_gnn_baseline as train_gnn_dqn_baseline, RADQN, HuberKLLoss
 from ra_agents.dqn import train_mlp_baseline as train_mlp_dqn_baseline
 from ra_agents.dqn import train_relations_aware_dqn
-from ra_agents.ppo import train_gnn_baseline
+from ra_agents.ppo import train_gnn_baseline, RAPPO
 from ra_agents.ppo import train_mlp_baseline
 from ra_agents.ppo import train_relations_aware_ppo
 
@@ -138,3 +138,17 @@ class TestTrainingFunctions(unittest.TestCase):
         self._assert_dir_not_empty(EDGE_PROBS_PATH)
         self._assert_dir_not_empty(MODELS_PATH)
         self._assert_dir_not_empty(LOGS_PATH)
+
+    def test_load_relations_aware_ppo(self):
+        cfg = self._setup_cfg()
+        # assure loading the algorithm works
+        rappo = RAPPO.load("tests/resources/rappo.zip")
+        rappo.set_prior(prior_from_env(1.0, get_env(cfg)))
+
+    def test_load_relations_aware_dqn(self):
+        cfg = self._setup_cfg()
+        # assure loading the algorithm works
+        radqn = RADQN.load("tests/resources/radqn.zip")
+        radqn.set_loss_function(HuberKLLoss(prior_from_env(1.0, get_env(cfg))))
+
+

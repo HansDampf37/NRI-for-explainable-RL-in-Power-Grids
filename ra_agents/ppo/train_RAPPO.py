@@ -68,7 +68,6 @@ def main(cfg: DictConfig):
     # create algorithm
     algorithm = RAPPO(
         plotting_args=plotting_args,
-        prior=prior,
         env=env,
         verbose=cfg.rl.ppo.sb3.verbose,
         learning_rate=cfg.rl.ppo.sb3.learning_rate,
@@ -88,6 +87,7 @@ def main(cfg: DictConfig):
         tensorboard_log=os.path.join(LOGS_PATH, group),
         policy_kwargs=policy_kwargs,
     )
+    algorithm.set_prior(prior)
 
     # pretrain and set encoder
     encoder = pretrain_encoder(cfg)
