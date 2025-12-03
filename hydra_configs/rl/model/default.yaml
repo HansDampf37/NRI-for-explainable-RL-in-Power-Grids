@@ -1,11 +1,11 @@
 net_arch: [ 256, 256, 256 ]
-prior_for_graph_edges_existing: 0.5
+prior_for_graph_edges_existing: 0.9
 temperature: 0.2
-name_suffix: 0.5
+name_suffix: 0.9
 use_graphormer: true
 features_extractor_kwargs:
-    hidden_dim: 16
-    out_dim: 256
+    hidden_dim: 64
+    out_dim: 64
     num_edge_types: 2
     num_layers: 2
     dropout_prob: 0
