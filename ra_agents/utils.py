@@ -60,6 +60,7 @@ def evaluate(algorithm: BaseAlgorithm, topology_policy: TopologyPolicy, env_crea
         agent = BaselineAgent(
             env_dataset._g2op_env.action_space,
             topology_policy,
+            k=cfg.env.agent_k,
             safe_max_rho=cfg.env.safe_max_rho,
         )
         evaluate_agent(
