@@ -17,8 +17,6 @@ from torch import Tensor
 from torch.utils.data import DataLoader, TensorDataset, Dataset
 from tqdm import tqdm
 
-from common.graph_structured_observation_space import EDGE_INDEX
-from visualization import visualize_graph, PlottingArgs, get_node_styles
 from .NRI import NRIModule
 
 logger = logging.getLogger(__name__)
