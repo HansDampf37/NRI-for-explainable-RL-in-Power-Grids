@@ -33,6 +33,8 @@ class MazeRLReward(BaseReward):
 class BaseWithBonus(BaseReward):
     def __init__(self):
         super().__init__()
+        self.min_reward = -300
+        self.max_reward = 500
         self.base_reward = L2RPNReward()
 
     def __call__(self, action: BaseAction, env: BaseEnv, has_error: bool, is_done: bool, is_illegal: bool, is_ambiguous: bool) -> float:
