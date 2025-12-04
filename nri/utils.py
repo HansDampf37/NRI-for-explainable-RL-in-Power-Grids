@@ -25,6 +25,7 @@ def get_env(cfg: DictConfig, env_name: Optional[str] = None) -> G2OpGymEnv:
     env: G2OpGymEnv = G2OpGymEnv(
         cfg.env.training_env.env_name if env_name is None else env_name,
         obs_space_creation=lambda e: instantiate(cfg.nri.dataset_creation.obs_space, grid2op_observation_space=e.observation_space),
+        safe_max_rho=cfg.env.safe_max_rho
     )
     return env
 
