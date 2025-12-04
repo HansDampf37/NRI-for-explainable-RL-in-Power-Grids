@@ -1,13 +1,24 @@
 import logging
 import tempfile
 from pathlib import Path
+import random
 from typing import Optional
+
+import numpy as np
+import torch
 
 LOGS_PATH = Path("data/logs")
 MODELS_PATH = Path("data/models")
 NRI_DATASETS_PATH = Path("data/nri_datasets")
 EVAL_PATH = Path("data/evaluations")
 EDGE_PROBS_PATH = Path("data/edge_probs")
+
+SEED = 42
+random.seed(SEED)
+np.random.seed(SEED)
+torch.manual_seed(SEED)
+torch.cuda.manual_seed(SEED)
+torch.cuda.manual_seed_all(SEED)
 
 _testing = False
 

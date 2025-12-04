@@ -9,7 +9,8 @@ from gymnasium import Env
 from l2rpn_baselines.utils import GymEnvWithRecoWithDN
 from lightsim2grid import LightSimBackend
 
-from .rewards import MazeRLReward
+from .constants import SEED
+from .rewards import BaseWithBonus
 
 
 class G2OpGymEnv(Env):
@@ -25,7 +26,8 @@ class G2OpGymEnv(Env):
                  env_name: str = "l2rpn_case14_sandbox",
                  safe_max_rho: float = 0.95,
                  act_space_creation=lambda env: DiscreteActSpace(env.action_space, attr_to_keep=["set_bus"]),
-                 obs_space_creation=lambda env: BoxGymObsSpace(grid2op_observation_space=env.observation_space, attr_to_keep=["rho", "p_or", "gen_p", "load_p"])):
+                 obs_space_creation=lambda env: BoxGymObsSpace(grid2op_observation_space=env.observation_space, attr_to_keep=["rho", "p_or", "gen_p", "load_p"]),
+                 seed: int = SEED):
         """
         Constructor.
         @param env_name: the name of the grid2op environment
@@ -35,7 +37,8 @@ class G2OpGymEnv(Env):
         """
         super().__init__()
         # create env
-        self._g2op_env = grid2op.make(env_name, backend=LightSimBackend(), reward_class=MazeRLReward)
+        self._g2op_env = grid2op.make(env_name, backend=LightSimBackend(), reward_class=BaseWithBonus)
+        self._g2op_env.seed(seed)
         self._gym_env = GymEnvWithRecoWithDN(self._g2op_env, safe_max_rho=safe_max_rho, with_forecast=True)
 
         # create observation space
@@ -43,12 +46,14 @@ class G2OpGymEnv(Env):
         self._gym_env.observation_space = obs_space_creation(self._g2op_env)
         self.observation_space = self._gym_env.observation_space
         self.g2op_observation_space = self._g2op_env.observation_space
+        self.observation_space.seed(seed)
 
         # create action space
         self._gym_env.action_space.close()
         self._gym_env.action_space = act_space_creation(self._g2op_env)
         self.action_space = self._gym_env.action_space
         self.g2op_action_space = self._g2op_env.action_space
+        self.action_space.seed(seed)
 
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
         return self._gym_env.reset(seed=seed, options=options)
