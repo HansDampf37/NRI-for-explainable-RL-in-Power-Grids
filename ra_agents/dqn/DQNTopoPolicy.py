@@ -1,4 +1,4 @@
-from typing import List, Dict
+from typing import List
 
 import numpy as np
 import torch
@@ -30,21 +30,14 @@ class Sb3DQNTopologyPolicy(TopologyPolicy):
     def get_k_best_actions(self, observation: BaseObservation, k: int = 3) -> List[TopologySetAction]:
         # Convert observation to a tensor
         gym_obs = self.dqn.observation_space.to_gym(observation)
-        if isinstance(gym_obs, np.ndarray):
-            obs_batch = torch.from_numpy(gym_obs).unsqueeze(0).to(dtype=torch.float32, device=self.dqn.device)
-        elif isinstance(gym_obs, Dict):
-            obs_batch = {}
-            for key, value in gym_obs.items():
-                obs_batch[key] = torch.from_numpy(value).unsqueeze(0).to(dtype=torch.float32, device=self.dqn.device)
-        else:
-            raise NotImplementedError(f"Unknown gym obs type {gym_obs.__class__.__name__}")
+        obs_tensor, _ = self.dqn.policy.obs_to_tensor(gym_obs)
 
         # Get Q-values for each action
         with torch.no_grad():
             if isinstance(self.dqn.policy.q_net, RAQNetwork):
-                q_values, _ = self.dqn.policy.q_net.forward(obs_batch)
+                q_values, _ = self.dqn.policy.q_net.forward(obs_tensor)
             else:
-                q_values = self.dqn.policy.q_net.forward(obs_batch)
+                q_values = self.dqn.policy.q_net.forward(obs_tensor)
             q_values = q_values.squeeze().cpu().numpy()
         # Get the indices of the top k actions based on their Q-values
         top_k_indices = np.argsort(q_values)[-k:]  # Sort in descending order
