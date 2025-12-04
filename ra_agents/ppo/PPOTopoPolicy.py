@@ -1,4 +1,4 @@
-from typing import List, Dict
+from typing import List
 
 import numpy as np
 import torch
@@ -29,21 +29,15 @@ class Sb3PPOTopologyPolicy(TopologyPolicy):
     def get_k_best_actions(self, observation: BaseObservation, k: int = 3) -> List[TopologySetAction]:
         # Convert observation to a tensor
         gym_obs = self.ppo.observation_space.to_gym(observation)
-        if isinstance(gym_obs, np.ndarray):
-            obs_batch = torch.from_numpy(gym_obs).unsqueeze(0).to(dtype=torch.float32, device=self.ppo.device)
-        elif isinstance(gym_obs, Dict):
-            obs_batch = {}
-            for key, value in gym_obs.items():
-                obs_batch[key] = torch.from_numpy(value).unsqueeze(0).to(dtype=torch.float32, device=self.ppo.device)
-        else:
-            raise NotImplementedError(f"Unknown gym obs type {gym_obs.__class__.__name__}")
+        obs_tensor, _ = self.ppo.policy.obs_to_tensor(gym_obs)
 
         # Get action probs for each action
         with torch.no_grad():
-            action_probs = self.ppo.policy.get_distribution(obs_batch).distribution.probs
+            action_probs = self.ppo.policy.get_distribution(obs_tensor).distribution.probs
             action_probs = action_probs.squeeze().cpu().numpy()
+
         # Get the indices of the top k actions based on their probabilities
-        top_k_indices = np.argsort(action_probs)[-k:]  # Sort in descending order
-        top_k_actions = [self.ppo.action_space.from_gym(idx) for idx in top_k_indices]
+        top_k_indices = np.argsort(action_probs)[-k:]  # Sort and pick best k
+        top_k_actions = [self.ppo.action_space.from_gym(idx) for idx in top_k_indices] # transform to grid2op format
 
         return top_k_actions

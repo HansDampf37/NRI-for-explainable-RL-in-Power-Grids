@@ -103,7 +103,7 @@ class BusConnectivityGraphObsSpace(GraphObservationSpace):
             self.normalization_max = None
 
         super().__init__({
-            NODES: Box(low=-np.inf, high=np.inf, shape=(num_node, x_dim)),
+            NODES: Box(low=-np.inf, high=np.inf, shape=(num_node, x_dim), dtype=np.float32),
             EDGE_INDEX: Box(low=0, high=1, shape=(2, max_n_edge), dtype=np.int64),
             EDGE_MASK: Box(low=0, high=1, shape=(max_n_edge,), dtype=np.bool),
             GLOBAL: Box(low=-np.inf, high=np.inf, shape=(global_dim, )),
@@ -203,8 +203,8 @@ class BusConnectivityGraphObsSpace(GraphObservationSpace):
             rho,
         ]
 
-        node_features = np.array(features).transpose().astype(np.float32)
-        return self.normalize(node_features)
+        node_features = np.array(features).transpose()
+        return self.normalize(node_features).astype(np.float32)
 
     def normalize(self, node_features: np.ndarray) -> np.ndarray:
         if self.normalization_max is None:
