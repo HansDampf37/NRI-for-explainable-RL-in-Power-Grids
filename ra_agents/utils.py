@@ -78,6 +78,8 @@ def evaluate(algorithm: BaseAlgorithm, topology_policy: TopologyPolicy, env_crea
         )
 
     metrics_agent = [get_evaluation_metrics(Path(path_results, "agent", dataset), dataset) for dataset in ["train", "test", "val"]]
+    metrics_agent += [get_evaluation_metrics(Path("data/evaluations/heuristic_agents/reco_powerline_agent/train"), "Reconnect Powerline")]
+    metrics_agent += [get_evaluation_metrics(Path("data/evaluations/heuristic_agents/do_nothing_agent/train"), "Do Nothing")]
     metrics_topo_policy = [get_evaluation_metrics(Path(path_results, "rl_algorithm", dataset), dataset) for dataset in ["train", "test", "val"]]
     visualize_agent_survival(metrics_agent, Path(path_results, "agent_summary.png"), show=False)
     visualize_agent_survival(metrics_topo_policy, Path(path_results, "rl_algorithm_summary.png"), show=False)

@@ -19,8 +19,7 @@ def evaluate(cfg: DictConfig):
     """
     for dataset in ["train", "test", "val"]:
         env = grid2op.make(f"{cfg.env.name}_{dataset}", backend=LightSimBackend(), reward_class=MazeRLReward)
-        for agent, name in zip([RecoPowerlineAgent(env.action_space), DoNothingAgent(env.action_space)],
-                         ["reco_powerline_agent", "do_nothing_agent"]):
+        for agent, name in zip([RecoPowerlineAgent(env.action_space), DoNothingAgent(env.action_space)], ["reco_powerline_agent", "do_nothing_agent"]):
             evaluate_agent(
                 agent=agent,
                 env=env,
