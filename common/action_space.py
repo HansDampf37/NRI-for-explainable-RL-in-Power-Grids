@@ -48,7 +48,7 @@ class ReducedActionSpace_(ReducedActionSpace):
         """
         allowed_actions = load_actions(path, grid2op_action_space)
         do_nothing_action = grid2op_action_space({})
-        allowed_actions.append(do_nothing_action)
+        allowed_actions.insert(0, do_nothing_action)
         super().__init__(allowed_actions)
 
 
