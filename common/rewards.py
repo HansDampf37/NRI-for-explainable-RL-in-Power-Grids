@@ -1,7 +1,7 @@
 import numpy as np
 from grid2op.Action import BaseAction
 from grid2op.Environment import BaseEnv
-from grid2op.Reward import BaseReward
+from grid2op.Reward import BaseReward, L2RPNReward
 
 
 class MazeRLReward(BaseReward):
@@ -28,3 +28,18 @@ class MazeRLReward(BaseReward):
         else:
             res = self.reward_min
         return res
+
+
+class BaseWithBonus(BaseReward):
+    def __init__(self):
+        super().__init__()
+        self.base_reward = L2RPNReward()
+
+    def __call__(self, action: BaseAction, env: BaseEnv, has_error: bool, is_done: bool, is_illegal: bool, is_ambiguous: bool) -> float:
+        if not env.done:
+            return self.base_reward(action, env, has_error, is_done, is_illegal, is_ambiguous)
+        elif env.max_episode_duration() == env.nb_time_step:
+            return 500
+        else:
+            return -300
+
