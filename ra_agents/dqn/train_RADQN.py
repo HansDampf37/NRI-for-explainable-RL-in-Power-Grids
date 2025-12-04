@@ -6,7 +6,7 @@ import hydra
 import torch
 from omegaconf import DictConfig, OmegaConf
 
-from common.constants import set_experiment_name, logger
+from common.constants import set_experiment_name, logger, SEED
 from common.graph_structured_observation_space import EDGE_INDEX, BusConnectivityGraphObsSpace
 from nri.utils import prior_from_env
 from visualization.utils import PlottingArgs, get_node_styles
@@ -86,6 +86,7 @@ def main(cfg: DictConfig):
         buffer_size=cfg.rl.dqn.sb3.buffer_size,
         batch_size=cfg.rl.dqn.sb3.batch_size,
         learning_rate=cfg.rl.dqn.sb3.learning_rate,
+        seed=SEED,
     )
     algorithm.set_loss_function(loss_fn)
 

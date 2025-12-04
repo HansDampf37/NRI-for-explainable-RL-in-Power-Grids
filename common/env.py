@@ -56,7 +56,7 @@ class G2OpGymEnv(Env):
         self.action_space.seed(seed)
 
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
-        return self._gym_env.reset(seed=seed, options=options)
+        return self._gym_env.reset(options=options) # dont pass the seed since grid2op's GymEnv doesn't support seeding although its method suggest it
 
     def step(self, action):
         return self._gym_env.step(action)

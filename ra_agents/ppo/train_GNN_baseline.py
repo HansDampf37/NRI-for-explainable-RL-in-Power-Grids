@@ -6,7 +6,7 @@ import hydra
 from omegaconf import DictConfig, OmegaConf
 from stable_baselines3 import PPO
 
-from common.constants import set_experiment_name, logger
+from common.constants import set_experiment_name, logger, SEED
 from .PPOTopoPolicy import Sb3PPOTopologyPolicy
 from ..RAFeatureExtractor import BaselineFeatureExtractorSB3
 from ..utils import get_env, evaluate
@@ -62,6 +62,7 @@ def main(cfg: DictConfig):
         sde_sample_freq=cfg.rl.ppo.sb3.sde_sample_freq,
         tensorboard_log=os.path.join(LOGS_PATH, group),
         policy_kwargs=policy_kwargs,
+        seed=SEED,
     )
 
     # train

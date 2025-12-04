@@ -6,7 +6,7 @@ import hydra
 from omegaconf import DictConfig, OmegaConf
 from stable_baselines3 import PPO
 
-from common.constants import set_experiment_name, logger
+from common.constants import set_experiment_name, logger, SEED
 from .PPOTopoPolicy import Sb3PPOTopologyPolicy
 from ..utils import get_env_mlp_baseline, evaluate
 
@@ -49,7 +49,8 @@ def main(cfg: DictConfig):
         tensorboard_log=os.path.join(LOGS_PATH, group),
         policy_kwargs={
             "net_arch": cfg.rl.ppo.sb3.policy_kwargs.net_arch,
-        }
+        },
+        seed=SEED
     )
 
     # train

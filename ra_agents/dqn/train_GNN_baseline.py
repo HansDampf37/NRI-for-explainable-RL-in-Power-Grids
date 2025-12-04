@@ -6,7 +6,7 @@ import hydra
 from omegaconf import DictConfig, OmegaConf
 from stable_baselines3 import DQN
 
-from common.constants import set_experiment_name, logger
+from common.constants import set_experiment_name, logger, SEED
 from .DQNTopoPolicy import Sb3DQNTopologyPolicy
 from .SoftmaxDQN import SoftmaxDQN
 from ..RAFeatureExtractor import BaselineFeatureExtractorSB3
@@ -61,6 +61,7 @@ def main(cfg: DictConfig):
             buffer_size=cfg.rl.dqn.sb3.buffer_size,
             batch_size=cfg.rl.dqn.sb3.batch_size,
             learning_rate=cfg.rl.dqn.sb3.learning_rate,
+            seed=SEED,
         )
     else:
         algorithm = DQN(
@@ -79,6 +80,7 @@ def main(cfg: DictConfig):
             buffer_size=cfg.rl.dqn.sb3.buffer_size,
             batch_size=cfg.rl.dqn.sb3.batch_size,
             learning_rate=cfg.rl.dqn.sb3.learning_rate,
+            seed=SEED,
         )
 
     # train
