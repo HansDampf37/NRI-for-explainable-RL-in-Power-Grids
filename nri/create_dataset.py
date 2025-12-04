@@ -16,9 +16,9 @@ from lightsim2grid import LightSimBackend
 from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 
-from common.constants import logger, set_experiment_name
+from common.constants import logger, set_experiment_name, SEED
 from common.graph_structured_observation_space import EDGE_INDEX, EDGE_MASK, GraphObservationSpace
-from common.rewards import MazeRLReward
+from common.rewards import BaseWithBonus
 
 
 class AgentFailsEarly(Exception):
@@ -103,13 +103,15 @@ def main(cfg: DictConfig):
     set_experiment_name(cfg.experiment_name)
     from common.constants import NRI_DATASETS_PATH
     # create env + observation space
-    env_train = grid2op.make(cfg.nri.dataset_creation.env_name + "_train", backend=LightSimBackend(), reward_class=MazeRLReward)
-    env_test = grid2op.make(cfg.nri.dataset_creation.env_name + "_test", backend=LightSimBackend(), reward_class=MazeRLReward)
-    env_val = grid2op.make(cfg.nri.dataset_creation.env_name + "_val", backend=LightSimBackend(), reward_class=MazeRLReward)
+    env_train = grid2op.make(cfg.nri.dataset_creation.env_name + "_train", backend=LightSimBackend(), reward_class=BaseWithBonus)
+    env_test = grid2op.make(cfg.nri.dataset_creation.env_name + "_test", backend=LightSimBackend(), reward_class=BaseWithBonus)
+    env_val = grid2op.make(cfg.nri.dataset_creation.env_name + "_val", backend=LightSimBackend(), reward_class=BaseWithBonus)
+    [env.seed(SEED) for env in [env_train, env_test, env_val]]
     observation_converter: GraphObservationSpace = instantiate(
         cfg.nri.dataset_creation.obs_space,
         grid2op_observation_space=env_train.observation_space
     )
+    observation_converter.seed(SEED)
 
     # create agent
     if cfg.nri.dataset_creation.agent == 'random':
