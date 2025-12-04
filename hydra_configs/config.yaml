@@ -8,4 +8,4 @@ experiment_name: compare_ppo_local_2
 
 hydra:
     run:
-        dir: data/output/${now:%Y-%m-%d_%H-%M-%S}
+        dir: data/experiments/${experiment_name}/hydra/${now:%Y-%m-%d_%H-%M-%S}

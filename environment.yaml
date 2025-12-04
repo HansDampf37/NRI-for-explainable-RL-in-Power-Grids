@@ -171,7 +171,6 @@ dependencies:
   - python-json-logger=2.0.7=pyhd8ed1ab_0
   - python-tzdata=2025.2=pyhd8ed1ab_0
   - python_abi=3.12=8_cp312
-  - pytorch=2.6.0=cpu_generic_py312_h1c73833_0
   - pytz=2025.2=pyhd8ed1ab_0
   - pyyaml=6.0.2=py312h178313f_2
   - pyzmq=27.1.0=py312hfb55c3c_0
