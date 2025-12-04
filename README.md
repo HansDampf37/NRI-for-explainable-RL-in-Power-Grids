@@ -42,6 +42,14 @@ python setup_envs.py
 ```
 Now your home directory (under linux, for other os I don't know) will contain the powergrid data used in the episodes.
 Furthermore, it is split into training, testing, and validation episodes.
+
+## Train a model
+Training scripts are located under `training_scripts`. To train a relations aware PPO, run:
+```commandline
+PYTHONPATH=$(pwd) python training_scripts/train_relations_aware_ppo.py
+```
+Similarly, the other scripts can be run.
+To adapt parameters explore the `hydra_configs`-folder
 # Project
 This project contains the following packages:
 - **common**: Code that is needed by various packages
