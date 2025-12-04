@@ -8,15 +8,15 @@ from omegaconf import DictConfig
 from torch import Tensor, nn
 from torch_geometric.utils import dense_to_sparse
 
-from common.env import G2OpGymEnv
+from common.env import G2OpGymEnv, CustomMonitor
 from common.graph_structured_observation_space import  GraphObservationSpace, EDGE_INDEX
 from common.MLP import MLP
 from common.constants import logger
 
 
-def get_env(cfg: DictConfig, env_name: Optional[str] = None) -> G2OpGymEnv:
+def get_env(cfg: DictConfig, env_name: Optional[str] = None) -> CustomMonitor:
     """
-    Creates a Grid2opWrapperEnvironment with fitting action and observation spaces from hydra config.
+    Creates a G2OpEnv wrapped in a monitor with fitting action and observation spaces from hydra config.
 
     :param cfg: The hydra config
     :param env_name: Optional override for the environment name
@@ -27,7 +27,7 @@ def get_env(cfg: DictConfig, env_name: Optional[str] = None) -> G2OpGymEnv:
         obs_space_creation=lambda e: instantiate(cfg.nri.dataset_creation.obs_space, grid2op_observation_space=e.observation_space),
         safe_max_rho=cfg.env.safe_max_rho
     )
-    return env
+    return CustomMonitor(env)
 
 def fully_connected_edge_index(num_nodes: int, device: str = "cpu", self_loops: bool = False) -> Tensor:
     """

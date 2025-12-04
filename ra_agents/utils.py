@@ -7,11 +7,11 @@ from omegaconf import DictConfig
 from stable_baselines3.common.base_class import BaseAlgorithm
 
 from common.baseline_agent import BaselineAgent, evaluate_agent, evaluate_sb3_alg, TopologyPolicy
-from common.env import G2OpGymEnv
+from common.env import G2OpGymEnv, CustomMonitor
 from visualization import get_evaluation_metrics, visualize_agent_survival
 
 
-def get_env(cfg, env_name: Optional[str] = None) -> G2OpGymEnv:
+def get_env(cfg, env_name: Optional[str] = None) -> CustomMonitor:
     """
     Creates a Grid2opWrapperEnvironment with fitting action and observation spaces from hydra config.
 
@@ -25,9 +25,9 @@ def get_env(cfg, env_name: Optional[str] = None) -> G2OpGymEnv:
         obs_space_creation=lambda e: instantiate(cfg.rl.obs_space, grid2op_observation_space=e.observation_space),
         act_space_creation=lambda e: instantiate(cfg.rl.act_space, grid2op_action_space=e.action_space)
     )
-    return env
+    return CustomMonitor(env)
 
-def get_env_mlp_baseline(cfg, env_name: Optional[str] = None) -> G2OpGymEnv:
+def get_env_mlp_baseline(cfg, env_name: Optional[str] = None) -> CustomMonitor:
     """
     Creates a Grid2opWrapperEnvironment with fitting action and observation spaces from hydra config.
 
@@ -41,7 +41,7 @@ def get_env_mlp_baseline(cfg, env_name: Optional[str] = None) -> G2OpGymEnv:
         obs_space_creation=lambda e: BoxGymObsSpace(grid2op_observation_space=e.observation_space),
         act_space_creation=lambda e: instantiate(cfg.rl.act_space, grid2op_action_space=e.action_space)
     )
-    return env
+    return CustomMonitor(env)
 
 
 def evaluate(algorithm: BaseAlgorithm, topology_policy: TopologyPolicy, env_creation, path_results: Path, cfg: DictConfig):
