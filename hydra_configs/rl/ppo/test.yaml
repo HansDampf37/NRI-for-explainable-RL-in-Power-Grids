@@ -1,5 +1,5 @@
 sb3:
-    _target_: ra_agents/ppo/RAPPO/RAPPO
+    _target_: src.ra_agents.ppo.RAPPO.RAPPO
     verbose: 1
     learning_rate: 0.0001
     n_steps: 2  # number of steps to run per update

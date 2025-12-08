@@ -3,6 +3,6 @@ safe_max_rho: 0.95
 agent_k: 3
 
 training_env:
-  _target_: common.env.G2OpGymEnv
+  _target_: src.common.env.G2OpGymEnv
   env_name: "${env.name}_train"
   safe_max_rho: ${env.safe_max_rho}

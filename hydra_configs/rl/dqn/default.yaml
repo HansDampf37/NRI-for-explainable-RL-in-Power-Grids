@@ -1,5 +1,5 @@
 sb3:
-    _target_: ra_agents/dqn/SoftmaxDQN/SoftmaxDQN
+    _target_: src.ra_agents.dqn.SoftmaxDQN.SoftmaxDQN
     verbose: 1
     train_freq: 16
     gradient_steps: 8
