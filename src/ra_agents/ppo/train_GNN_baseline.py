@@ -9,7 +9,7 @@ from stable_baselines3 import PPO
 from src.common.constants import set_experiment_name, logger, SEED
 from .PPOTopoPolicy import Sb3PPOTopologyPolicy
 from ..RAFeatureExtractor import BaselineFeatureExtractorSB3
-from ..utils import get_env, evaluate
+from ..utils import get_env, evaluate, EvalCallback
 
 
 @hydra.main(config_path="../../../hydra_configs", config_name="config", version_base="1.3")
@@ -66,12 +66,19 @@ def main(cfg: DictConfig):
     )
 
     # train
-    algorithm.learn(total_timesteps=cfg.rl.train.timesteps, tb_log_name=name, log_interval=1)
+    path_results = Path(EVAL_PATH, group, name)
+    topology_policy = Sb3PPOTopologyPolicy(algorithm)
+    eval_callback = EvalCallback(
+        eval_freq=max(cfg.rl.train.timesteps // 10, 1),  # evaluate model 10 times during training
+        env_fn=get_env,
+        path_results_root=Path(path_results, "checkpoints"),
+        cfg=cfg,
+        topology_policy=topology_policy
+    )
+    algorithm.learn(total_timesteps=cfg.rl.train.timesteps, tb_log_name=name, log_interval=1, callback=eval_callback)
     algorithm.save(os.path.join(MODELS_PATH, group, name + ".zip"))
 
     # evaluate
-    topology_policy = Sb3PPOTopologyPolicy(algorithm)
-    path_results = Path(EVAL_PATH, group, name)
     evaluate(algorithm, topology_policy, get_env, path_results, cfg)
 
 if __name__ == "__main__":

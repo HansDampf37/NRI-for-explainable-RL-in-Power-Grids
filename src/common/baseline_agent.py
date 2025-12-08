@@ -6,12 +6,12 @@ from topology policies. These policies may implement a RL-component to predict t
 the actions the topology policy returns the k best actions to the agent to simulate.
 """
 import json
+import logging
 import os
 from abc import abstractmethod, ABC
 from pathlib import Path
 from typing import List, Optional
 
-import numpy as np
 from grid2op.Action import BaseAction, ActionSpace, TopologySetAction
 from grid2op.Agent import RecoPowerlineAgent, BaseAgent
 from grid2op.Environment import Environment
@@ -91,26 +91,16 @@ def evaluate_agent(agent: BaseAgent, env: Environment, path_results: Path, num_e
     :param max_episode_length: the maximum number of steps to take per episode
     :return:
     """
+    logging.getLogger("grid2op.Environment.baseEnv.grid2op_Runner").disabled = True
     runner = Runner(**env.get_params_for_runner(), agentInstance=agent, agentClass=None)
     path_results.mkdir(exist_ok=True, parents=True)
-    res = runner.run(
+    runner.run(
         nb_episode=num_episodes,
         max_iter=max_episode_length,
         path_save=path_results,
         add_detailed_output=True,
         pbar=True,
     )
-
-    # print results
-    print("The results for the evaluated agent are:")
-    for _, chron_id, cum_reward, nb_time_step, max_ts, data in res:
-        msg_tmp = f"\tFor chronics with id '{chron_id}'\n"
-        msg_tmp += f"\t\t - return: {cum_reward:.2f}\n"
-        msg_tmp += f"\t\t - rewards: {np.nan_to_num(data.rewards).mean():.2f} ± {np.nan_to_num(data.rewards).std():.2f}\n"
-        msg_tmp += f"\t\t - number of time steps completed: {nb_time_step:.0f} / {max_ts:.0f}"
-        print(msg_tmp)
-
-    print("Evaluation finished. To plot evaluation results use the notebook in the visualization folder.")
 
 
 def evaluate_sb3_alg(alg: BaseAlgorithm, env: Env, path_results: Path, num_episodes: int,
@@ -138,7 +128,6 @@ def evaluate_sb3_alg(alg: BaseAlgorithm, env: Env, path_results: Path, num_episo
                 break
             cumulative_reward += reward
             episode_length += 1
-        print(f"Survived {episode_length} steps with a return of {cumulative_reward:.2f}")
         name_chronic = os.path.basename(info['time_series_id'])
         base_path = Path(path_results, name_chronic)
         base_path.mkdir(parents=True, exist_ok=True)

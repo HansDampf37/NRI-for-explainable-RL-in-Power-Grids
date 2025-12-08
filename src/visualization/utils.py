@@ -78,9 +78,6 @@ def visualize_agent_survival(datasets: List[AgentMetrics], save_to: Optional[Pat
     if save_to is not None:
         plt.savefig(save_to)
 
-    for data in datasets:
-        print(f"Average survival ratios {data.label}: {sum(data.survival_duration) / len(data.survival_duration)}")
-
 
 def compare_experiment_runs(experiment_path: Path):
     """

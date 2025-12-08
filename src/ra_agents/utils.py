@@ -1,12 +1,14 @@
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Callable
 
 from grid2op.gym_compat import BoxGymObsSpace
 from hydra.utils import instantiate
 from omegaconf import DictConfig
 from stable_baselines3.common.base_class import BaseAlgorithm
+from stable_baselines3.common.callbacks import BaseCallback
 
 from src.common.baseline_agent import BaselineAgent, evaluate_agent, evaluate_sb3_alg, TopologyPolicy
+from src.common.constants import logger
 from src.common.env import G2OpGymEnv
 from src.visualization import get_evaluation_metrics, visualize_agent_survival
 
@@ -84,3 +86,58 @@ def evaluate(algorithm: BaseAlgorithm, topology_policy: TopologyPolicy, env_crea
     metrics_topo_policy = [get_evaluation_metrics(Path(path_results, "rl_algorithm", dataset), dataset) for dataset in ["train", "test", "val"]]
     visualize_agent_survival(metrics_agent, Path(path_results, "agent_summary.png"), show=False)
     visualize_agent_survival(metrics_topo_policy, Path(path_results, "rl_algorithm_summary.png"), show=False)
+
+
+class EvalCallback(BaseCallback):
+    def __init__(self, eval_freq: int, topology_policy: TopologyPolicy, env_fn: Callable[[DictConfig, str], G2OpGymEnv], path_results_root: Path, cfg: DictConfig, verbose=0):
+        super().__init__(verbose)
+        self.eval_freq = eval_freq
+        self.env_fn = env_fn
+        self.path_results_root = path_results_root
+        self.cfg = cfg
+        self.topology_policy = topology_policy
+
+    def _on_step(self) -> bool:
+        if self.num_timesteps % self.eval_freq == 0:
+            logger.info(f"Evaluation for step {self.num_timesteps}")
+            path = Path(self.path_results_root, f"checkpoint_{self.num_timesteps}")
+            evaluate(
+                algorithm=self.model,
+                topology_policy=self.topology_policy,
+                env_creation=self.env_fn,
+                path_results=path,
+                cfg=self.cfg,
+            )
+        return True
+
+    def _on_training_end(self) -> None:
+        for setup in ["agent", "rl_algorithm"]:
+            for dataset in ["train", "test", "val"]:
+                # Collect all checkpoint directories and sort by step count
+                if not self.path_results_root.exists():
+                    logger.warning(f"Path '{self.path_results_root}' does not exist. No training summary generated.")
+                    return
+
+                checkpoints = []
+                for p in Path(self.path_results_root).iterdir():
+                    if p.is_dir() and p.name.startswith("checkpoint_"):
+                        try:
+                            step = int(p.name.split("_", 1)[1])
+                            checkpoints.append((step, Path(p, setup)))
+                        except ValueError:
+                            logger.debug(f"Ignoring directory '{p}' (invalid step number).")
+
+                if not checkpoints:
+                    logger.warning("No checkpoints found. No training summary generated.")
+                    return
+
+                checkpoints.sort(key=lambda x: x[0])
+
+                # Create metrics per checkpoint and visualize progression
+                metrics = []
+                for step, path in checkpoints:
+                    metrics.append(get_evaluation_metrics(Path(path, dataset), f"step_{step}"))
+
+                out_path = Path(self.path_results_root, f"{setup}_{dataset}_training_effect.png")
+                visualize_agent_survival(metrics, out_path, show=False)
+                logger.info(f"Training summary saved at '{out_path}'.")

@@ -9,7 +9,7 @@ from stable_baselines3 import DQN
 from src.common.constants import set_experiment_name, logger, SEED
 from .DQNTopoPolicy import Sb3DQNTopologyPolicy
 from .SoftmaxDQN import SoftmaxDQN
-from ..utils import get_env_mlp_baseline, evaluate
+from ..utils import get_env_mlp_baseline, evaluate, EvalCallback
 
 
 @hydra.main(config_path="../../../hydra_configs", config_name="config", version_base="1.3")
@@ -75,12 +75,19 @@ def main(cfg: DictConfig):
         )
 
     # train
-    algorithm.learn(total_timesteps=cfg.rl.train.timesteps, tb_log_name=name, log_interval=cfg.rl.train.log_interval)
+    path_results = Path(EVAL_PATH, group, name)
+    topology_policy = Sb3DQNTopologyPolicy(algorithm)
+    eval_callback = EvalCallback(
+        eval_freq=max(cfg.rl.train.timesteps // 10, 1),  # evaluate model 10 times during training
+        env_fn=get_env_mlp_baseline,
+        path_results_root=Path(path_results, "checkpoints"),
+        cfg=cfg,
+        topology_policy=topology_policy
+    )
+    algorithm.learn(total_timesteps=cfg.rl.train.timesteps, tb_log_name=name, log_interval=cfg.rl.train.log_interval, callback=eval_callback)
     algorithm.save(os.path.join(MODELS_PATH, group, name + ".zip"))
 
     # evaluate
-    topology_policy = Sb3DQNTopologyPolicy(algorithm)
-    path_results = Path(EVAL_PATH, group, name)
     evaluate(algorithm, topology_policy, get_env_mlp_baseline, path_results, cfg)
 
 
