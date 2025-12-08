@@ -5,6 +5,7 @@ defaults:
     - _self_
 
 experiment_name: learning_progress
+timeout: ~
 
 hydra:
     run:
