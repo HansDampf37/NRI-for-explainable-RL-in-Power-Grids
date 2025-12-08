@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional, Callable
+from typing import Optional, Callable, Dict, Any
 
 from grid2op.gym_compat import BoxGymObsSpace
 from hydra.utils import instantiate
@@ -46,17 +46,20 @@ def get_env_mlp_baseline(cfg, env_name: Optional[str] = None) -> G2OpGymEnv:
     return env
 
 
-def evaluate(algorithm: BaseAlgorithm, topology_policy: TopologyPolicy, env_creation, path_results: Path, cfg: DictConfig):
+def evaluate(algorithm: BaseAlgorithm, topology_policy: TopologyPolicy, env_creation, path_results: Path, cfg: DictConfig) -> Dict[str, Dict[str, Dict[str, Any]]]:
     """
-    Evaluates an algorithm on test train and validation envs.
-    Evaluates the associated agent on test train and validation envs.
-    Stores results together with plots in the path_results folder.
-    @param algorithm: the algorithm to evaluate
-    @param topology_policy: the topology policy (used inside the agent)
-    @param env_creation: a method that takes an env cfg, name and returns a G2OpGymEnv
-    @param path_results: where to store the results
-    @param cfg: the hydra config
+    Evaluates an algorithm and associated agent on train/test/val envs.
+    Stores results and plots in path_results, and returns a dict of metrics:
+    {
+      "agent": {
+        "train"|"test"|"val": {"survival_duration": List[int], "returns": List[float]}
+      },
+      "rl_algorithm": {
+        "train"|"test"|"val": {"survival_duration": List[int], "returns": List[float]}
+      }
+    }
     """
+    # Run evaluations and persist artifacts
     for dataset in ["train", "test", "val"]:
         env_dataset: G2OpGymEnv = env_creation(cfg, f"{cfg.env.name}_{dataset}")
         agent = BaselineAgent(
@@ -80,12 +83,33 @@ def evaluate(algorithm: BaseAlgorithm, topology_policy: TopologyPolicy, env_crea
             max_episode_length=cfg.rl.eval.max_episode_length,
         )
 
+    # Collect metrics
     metrics_agent = [get_evaluation_metrics(Path(path_results, "agent", dataset), dataset) for dataset in ["train", "test", "val"]]
-    metrics_agent += [get_evaluation_metrics(Path("data/evaluations/heuristic_agents/reco_powerline_agent/train"), "Reconnect Powerline")]
-    metrics_agent += [get_evaluation_metrics(Path("data/evaluations/heuristic_agents/do_nothing_agent/train"), "Do Nothing")]
     metrics_topo_policy = [get_evaluation_metrics(Path(path_results, "rl_algorithm", dataset), dataset) for dataset in ["train", "test", "val"]]
-    visualize_agent_survival(metrics_agent, Path(path_results, "agent_summary.png"), show=False)
+
+    # Generate summary plots
+    # Include two heuristic baselines for agent summary
+    metrics_agent_with_baselines = metrics_agent + [
+        get_evaluation_metrics(Path("data/evaluations/heuristic_agents/reco_powerline_agent/train"), "Reconnect Powerline"),
+        get_evaluation_metrics(Path("data/evaluations/heuristic_agents/do_nothing_agent/train"), "Do Nothing"),
+    ]
+    visualize_agent_survival(metrics_agent_with_baselines, Path(path_results, "agent_summary.png"), show=False)
     visualize_agent_survival(metrics_topo_policy, Path(path_results, "rl_algorithm_summary.png"), show=False)
+
+    # Convert to a plain dict for downstream consumption (e.g., Optuna)
+    datasets = ["train", "test", "val"]
+    result: Dict[str, Dict[str, Dict[str, Any]]] = {"agent": {}, "rl_algorithm": {}}
+    for i, ds in enumerate(datasets):
+        result["agent"][ds] = {
+            "survival_duration": metrics_agent[i].survival_duration,
+            "returns": metrics_agent[i].returns,
+        }
+        result["rl_algorithm"][ds] = {
+            "survival_duration": metrics_topo_policy[i].survival_duration,
+            "returns": metrics_topo_policy[i].returns,
+        }
+
+    return result
 
 
 class EvalCallback(BaseCallback):
@@ -101,7 +125,8 @@ class EvalCallback(BaseCallback):
         if self.num_timesteps % self.eval_freq == 0:
             logger.info(f"Evaluation for step {self.num_timesteps}")
             path = Path(self.path_results_root, f"checkpoint_{self.num_timesteps}")
-            evaluate(
+            # Trigger evaluation; return value is ignored here as artifacts are saved to disk
+            _ = evaluate(
                 algorithm=self.model,
                 topology_policy=self.topology_policy,
                 env_creation=self.env_fn,

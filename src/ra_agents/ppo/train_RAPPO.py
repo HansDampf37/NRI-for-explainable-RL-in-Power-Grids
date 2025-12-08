@@ -22,7 +22,7 @@ from ..utils import get_env, evaluate, EvalCallback
 def main(cfg: DictConfig):
     logger.info(OmegaConf.to_yaml(cfg))
     set_experiment_name(cfg.experiment_name)
-    from src.common.constants import EVAL_PATH,LOGS_PATH, MODELS_PATH, EDGE_PROBS_PATH
+    from src.common.constants import EVAL_PATH, LOGS_PATH, MODELS_PATH, EDGE_PROBS_PATH
     timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     group = "relation-aware/ppo"
     name_suffix = cfg.rl.model.name_suffix
@@ -107,8 +107,8 @@ def main(cfg: DictConfig):
     algorithm.learn(total_timesteps=cfg.rl.train.timesteps, tb_log_name=name, log_interval=1, callback=eval_callback)
     algorithm.save(os.path.join(MODELS_PATH, group, name + ".zip"))
 
-    # evaluate
-    evaluate(algorithm, topology_policy, get_env, path_results, cfg)
+    # evaluate and return results
+    results_dict = evaluate(algorithm, topology_policy, get_env, path_results, cfg)
 
     # save edge probs
     save_edge_probs(
@@ -117,6 +117,8 @@ def main(cfg: DictConfig):
         save_path=Path(EDGE_PROBS_PATH, group, name + ".npy"),
         num_samples=cfg.rl.eval.num_samples_for_edge_average,
     )
+
+    return results_dict
 
 
 if __name__ == "__main__":
