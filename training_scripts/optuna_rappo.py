@@ -24,7 +24,20 @@ def objective(trial: BaseTrial):
         return float(sum(val_sd) / len(val_sd)) if len(val_sd) > 0 else 0.0
 
 
-study = optuna.create_study(study_name="optimize_encoder_hps",direction="maximize")
-study.optimize(objective, n_trials=20)
+def main():
+    db_path = "data/experiments/optuna/optuna.db"
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    storage_url = f"sqlite:///{db_path}"
+    study = optuna.create_study(
+        study_name="optimize_encoder_hps",
+        direction="maximize",
+        storage=storage_url,
+        load_if_exists=True,
+    )
+    print("run")
+    study.optimize(objective, n_trials=20)
+    print(study.best_params)
 
-print(study.best_params)
+
+if __name__ == "__main__":
+    main()
