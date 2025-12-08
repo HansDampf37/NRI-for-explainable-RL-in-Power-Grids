@@ -4,7 +4,7 @@ defaults:
     -   rl: default
     - _self_
 
-experiment_name: fix_eval
+experiment_name: learning_progress
 
 hydra:
     run:
