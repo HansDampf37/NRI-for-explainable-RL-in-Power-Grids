@@ -73,10 +73,16 @@ def evaluate(algorithm: BaseAlgorithm, topology_policy: TopologyPolicy, env_crea
     for dataset in ["train", "test", "val"]:
         env_dataset: G2OpGymEnv = env_creation(cfg, f"{cfg.env.name}_{dataset}")
         agent = BaselineAgent(
-            env_dataset._g2op_env.action_space,
-            topology_policy,
-            k=cfg.env.agent_k,
-            safe_max_rho=cfg.env.safe_max_rho,
+            g2op_action_space=env_dataset._g2op_env.action_space,
+            topo_policy=topology_policy,
+            rule_config={
+                "activation_threshold": cfg.env.safe_max_rho,
+                "line_reco": cfg.env.line_reco,
+                "line_disc": cfg.env.line_disc,
+                "reset_topo": cfg.env.reset_topo,
+                "simulate": cfg.env.simulate,
+            },
+            k=cfg.env.agent_k
         )
         evaluate_agent(
             agent=agent,
