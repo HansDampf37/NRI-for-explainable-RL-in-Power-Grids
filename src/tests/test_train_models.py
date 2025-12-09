@@ -35,6 +35,8 @@ class TestTrainingFunctions(unittest.TestCase):
             cfg.rl.eval = test_eval_cfg.rl.eval
             cfg.rl.ppo.sb3.n_steps = 2
             cfg.rl.dqn.sb3.learning_starts = 0
+            cfg.rl.dqn.sb3.train_freq = 1
+            cfg.rl.dqn.sb3.batch_size = 1
             cfg.nri.train.num_epochs = 1
             return cfg
 

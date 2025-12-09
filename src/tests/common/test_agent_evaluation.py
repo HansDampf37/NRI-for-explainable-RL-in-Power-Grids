@@ -10,6 +10,7 @@ from grid2op.gym_compat import GymEnv, DiscreteActSpace
 from stable_baselines3 import DQN
 
 from src.common.baseline_agent import evaluate_agent, evaluate_sb3_alg
+from src.common.env import G2OpGymEnv
 from src.ra_agents.dqn import Sb3DQNTopologyPolicy
 from src.ra_agents.utils import evaluate, get_env_mlp_baseline
 
@@ -33,9 +34,8 @@ class TestAgentEvaluation(unittest.TestCase):
 
 
     def test_evaluate_sb3_alg(self):
-        gym_env = GymEnv(self.env)
-        gym_env.action_space = DiscreteActSpace(grid2op_action_space=self.env.action_space)
-        dqn = DQN(env=gym_env, policy="MultiInputPolicy")
+        gym_env = G2OpGymEnv()
+        dqn = DQN(env=gym_env, policy="MlpPolicy")
 
         with TemporaryDirectory() as tmpdir:
             path_results = Path(tmpdir)
