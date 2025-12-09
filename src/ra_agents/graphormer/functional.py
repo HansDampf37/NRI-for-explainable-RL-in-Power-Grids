@@ -6,8 +6,8 @@ import networkx as nx
 import torch
 from torch import Tensor
 from torch_geometric.data import Data
-from torch_geometric.utils.convert import to_networkx
 from torch_geometric.utils import degree
+from torch_geometric.utils.convert import to_networkx
 
 
 def floyd_warshall_source_to_all(G, source, cutoff=None):
@@ -17,23 +17,23 @@ def floyd_warshall_source_to_all(G, source, cutoff=None):
     edges = {edge: i for i, edge in enumerate(G.edges())}
 
     level = 0  # the current level
-    nextlevel = {source: 1}  # list of nodes to check at next level
+    next_level = {source: 1}  # list of nodes to check at next level
     node_paths = {source: [source]}  # paths dictionary  (paths to key from source)
     edge_paths = {source: []}
 
-    while nextlevel:
-        thislevel = nextlevel
-        nextlevel = {}
-        for v in thislevel:
+    while next_level:
+        this_level = next_level
+        next_level = {}
+        for v in this_level:
             for w in G[v]:
                 if w not in node_paths:
                     node_paths[w] = node_paths[v] + [w]
                     edge_paths[w] = edge_paths[v] + [edges[tuple(node_paths[w][-2:])]]
-                    nextlevel[w] = 1
+                    next_level[w] = 1
 
         level = level + 1
 
-        if (cutoff is not None and cutoff <= level):
+        if cutoff is not None and cutoff <= level:
             break
 
     return node_paths, edge_paths

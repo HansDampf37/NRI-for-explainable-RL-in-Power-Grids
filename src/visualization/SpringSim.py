@@ -34,7 +34,7 @@ class SpringSim(object):
         """
         :param loc: 2xN location at one time stamp
         :param vel: 2xN velocity at one time stamp
-        :return: location and velocity after hiting walls and returning after
+        :return: location and velocity after hitting walls and returning after
             elastically colliding with walls
         """
         assert (np.all(loc < self.box_size * 3))

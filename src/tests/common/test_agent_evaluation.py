@@ -6,7 +6,6 @@ from tempfile import TemporaryDirectory
 import grid2op
 import hydra
 from grid2op.Agent import DoNothingAgent
-from grid2op.gym_compat import GymEnv, DiscreteActSpace
 from stable_baselines3 import DQN
 
 from src.common.baseline_agent import evaluate_agent, evaluate_sb3_alg

@@ -86,7 +86,7 @@ def save_edge_probs(
     :param env: the env to run the module on
     :param save_path: optional output path. If None, uses data/edge_probabilities
     :param num_samples: number of samples to average over
-    :verbose: print extra explanatory or diagnostic information
+    :param verbose: print extra explanatory or diagnostic information
     :return: the averaged edge type probabilities as numpy array of shape [E, NUM_EDGE_TYPES]
     """
     from src.common.constants import EDGE_PROBS_PATH

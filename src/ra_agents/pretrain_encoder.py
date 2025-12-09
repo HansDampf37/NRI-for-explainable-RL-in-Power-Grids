@@ -12,7 +12,7 @@ from typing import Union, Optional, List, Tuple
 
 import hydra
 import torch
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 from tensorboardX import SummaryWriter
 from torch import Tensor
 from torch.nn import functional as F

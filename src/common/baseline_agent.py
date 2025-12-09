@@ -20,7 +20,6 @@ from grid2op.Episode import EpisodeData
 from grid2op.Observation import BaseObservation
 from grid2op.Runner import Runner
 from grid2op.Runner.runner import runner_returned_type
-from gymnasium import Env
 from stable_baselines3.common.base_class import BaseAlgorithm
 
 from src.common.env import G2OpGymEnv
