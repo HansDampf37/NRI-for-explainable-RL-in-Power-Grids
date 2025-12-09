@@ -8,7 +8,6 @@ import torch
 import torch.nn.functional as f
 from gymnasium import spaces
 from gymnasium.spaces import Discrete
-from stable_baselines3 import PPO
 from stable_baselines3.common.buffers import RolloutBuffer
 from stable_baselines3.common.distributions import Distribution
 from stable_baselines3.common.logger import TensorBoardOutputFormat
@@ -20,6 +19,7 @@ from torch import Tensor
 
 from src.common.graph_structured_observation_space import GraphObservationSpace, BusConnectivityGraphObsSpace
 from src.visualization.utils import visualize_graph, PlottingArgs, visualize_posterior
+from .PPO_G2Op import G2OpPPO
 from ..RARL import RARL
 
 
@@ -95,7 +95,7 @@ class RAPPOPolicy(ActorCriticPolicy):
         return edge_type_posterior
 
 
-class RAPPO(PPO, RARL):
+class RAPPO(G2OpPPO, RARL):
     """
     This class implements the PPO interface from sb3. It uses an Encoder + downstream RA-GNN to predict the action probabilities + q-value.
     The loss is extended, to include the distance between posterior p(z|x) to the prior p(z).

@@ -1,20 +1,26 @@
+import logging
 import os
 from datetime import datetime
 from pathlib import Path
 
 import hydra
 from omegaconf import DictConfig, OmegaConf
-from stable_baselines3 import PPO
 
-from src.common.constants import set_experiment_name, logger, SEED
+from src.common.constants import set_experiment_name, SEED
 from .PPOTopoPolicy import Sb3PPOTopologyPolicy
+from .PPO_G2Op import G2OpPPO
 from ..RAFeatureExtractor import BaselineFeatureExtractorSB3
 from ..utils import get_env, evaluate, EvalCallback
+
+logger = logging.getLogger(__name__)
 
 
 @hydra.main(config_path="../../../hydra_configs", config_name="config", version_base="1.3")
 def main(cfg: DictConfig):
-    logger.info(OmegaConf.to_yaml(cfg))
+    if cfg.rl.verbose:
+        logger.info(OmegaConf.to_yaml(cfg))
+
+    # get paths
     set_experiment_name(cfg.experiment_name)
     from src.common.constants import EVAL_PATH,LOGS_PATH, MODELS_PATH
     timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S_%f')[:-3]
@@ -37,15 +43,14 @@ def main(cfg: DictConfig):
             "out_dim": cfg.rl.ppo.sb3.policy_kwargs.features_extractor_kwargs.out_dim,
             "num_layers": cfg.rl.ppo.sb3.policy_kwargs.features_extractor_kwargs.num_layers,
             "dropout_prob": cfg.rl.ppo.sb3.policy_kwargs.features_extractor_kwargs.dropout_prob,
-            # TODO optionally include edge index here to restrict edges for nri
         }
     }
 
     # create algorithm
-    algorithm = PPO(
+    algorithm = G2OpPPO(
         policy="MultiInputPolicy",
         env=env,
-        verbose=cfg.rl.ppo.sb3.verbose,
+        verbose=cfg.rl.ppo.sb3.verbose and cfg.rl.verbose,
         learning_rate=cfg.rl.ppo.sb3.learning_rate,
         n_steps=cfg.rl.ppo.sb3.n_steps,
         batch_size=cfg.rl.ppo.sb3.batch_size,
@@ -73,13 +78,23 @@ def main(cfg: DictConfig):
         env_fn=get_env,
         path_results_root=Path(path_results, "checkpoints"),
         cfg=cfg,
-        topology_policy=topology_policy
+        topology_policy=topology_policy,
+        verbose=1 if cfg.rl.verbose else 0
     )
     algorithm.learn(total_timesteps=cfg.rl.train.timesteps, tb_log_name=name, log_interval=1, callback=eval_callback)
     algorithm.save(os.path.join(MODELS_PATH, group, name + ".zip"))
 
-    # evaluate
-    evaluate(algorithm, topology_policy, get_env, path_results, cfg)
+    # evaluate and return results
+    results_dict = evaluate(
+        algorithm=algorithm,
+        topology_policy=topology_policy,
+        env_creation=get_env,
+        path_results=path_results,
+        cfg=cfg,
+        verbose=cfg.rl.verbose
+    )
+
+    return results_dict
 
 if __name__ == "__main__":
     main()
