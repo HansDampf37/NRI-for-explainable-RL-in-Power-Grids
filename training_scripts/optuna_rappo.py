@@ -42,6 +42,7 @@ def objective(trial: BaseTrial):
 def main(cfg: DictConfig):
     global _cfg
     _cfg = cfg
+    logger.info(cfg)
     set_experiment_name(cfg.experiment_name)
     from src.common.constants import LOGS_PATH
     timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S_%f')[:-3]
