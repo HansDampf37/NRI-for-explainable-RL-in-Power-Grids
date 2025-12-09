@@ -24,7 +24,7 @@ def evaluate(cfg: DictConfig):
             evaluate_agent(
                 agent=agent,
                 env=env,
-                num_episodes=cfg.baseline.eval.nb_episodes,
+                num_episodes=cfg.rl.eval.nb_episodes,
                 path_results=Path(EVAL_PATH, "heuristic_agents", name, dataset)
             )
 

@@ -1,8 +1,8 @@
 defaults:
     -   env: case14
     -   nri: default
-    -   rl: test
-    -   optuna: test
+    -   rl: default
+    -   optuna: default
     - _self_
 
 experiment_name: learning_progress
