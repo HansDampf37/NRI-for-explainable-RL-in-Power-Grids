@@ -289,7 +289,7 @@ def main(cfg: DictConfig):
     logger.info(OmegaConf.to_yaml(cfg))
     set_experiment_name(cfg.experiment_name)
     from src.common.constants import LOGS_PATH, MODELS_PATH, EDGE_PROBS_PATH
-    timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S_%f')[:-3]
     group = "nri"
     name = f"{cfg.nri.name}_{timestamp}"
 

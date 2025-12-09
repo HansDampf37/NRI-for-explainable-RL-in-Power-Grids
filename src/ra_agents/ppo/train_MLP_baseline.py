@@ -16,7 +16,7 @@ def main(cfg: DictConfig):
     logger.info(OmegaConf.to_yaml(cfg))
     set_experiment_name(cfg.experiment_name)
     from src.common.constants import EVAL_PATH,LOGS_PATH, MODELS_PATH
-    timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S_%f')[:-3]
     group = "baselines/ppo"
     name_suffix = cfg.rl.model.name_suffix
     if name_suffix is None:

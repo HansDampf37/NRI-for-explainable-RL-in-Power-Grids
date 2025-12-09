@@ -1,3 +1,4 @@
+import logging
 from typing import Union, Tuple, Optional
 
 import numpy as np
@@ -9,9 +10,10 @@ from torch import Tensor, nn
 from torch_geometric.utils import dense_to_sparse
 
 from src.common.MLP import MLP
-from src.common.constants import logger
 from src.common.env import G2OpGymEnv
 from src.common.graph_structured_observation_space import GraphObservationSpace, EDGE_INDEX
+
+logger = logging.getLogger(__name__)
 
 
 def get_env(cfg: DictConfig, env_name: Optional[str] = None) -> G2OpGymEnv:
@@ -102,7 +104,7 @@ def get_priors(prob_graph_edges_exist: float, num_graph_edges: int, num_non_grap
     return Tensor(p1), Tensor(p2)
 
 
-def prior_from_env(prob_graph_edge_exists: float, env: G2OpGymEnv, temperature: float = 0.2) -> Tensor:
+def prior_from_env(prob_graph_edge_exists: float, env: G2OpGymEnv, temperature: float = 0.2, verbose=True) -> Tensor:
     """
     Create prior distributions given the environment and existence probability for graph edges.
     These priors are used to condition the relation aware agents in their edge type predictions.
@@ -110,16 +112,17 @@ def prior_from_env(prob_graph_edge_exists: float, env: G2OpGymEnv, temperature: 
     :param prob_graph_edge_exists: the probability of latent dependencies on graph edges.
     :param env: The environment
     :param temperature: The amount of predicted edges according to the prior will be (1 + temperature) * num_graph_edges.
+    :param verbose: print extra explanatory or diagnostic information
     :return: prior distributions
     """
     obs_space: GraphObservationSpace = env.observation_space
     N = obs_space.num_nodes
     num_graph_edges = obs_space.max_num_edges
     num_non_graph_edges = N * (N - 1) // 2 - num_graph_edges
-    prior_for_graph_edges, prior_for_non_graph_edges = get_priors(prob_graph_edge_exists, num_graph_edges,
-                                                                  num_non_graph_edges, temperature)
-    logger.info(
-        f"Prior for graph edges: {prior_for_graph_edges}, Prior for non graph edges: {prior_for_non_graph_edges}")
+    prior_for_graph_edges, prior_for_non_graph_edges = get_priors(prob_graph_edge_exists, num_graph_edges, num_non_graph_edges, temperature)
+    if verbose:
+        logger.info(f"Prior for graph edges: {prior_for_graph_edges}, "
+                    f"Prior for non graph edges: {prior_for_non_graph_edges}")
     powergrid_edge_index = torch.from_numpy(env.reset()[0][EDGE_INDEX])  # [2, E]
     all_edges = fully_connected_edge_index(N)  # [2, E']
     prior = get_prior_tensor(powergrid_edge_index, all_edges, prior_for_graph_edges, prior_for_non_graph_edges)

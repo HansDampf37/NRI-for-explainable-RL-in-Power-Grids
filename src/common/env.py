@@ -1,13 +1,14 @@
 """
 This script wraps a grid2op environment with a gymnasium API and applies heuristic actions automatically.
 """
+import logging
 import time
-from typing import Optional, Dict, Tuple
+from typing import Optional, Dict, Tuple, Callable
 
 import grid2op
 from grid2op.Observation import BaseObservation
 from grid2op.gym_compat import DiscreteActSpace, BoxGymObsSpace
-from gymnasium import Env
+from gymnasium import Env, Space
 from l2rpn_baselines.utils import GymEnvWithRecoWithDN
 from lightsim2grid import LightSimBackend
 from stable_baselines3.common.monitor import Monitor
@@ -15,6 +16,11 @@ from stable_baselines3.common.monitor import Monitor
 from .constants import SEED
 from .rewards import MazeRLReward
 
+def _default_act_space(env: grid2op.Environment) -> DiscreteActSpace:
+    return DiscreteActSpace(env.action_space, attr_to_keep=["set_bus"])
+
+def _default_obs_space(env: grid2op.Environment) -> BoxGymObsSpace:
+    return BoxGymObsSpace(grid2op_observation_space=env.observation_space, attr_to_keep=["rho", "p_or", "gen_p", "load_p"])
 
 class G2OpGymEnv(Monitor):
     """
@@ -28,8 +34,8 @@ class G2OpGymEnv(Monitor):
     def __init__(self,
                  env_name: str = "l2rpn_case14_sandbox",
                  safe_max_rho: float = 0.95,
-                 act_space_creation=lambda env: DiscreteActSpace(env.action_space, attr_to_keep=["set_bus"]),
-                 obs_space_creation=lambda env: BoxGymObsSpace(grid2op_observation_space=env.observation_space, attr_to_keep=["rho", "p_or", "gen_p", "load_p"]),
+                 act_space_creation: Callable[[grid2op.Environment], Space] = _default_act_space,
+                 obs_space_creation: Callable[[grid2op.Environment], Space] = _default_obs_space,
                  seed: int = SEED):
         """
         Constructor.
@@ -38,6 +44,7 @@ class G2OpGymEnv(Monitor):
         @param act_space_creation: lambda function that creates the action space
         @param obs_space_creation: lambda function that creates the observation space
         """
+        logging.getLogger("pandapower.convert_format").disabled = True
         Env.__init__(self)
         self.ep_len = 0
         self.interactions = 0

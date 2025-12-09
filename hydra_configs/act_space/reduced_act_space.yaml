@@ -1,0 +1,2 @@
+_target_: src.common.action_space.ReducedActionSpace_
+path: hydra_configs/act_space/l2rpn_case14_sandbox/medha.json

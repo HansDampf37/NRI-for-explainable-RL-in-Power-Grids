@@ -1,10 +1,11 @@
 import json
+import logging
 from os import PathLike
 
 from grid2op.Action import BaseAction, ActionSpace
 from gymnasium.spaces import Discrete
 
-from .constants import logger
+logger = logging.getLogger(__name__)
 
 
 class ReducedActionSpace(Discrete):
@@ -12,7 +13,7 @@ class ReducedActionSpace(Discrete):
     A reduced action space only allowing a subset of all actions.
     """
 
-    def __init__(self, allowed_actions: list[BaseAction]):
+    def __init__(self, allowed_actions: list[BaseAction], verbose: bool = False):
         """
         Constructor.
 
@@ -21,7 +22,8 @@ class ReducedActionSpace(Discrete):
         # get all possible single-substation bus change actions
         super().__init__(len(allowed_actions))
         self._allowed_actions = allowed_actions
-        logger.info(f"Using reduced action space with {len(allowed_actions)} actions")
+        if verbose:
+            logger.info(f"Using reduced action space with {len(allowed_actions)} actions")
 
     def from_gym(self, action_index: int):
         """

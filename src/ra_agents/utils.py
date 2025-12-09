@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 from typing import Optional, Callable, Dict, Any
 
@@ -8,16 +9,17 @@ from stable_baselines3.common.base_class import BaseAlgorithm
 from stable_baselines3.common.callbacks import BaseCallback
 
 from src.common.baseline_agent import BaselineAgent, evaluate_agent, evaluate_sb3_alg, TopologyPolicy
-from src.common.constants import logger
 from src.common.env import G2OpGymEnv
 from src.visualization import get_evaluation_metrics, visualize_agent_survival
 
+logger = logging.getLogger(__name__)
 
-def get_env(cfg, env_name: Optional[str] = None) -> G2OpGymEnv:
+
+def get_env(cfg: DictConfig, env_name: Optional[str] = None) -> G2OpGymEnv:
     """
     Creates a Grid2opWrapperEnvironment with fitting action and observation spaces from hydra config.
 
-    :param cfg: The hydra config
+    :param cfg: Hydra config
     :param env_name: Optional override for the environment name
     :return: The environment
     """
@@ -25,7 +27,7 @@ def get_env(cfg, env_name: Optional[str] = None) -> G2OpGymEnv:
         cfg.env.training_env.env_name if env_name is None else env_name,
         safe_max_rho=cfg.env.safe_max_rho,
         obs_space_creation=lambda e: instantiate(cfg.rl.obs_space, grid2op_observation_space=e.observation_space),
-        act_space_creation=lambda e: instantiate(cfg.rl.act_space, grid2op_action_space=e.action_space)
+        act_space_creation=lambda e: instantiate(cfg.rl.act_space, grid2op_action_space=e.action_space),
     )
     return env
 
@@ -46,10 +48,11 @@ def get_env_mlp_baseline(cfg, env_name: Optional[str] = None) -> G2OpGymEnv:
     return env
 
 
-def evaluate(algorithm: BaseAlgorithm, topology_policy: TopologyPolicy, env_creation, path_results: Path, cfg: DictConfig) -> Dict[str, Dict[str, Dict[str, Any]]]:
+def evaluate(algorithm: BaseAlgorithm, topology_policy: TopologyPolicy, env_creation, path_results: Path, cfg: DictConfig, verbose = True) -> Dict[str, Dict[str, Dict[str, Any]]]:
     """
     Evaluates an algorithm and associated agent on train/test/val envs.
     Stores results and plots in path_results, and returns a dict of metrics:
+
     {
       "agent": {
         "train"|"test"|"val": {"survival_duration": List[int], "returns": List[float]}
@@ -58,6 +61,13 @@ def evaluate(algorithm: BaseAlgorithm, topology_policy: TopologyPolicy, env_crea
         "train"|"test"|"val": {"survival_duration": List[int], "returns": List[float]}
       }
     }
+    :param algorithm: The algorithm to evaluate
+    :param topology_policy: The topology policy wrapper around the algorithm
+    :param env_creation: Function that creates the environment
+    :param path_results: Path where the results will be stored
+    :param cfg: Hydra config
+    :param verbose: print extra explanatory or diagnostic information
+    :return metrics: Dict of metrics
     """
     # Run evaluations and persist artifacts
     for dataset in ["train", "test", "val"]:
@@ -74,6 +84,7 @@ def evaluate(algorithm: BaseAlgorithm, topology_policy: TopologyPolicy, env_crea
             path_results=Path(path_results, "agent", dataset),
             num_episodes=cfg.rl.eval.nb_episodes,
             max_episode_length=cfg.rl.eval.max_episode_length,
+            verbose=verbose
         )
         evaluate_sb3_alg(
             alg=algorithm,
@@ -81,6 +92,7 @@ def evaluate(algorithm: BaseAlgorithm, topology_policy: TopologyPolicy, env_crea
             path_results=Path(path_results, "rl_algorithm", dataset),
             num_episodes=cfg.rl.eval.nb_episodes,
             max_episode_length=cfg.rl.eval.max_episode_length,
+            verbose=verbose
         )
 
     # Collect metrics
@@ -123,7 +135,9 @@ class EvalCallback(BaseCallback):
 
     def _on_step(self) -> bool:
         if self.num_timesteps % self.eval_freq == 0:
-            logger.info(f"Evaluation for step {self.num_timesteps}")
+            if self.verbose > 0:
+                logger.info(f"Evaluation for step {self.num_timesteps}")
+
             path = Path(self.path_results_root, f"checkpoint_{self.num_timesteps}")
             # Trigger evaluation; return value is ignored here as artifacts are saved to disk
             _ = evaluate(
@@ -132,6 +146,7 @@ class EvalCallback(BaseCallback):
                 env_creation=self.env_fn,
                 path_results=path,
                 cfg=self.cfg,
+                verbose=self.verbose > 0
             )
         return True
 
@@ -165,4 +180,5 @@ class EvalCallback(BaseCallback):
 
                 out_path = Path(self.path_results_root, f"{setup}_{dataset}_training_effect.png")
                 visualize_agent_survival(metrics, out_path, show=False)
-                logger.info(f"Training summary saved at '{out_path}'.")
+                if self.verbose > 0:
+                    logger.info(f"Training summary saved at '{out_path}'.")

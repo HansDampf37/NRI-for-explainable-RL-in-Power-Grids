@@ -2,6 +2,7 @@
 This script can be used to retrieve and save edge type probabilities by running a RARL algorithm on a specified env.
 The final edge type probabilities are averaged for each edge-type combination across all samples in the observations encountered.
 """
+import logging
 import os
 from datetime import datetime
 from pathlib import Path
@@ -11,11 +12,12 @@ import numpy as np
 import torch
 from tqdm import tqdm
 
-from src.common.constants import logger
 from src.common.env import G2OpGymEnv
 from src.common.graph_structured_observation_space import EDGE_INDEX
 from src.visualization import visualize_graph, PlottingArgs, get_node_styles
 from .RARL import RARL
+
+logger = logging.getLogger(__name__)
 
 
 def get_edge_type_probabilities(
@@ -38,7 +40,7 @@ def get_edge_type_probabilities(
 
     # Move edge_index once if provided
     with torch.no_grad():
-        pbar = tqdm(total=num_samples, desc="Averaging edges")
+        pbar = tqdm(total=num_samples, desc="Averaging edges", disable=not verbose)
         while total_count < num_samples:
             obs, _ = env.reset()
             done = False
@@ -75,20 +77,23 @@ def save_edge_probs(
         env: G2OpGymEnv,
         save_path: Optional[Path] = None,
         num_samples: int = 1000,
+        verbose: bool = True,
 ) -> np.ndarray:
     """
     Runs the specified RARL alg on the specified environment and saves the averaged edge type probabilities.
+
     :param RARL_model: the RARL alg to run
     :param env: the env to run the module on
     :param save_path: optional output path. If None, uses data/edge_probabilities
     :param num_samples: number of samples to average over
+    :verbose: print extra explanatory or diagnostic information
     :return: the averaged edge type probabilities as numpy array of shape [E, NUM_EDGE_TYPES]
     """
     from src.common.constants import EDGE_PROBS_PATH
     edge_probs = get_edge_type_probabilities(
         RARL_model,
         env,
-        verbose=True,
+        verbose=verbose,
         num_samples=num_samples,
     )
 

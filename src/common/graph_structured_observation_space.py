@@ -4,6 +4,7 @@ observations. The dict structures the data into node-data, edge-data, global dat
 The edge index is an adjacency list of shape [2, MAX_NUM_EDGES].
 The edge mask is a boolean mask of shape [MAX_NUM_EDGES,]
 """
+import logging
 from abc import ABC, abstractmethod
 from typing import List, Optional
 
@@ -13,13 +14,13 @@ from grid2op.Observation import BaseObservation, ObservationSpace
 from gymnasium.spaces import Dict, Box
 from torch_geometric.data import Data
 
-from .constants import logger
-
 NODES = "node_features"
 EDGES = "edge_features"
 EDGE_INDEX = "edge_index"
 EDGE_MASK = "edge_mask"
 GLOBAL = "global_features"
+
+logger = logging.getLogger(__name__)
 
 
 class GraphObservationSpace(ABC, Dict):
@@ -87,7 +88,7 @@ class BusConnectivityGraphObsSpace(GraphObservationSpace):
     - current
     equivalent to https://beta-grid2op.readthedocs.io/en/latest/grid_graph.html#graph3-the-connectivity-graph
     """
-    def __init__(self, grid2op_observation_space: ObservationSpace, normalization_boundaries: Optional[dict] = None):
+    def __init__(self, grid2op_observation_space: ObservationSpace, normalization_boundaries: Optional[dict] = None, verbose: bool = False):
         obs_space = grid2op_observation_space
         num_node = obs_space.n_gen + obs_space.n_load + 2 * obs_space.n_line
         num_connections = obs_space.sub_info
@@ -109,7 +110,8 @@ class BusConnectivityGraphObsSpace(GraphObservationSpace):
             GLOBAL: Box(low=-np.inf, high=np.inf, shape=(global_dim, )),
         })
 
-        logger.info(f"Using graph observation space with {self.num_nodes} nodes, ≤ {self.max_num_edges} edges and {self.x_dim} features per node ({", ".join(self.node_feature_names)}).")
+        if verbose:
+            logger.info(f"Using graph observation space with {self.num_nodes} nodes, ≤ {self.max_num_edges} edges and {self.x_dim} features per node ({", ".join(self.node_feature_names)}).")
 
     def to_gym(self, g2op_obs: BaseObservation) -> dict[str, npt.NDArray]:
         # get data

@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,9 +16,10 @@ from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 
-from src.common.constants import logger
 from src.common.graph_structured_observation_space import GraphObservationSpace, BusConnectivityGraphObsSpace
 from src.nri.utils import fully_connected_edge_index
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -77,6 +79,8 @@ def visualize_agent_survival(datasets: List[AgentMetrics], save_to: Optional[Pat
 
     if save_to is not None:
         plt.savefig(save_to)
+
+    plt.close()
 
 
 def compare_experiment_runs(experiment_path: Path):
@@ -151,6 +155,7 @@ def visualize_performance_vs_prior(datasets: List[AgentMetrics]):
     plt.ylabel("Time Steps")
     plt.xlabel("Prior Probability for powerline edges imposed on NRI encoder")
     plt.show()
+    plt.close()
 
 
 def visualize_agent_survival_return_relationship(datasets: List[AgentMetrics]):
@@ -166,6 +171,7 @@ def visualize_agent_survival_return_relationship(datasets: List[AgentMetrics]):
     plt.ylabel("Return")
     plt.legend()
     plt.show()
+    plt.close()
 
 
 def get_evaluation_metrics(path: Path, agent_name: str) -> AgentMetrics:

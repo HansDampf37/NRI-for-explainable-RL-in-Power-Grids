@@ -1,3 +1,4 @@
+import logging
 import os
 from datetime import datetime
 from pathlib import Path
@@ -6,7 +7,7 @@ import hydra
 import torch
 from omegaconf import DictConfig, OmegaConf
 
-from src.common.constants import set_experiment_name, logger, SEED
+from src.common.constants import set_experiment_name, SEED
 from src.common.graph_structured_observation_space import EDGE_INDEX, BusConnectivityGraphObsSpace
 from src.nri.utils import prior_from_env
 from src.visualization.utils import PlottingArgs, get_node_styles
@@ -17,14 +18,19 @@ from ..get_edge_probs import save_edge_probs
 from ..pretrain_encoder import main as pretrain_encoder
 from ..utils import get_env, evaluate, EvalCallback
 
+logger = logging.getLogger(__name__)
+
 
 @hydra.main(config_path="../../../hydra_configs", config_name="config", version_base="1.3")
 def main(cfg: DictConfig):
-    logger.info(OmegaConf.to_yaml(cfg))
+    if cfg.rl.verbose:
+        logger.info(OmegaConf.to_yaml(cfg))
+
+    # get paths
     set_experiment_name(cfg.experiment_name)
     from src.common.constants import EVAL_PATH, LOGS_PATH, MODELS_PATH, EDGE_PROBS_PATH
-    timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    group = "relation-aware/ppo"
+    timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S_%f')[:-3]
+    group = "relation-aware/graphormer_ppo" if cfg.rl.model.use_graphormer else "relation-aware/ppo"
     name_suffix = cfg.rl.model.name_suffix
     if name_suffix is None:
         name = f"rappo_{timestamp}"
@@ -34,11 +40,13 @@ def main(cfg: DictConfig):
     # create env
     env = get_env(cfg)
 
-    if cfg.rl.model.use_graphormer:
-        group += "/graphormer"
-
     # create prior distribution that edge-type predictions will be pushed towards
-    prior = prior_from_env(cfg.rl.model.prior_for_graph_edges_existing, env, cfg.rl.model.temperature)
+    prior = prior_from_env(
+        prob_graph_edge_exists=cfg.rl.model.prior_for_graph_edges_existing,
+        env=env,
+        temperature=cfg.rl.model.temperature,
+        verbose=cfg.rl.verbose
+    )
 
     # create policy kwargs
     policy_kwargs = {
@@ -53,7 +61,6 @@ def main(cfg: DictConfig):
             "use_graphormer": cfg.rl.model.use_graphormer,
             "max_degree": cfg.rl.model.features_extractor_kwargs.max_degree,
             "max_path_distance": cfg.rl.model.features_extractor_kwargs.max_path_distance,
-            # TODO optionally include edge index here to restrict edges for nri
         }
     }
 
@@ -67,9 +74,9 @@ def main(cfg: DictConfig):
 
     # create algorithm
     algorithm = RAPPO(
-        plotting_args=plotting_args,
         env=env,
-        verbose=cfg.rl.ppo.sb3.verbose,
+        plotting_args=plotting_args,
+        verbose=cfg.rl.ppo.sb3.verbose and cfg.rl.verbose,
         learning_rate=cfg.rl.ppo.sb3.learning_rate,
         n_steps=cfg.rl.ppo.sb3.n_steps,
         batch_size=cfg.rl.ppo.sb3.batch_size,
@@ -81,6 +88,7 @@ def main(cfg: DictConfig):
         normalize_advantage=cfg.rl.ppo.sb3.normalize_advantage,
         ent_coef=cfg.rl.ppo.sb3.ent_coef,
         vf_coef=cfg.rl.ppo.sb3.vf_coef,
+        kl_coef=cfg.rl.ppo.sb3.kl_coef,
         max_grad_norm=cfg.rl.ppo.sb3.max_grad_norm,
         use_sde=cfg.rl.ppo.sb3.use_sde,
         sde_sample_freq=cfg.rl.ppo.sb3.sde_sample_freq,
@@ -102,13 +110,21 @@ def main(cfg: DictConfig):
         env_fn=get_env,
         path_results_root=Path(path_results, "checkpoints"),
         cfg=cfg,
-        topology_policy=topology_policy
+        topology_policy=topology_policy,
+        verbose=1 if cfg.rl.verbose else 0
     )
     algorithm.learn(total_timesteps=cfg.rl.train.timesteps, tb_log_name=name, log_interval=1, callback=eval_callback)
     algorithm.save(os.path.join(MODELS_PATH, group, name + ".zip"))
 
     # evaluate and return results
-    results_dict = evaluate(algorithm, topology_policy, get_env, path_results, cfg)
+    results_dict = evaluate(
+        algorithm=algorithm,
+        topology_policy=topology_policy,
+        env_creation=get_env,
+        path_results=path_results,
+        cfg=cfg,
+        verbose=cfg.rl.verbose
+    )
 
     # save edge probs
     save_edge_probs(
@@ -116,6 +132,7 @@ def main(cfg: DictConfig):
         env=env,
         save_path=Path(EDGE_PROBS_PATH, group, name + ".npy"),
         num_samples=cfg.rl.eval.num_samples_for_edge_average,
+        verbose=cfg.rl.verbose
     )
 
     return results_dict

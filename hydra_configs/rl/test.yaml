@@ -4,5 +4,7 @@ defaults:
     -   model: default
     -   train: test
     -   eval: test
-    -   obs_space: bus_connectivity_graph_obs_space
-    -   act_space: reduced_act_space
+    -   /obs_space: bus_connectivity_graph_obs_space
+    -   /act_space: reduced_act_space
+
+verbose: True

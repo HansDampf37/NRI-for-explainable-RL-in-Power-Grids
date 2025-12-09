@@ -4,6 +4,7 @@ from a downstream agent this pretraining trains the encoder solely on the object
 prior is a per edge distribution that the posterior distribution is pushed towards) given various observations sampled
 from the environment.
 """
+import logging
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -20,7 +21,7 @@ from torch_geometric.data import Data, InMemoryDataset
 from torch_geometric.loader import DataLoader
 from tqdm import tqdm
 
-from src.common.constants import logger, set_experiment_name
+from src.common.constants import set_experiment_name
 from src.common.env import G2OpGymEnv
 from src.common.graph_structured_observation_space import NODES, EDGE_INDEX, EDGE_MASK
 from src.nri.utils import prior_from_env
@@ -29,6 +30,7 @@ from .graphormer.GraphormerEncoder import GraphormerNRIEncoder
 from .utils import get_env
 
 _eps = 0.00001
+logger = logging.getLogger(__name__)
 
 class GraphDataset(InMemoryDataset):
     def __init__(self, data_list):
@@ -43,10 +45,9 @@ def main(cfg: DictConfig):
     :param cfg: the hydra config
     :return: the graphormer encoder
     """
-    print(OmegaConf.to_yaml(cfg))
     set_experiment_name(cfg.experiment_name)
     from src.common.constants import MODELS_PATH, LOGS_PATH
-    timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S_%f')[:-3]
     group = "encoder/"
     name_suffix = cfg.rl.model.name_suffix
     if name_suffix is None:
@@ -57,13 +58,19 @@ def main(cfg: DictConfig):
     # setup logging
     log_path = Path(LOGS_PATH, group, name)
     tensorboard_logger = SummaryWriter(log_path)
-    logger.info(f"Logging to {log_path}")
+    if cfg.rl.verbose:
+        logger.info(f"Logging to {log_path}")
 
     # collect data
     env: G2OpGymEnv = get_env(cfg)
-    prior = prior_from_env(cfg.rl.model.prior_for_graph_edges_existing, env)
-    ds: GraphDataset = create_dataset(env, prior, cfg.rl.train.pretrain_encoder.ds_size)
-    eval_ds: GraphDataset = create_dataset(get_env(cfg), prior, cfg.rl.train.pretrain_encoder.test_ds_size)
+    prior = prior_from_env(
+        prob_graph_edge_exists=cfg.rl.model.prior_for_graph_edges_existing,
+        env=env,
+        temperature=cfg.rl.model.temperature,
+        verbose=cfg.rl.verbose
+    )
+    ds: GraphDataset = create_dataset(env=env, prior=prior, ds_size=cfg.rl.train.pretrain_encoder.ds_size, verbose=cfg.rl.verbose)
+    eval_ds: GraphDataset = create_dataset(env=get_env(cfg), prior=prior, ds_size=cfg.rl.train.pretrain_encoder.test_ds_size, verbose=cfg.rl.verbose)
 
     # train encoder
     if cfg.rl.model.use_graphormer:
@@ -110,7 +117,8 @@ def train(
         tensorboard_logger: Optional[SummaryWriter] = None,
         batch_size: int = 32,
         num_epochs: int = 100,
-        lr: float = 0.005) -> List[Tuple[float, float]]:
+        lr: float = 0.005,
+        verbose: bool = False) -> List[Tuple[float, float]]:
     """
     Pretrains an encoder on observations obtained by observing the given environment. Since there is no training signal
     from a downstream agent this pretraining trains the encoder solely on the objective of reproducing the prior (the
@@ -125,13 +133,14 @@ def train(
     @param batch_size: the batch size to use
     @param num_epochs: the number of epochs to train
     @param lr: the learning rate
+    @param verbose: print extra explanatory or diagnostic information
     @return: the loss curves (training, testing)
     """
     device = next(encoder.parameters()).device
     loader = DataLoader(ds, batch_size=batch_size, shuffle=True)
     optimizer = torch.optim.Adam(encoder.parameters(), lr=lr)
     loss_per_episode = []
-    pbar = tqdm(total=num_epochs)
+    pbar = tqdm(total=num_epochs, disable=not verbose)
     for epoch in range(num_epochs):
         total_loss = 0.0
         for batch_ in loader:
@@ -171,7 +180,6 @@ def train(
             if p.requires_grad and p.grad is not None
         ])
         if tensorboard_logger is not None:
-            tensorboard_logger.add_scalar("max-logit", edge_logits.max(), epoch)
             tensorboard_logger.add_histogram("grads_abs/global", grads_abs, epoch)
             tensorboard_logger.add_scalar("loss/train", training_loss, epoch)
             if testing_loss is not None:
@@ -179,8 +187,7 @@ def train(
 
         message = f"Epoch {epoch}, " \
              f"Loss: {training_loss:.8f}, " \
-             f"Max Grads: {grads_abs.max():.2f}, " \
-             f"logits max: {edge_logits.max():.2f}"
+             f"Max Grads: {grads_abs.max():.2f}, "
         if testing_loss is not None:
             message += f", Evaluation loss: {testing_loss:.8f}"
         pbar.update(1)
@@ -219,17 +226,18 @@ def evaluate(
     return eval_loss / len(eval_loader)
 
 
-def create_dataset(env: G2OpGymEnv, prior: Tensor, ds_size: int) -> GraphDataset:
+def create_dataset(env: G2OpGymEnv, prior: Tensor, ds_size: int, verbose: bool = True) -> GraphDataset:
     """
     Creates a dataset for pretraining the encoder. Inputs are various observations sampled from the environment.
     As a target we use the given prior Tensor.
     :param env: The environment to sample observations from
     :param prior: the prior
     :param ds_size: the dataset size
+    :param verbose: print extra explanatory or diagnostic information
     :return: the dataset
     """
     data_list = []
-    pbar = tqdm(range(ds_size), desc="Create dataset")
+    pbar = tqdm(range(ds_size), desc="Create dataset", disable=not verbose)
     while len(data_list) < ds_size:
         done = False
         observation, _ = env.reset()
