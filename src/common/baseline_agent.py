@@ -10,18 +10,20 @@ import logging
 import os
 from abc import abstractmethod, ABC
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import List, Optional
 
 import numpy as np
 from grid2op.Action import BaseAction, ActionSpace, TopologySetAction
-from grid2op.Agent import RecoPowerlineAgent, BaseAgent
+from grid2op.Agent import BaseAgent
 from grid2op.Environment import Environment
 from grid2op.Episode import EpisodeData
 from grid2op.Observation import BaseObservation
 from grid2op.Runner import Runner
 from grid2op.Runner.runner import runner_returned_type
 from stable_baselines3.common.base_class import BaseAlgorithm
+from stable_baselines3.common.policies import BasePolicy
 
+from src.common.constants import SEED
 from src.common.env import G2OpGymEnv
 
 logger = logging.getLogger(__name__)
@@ -61,9 +63,9 @@ class HeuristicsAgent(BaseAgent):
     """
 
     def __init__(
-        self,
-        action_space: ActionSpace,
-        rule_config: dict,
+            self,
+            action_space: ActionSpace,
+            rule_config: dict,
     ):
         BaseAgent.__init__(self, action_space)
         self.activation_thresh = rule_config.get("activation_threshold", 0.95)
@@ -71,14 +73,13 @@ class HeuristicsAgent(BaseAgent):
         self.line_disc = rule_config.get("line_disc", False)
         self.reset_topo = rule_config.get("reset_topo", 0.5)
         self.simulate = rule_config.get("simulate", True)
-        self.rho_max = 0
 
     def activate_agent(self, observation: BaseObservation):
-        return self.rho_max > self.activation_thresh
+        max_rho = (observation.rho.max() if observation.rho.max() > 0 else 2)
+        return max_rho > self.activation_thresh
 
-    def act(self, observation: BaseObservation, reward: float, done : bool=False) -> BaseAction:
+    def act(self, observation: BaseObservation, reward: float, done: bool = False) -> BaseAction:
         current_action = self.action_space({})
-        self.rho_max = (observation.rho.max() if observation.rho.max() > 0 else 2)
         if self.line_reco:
             current_action = self.reconnection_rule(observation, current_action)
         if self.reset_topo:
@@ -89,7 +90,7 @@ class HeuristicsAgent(BaseAgent):
 
     def reconnection_rule(self, observation: BaseObservation, current_action: BaseAction) -> BaseAction:
         """
-        This methods reconnects all disconnected lines if this improves the current rho max values based on simulation.
+        This method reconnects all disconnected lines if this improves the current rho max values based on simulation.
         """
         line_stat_s = observation.line_status
         cooldown = observation.time_before_cooldown_line
@@ -102,7 +103,7 @@ class HeuristicsAgent(BaseAgent):
                 _,
             ) = observation.simulate(current_action)
             cur_max_rho = sim_obs.rho.max() if sim_obs.rho.max() > 0 else 2
-            for id_ in (can_be_reco).nonzero()[0]:
+            for id_ in can_be_reco.nonzero()[0]:
                 # reconnect all lines that improve the current action
                 action = current_action + self.action_space({"set_line_status": [(id_, +1)]})
                 (
@@ -116,7 +117,8 @@ class HeuristicsAgent(BaseAgent):
         return current_action
 
     def revert_to_reference_topo(self, observation: BaseObservation, current_action: BaseAction) -> BaseAction:
-        if (self.rho_max < self.reset_topo) and (observation.current_step < observation.max_step-1):
+        rho_max = (observation.rho.max() if observation.rho.max() > 0 else 2)
+        if (rho_max < self.reset_topo) and (observation.current_step < observation.max_step - 1):
             # Get all subs that are not in default topology
             subs_changed = np.unique(observation._topo_vect_to_sub[observation.topo_vect != 1])
             if len(subs_changed):
@@ -139,7 +141,7 @@ class HeuristicsAgent(BaseAgent):
                         }
                         })
                     action_options.append(action)
-                    sim_obs, rw, done, info = observation.simulate(current_action+action)
+                    sim_obs, rw, done, info = observation.simulate(current_action + action)
                     max_rhos[i] = sim_obs.rho.max() if sim_obs.rho.max() > 0 else 2
                     rewards[i] = rw
                 if max_rhos[np.argmax(rewards)] < cur_max_rho:
@@ -194,7 +196,7 @@ class HeuristicsAgent(BaseAgent):
             action = rb_action + topo_actions[0]
         return action
 
-    
+
 class BaselineAgent(HeuristicsAgent):
     """
     This particular greedy baseline will simulate the following actions:
@@ -205,35 +207,32 @@ class BaselineAgent(HeuristicsAgent):
     """
 
     def __init__(
-        self,
-        g2op_action_space: ActionSpace,
-        rule_config: dict,
-        topo_policy: TopologyPolicy,
-        k: int = 3,
+            self,
+            g2op_action_space: ActionSpace,
+            rule_config: dict,
+            rl_policy: BasePolicy
     ):
         """
         :param g2op_action_space: The action space
-        :param topo_policy: A policy proposing topology related actions from the same action space
-        :param k: the number of topology actions to consider
+        :param rl_policy: A policy proposing topology related actions from the same action space
         :param rule_config: contains heuristic rule descriptions
         """
         super().__init__(g2op_action_space, rule_config)
-        self.topology_policy = topo_policy
-        self.k = k
+        self.rl_policy = rl_policy
 
     def act(
-        self, observation: BaseObservation, reward: float, done: bool = False
+            self, observation: BaseObservation, reward: float, done: bool = False
     ) -> BaseAction:
         """
         Returns a grid2op action based on a RLlib observation.
         """
 
-        # First do rule based part of the agent, line reconnections, disconnections and reverrt topo if needed.
+        # First do rule based part of the agent, line reconnections, disconnections and revert topo if needed.
         rb_action = HeuristicsAgent.act(self, observation, reward, done)
 
         if HeuristicsAgent.activate_agent(self, observation):
             # Get action from trained RL-agent when in danger.
-            topo_actions = self.topology_policy.get_k_best_actions(observation, self.k)
+            topo_actions = [self.rl_policy.predict(observation, deterministic=True)]
 
             action = HeuristicsAgent.simulate_combinations(self, observation, topo_actions, rb_action)
         else:
@@ -263,6 +262,7 @@ def evaluate_agent(agent: BaseAgent, env: Environment, path_results: Path, num_e
         path_save=path_results,
         add_detailed_output=True,
         pbar=verbose,
+        env_seeds=[SEED] * num_episodes,
     )
 
     if verbose:

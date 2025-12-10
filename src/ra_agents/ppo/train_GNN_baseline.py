@@ -7,7 +7,6 @@ import hydra
 from omegaconf import DictConfig, OmegaConf
 
 from src.common.constants import set_experiment_name, SEED
-from .PPOTopoPolicy import Sb3PPOTopologyPolicy
 from .PPO_G2Op import G2OpPPO
 from ..RAFeatureExtractor import BaselineFeatureExtractorSB3
 from ..utils import get_env, evaluate, EvalCallback
@@ -72,13 +71,11 @@ def main(cfg: DictConfig):
 
     # train
     path_results = Path(EVAL_PATH, group, name)
-    topology_policy = Sb3PPOTopologyPolicy(algorithm)
     eval_callback = EvalCallback(
         eval_freq=max(cfg.rl.train.timesteps // 10, 1),  # evaluate model 10 times during training
         env_fn=get_env,
         path_results_root=Path(path_results, "checkpoints"),
         cfg=cfg,
-        topology_policy=topology_policy,
         verbose=1 if cfg.rl.verbose else 0
     )
     algorithm.learn(total_timesteps=cfg.rl.train.timesteps, tb_log_name=name, log_interval=1, callback=eval_callback)
@@ -87,7 +84,6 @@ def main(cfg: DictConfig):
     # evaluate and return results
     results_dict = evaluate(
         algorithm=algorithm,
-        topology_policy=topology_policy,
         env_creation=get_env,
         path_results=path_results,
         cfg=cfg,

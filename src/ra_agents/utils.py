@@ -48,7 +48,7 @@ def get_env_mlp_baseline(cfg, env_name: Optional[str] = None) -> G2OpGymEnv:
     return env
 
 
-def evaluate(algorithm: BaseAlgorithm, topology_policy: TopologyPolicy, env_creation, path_results: Path, cfg: DictConfig, verbose = True) -> Dict[str, Dict[str, Dict[str, Any]]]:
+def evaluate(algorithm: BaseAlgorithm, env_creation, path_results: Path, cfg: DictConfig, verbose = True) -> Dict[str, Dict[str, Dict[str, Any]]]:
     """
     Evaluates an algorithm and associated agent on train/test/val envs.
     Stores results and plots in path_results, and returns a dict of metrics:
@@ -62,7 +62,6 @@ def evaluate(algorithm: BaseAlgorithm, topology_policy: TopologyPolicy, env_crea
       }
     }
     :param algorithm: The algorithm to evaluate
-    :param topology_policy: The topology policy wrapper around the algorithm
     :param env_creation: Function that creates the environment
     :param path_results: Path where the results will be stored
     :param cfg: Hydra config
@@ -74,7 +73,7 @@ def evaluate(algorithm: BaseAlgorithm, topology_policy: TopologyPolicy, env_crea
         env_dataset: G2OpGymEnv = env_creation(cfg, f"{cfg.env.name}_{dataset}")
         agent = BaselineAgent(
             g2op_action_space=env_dataset._g2op_env.action_space,
-            topo_policy=topology_policy,
+            rl_policy=algorithm.policy,
             rule_config={
                 "activation_threshold": cfg.env.safe_max_rho,
                 "line_reco": cfg.env.line_reco,
@@ -82,7 +81,6 @@ def evaluate(algorithm: BaseAlgorithm, topology_policy: TopologyPolicy, env_crea
                 "reset_topo": cfg.env.reset_topo,
                 "simulate": cfg.env.simulate,
             },
-            k=cfg.env.agent_k
         )
         evaluate_agent(
             agent=agent,
@@ -131,13 +129,12 @@ def evaluate(algorithm: BaseAlgorithm, topology_policy: TopologyPolicy, env_crea
 
 
 class EvalCallback(BaseCallback):
-    def __init__(self, eval_freq: int, topology_policy: TopologyPolicy, env_fn: Callable[[DictConfig, str], G2OpGymEnv], path_results_root: Path, cfg: DictConfig, verbose=0):
+    def __init__(self, eval_freq: int, env_fn: Callable[[DictConfig, str], G2OpGymEnv], path_results_root: Path, cfg: DictConfig, verbose=0):
         super().__init__(verbose)
         self.eval_freq = eval_freq
         self.env_fn = env_fn
         self.path_results_root = path_results_root
         self.cfg = cfg
-        self.topology_policy = topology_policy
 
     def _on_step(self) -> bool:
         if self.num_timesteps % self.eval_freq == 0:
@@ -148,7 +145,6 @@ class EvalCallback(BaseCallback):
             # Trigger evaluation; return value is ignored here as artifacts are saved to disk
             _ = evaluate(
                 algorithm=self.model,
-                topology_policy=self.topology_policy,
                 env_creation=self.env_fn,
                 path_results=path,
                 cfg=self.cfg,

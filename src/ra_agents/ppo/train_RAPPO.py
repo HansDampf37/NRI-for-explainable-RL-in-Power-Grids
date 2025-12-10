@@ -11,7 +11,6 @@ from src.common.constants import set_experiment_name, SEED
 from src.common.graph_structured_observation_space import EDGE_INDEX, BusConnectivityGraphObsSpace
 from src.nri.utils import prior_from_env
 from src.visualization.utils import PlottingArgs, get_node_styles
-from .PPOTopoPolicy import Sb3PPOTopologyPolicy
 from .RAPPO import RAPPO
 from ..RAFeatureExtractor import RAFeatureExtractorSB3
 from ..get_edge_probs import save_edge_probs
@@ -104,13 +103,11 @@ def main(cfg: DictConfig):
 
     # train
     path_results = Path(EVAL_PATH, group, name)
-    topology_policy = Sb3PPOTopologyPolicy(algorithm)
     eval_callback = EvalCallback(
         eval_freq=max(cfg.rl.train.timesteps // 10, 1),  # evaluate model 10 times during training
         env_fn=get_env,
         path_results_root=Path(path_results, "checkpoints"),
         cfg=cfg,
-        topology_policy=topology_policy,
         verbose=1 if cfg.rl.verbose else 0
     )
     algorithm.learn(total_timesteps=cfg.rl.train.timesteps, tb_log_name=name, log_interval=1, callback=eval_callback)
@@ -119,7 +116,6 @@ def main(cfg: DictConfig):
     # evaluate and return results
     results_dict = evaluate(
         algorithm=algorithm,
-        topology_policy=topology_policy,
         env_creation=get_env,
         path_results=path_results,
         cfg=cfg,
