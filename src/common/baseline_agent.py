@@ -24,6 +24,7 @@ from stable_baselines3.common.policies import BasePolicy
 
 from src.common.constants import SEED
 from src.common.env import G2OpGymEnv
+from src.common.heuristic_actions import reconnection_rule, revert_to_reference_topo, disconnection_rule
 
 logger = logging.getLogger(__name__)
 
@@ -62,100 +63,11 @@ class HeuristicsAgent(BaseAgent):
     def act(self, observation: BaseObservation, reward: float, done: bool = False) -> BaseAction:
         current_action = self.action_space({})
         if self.line_reco:
-            current_action = self.reconnection_rule(observation, current_action)
+            current_action = reconnection_rule(observation, current_action, self.action_space)
         if self.reset_topo:
-            current_action = self.revert_to_reference_topo(observation, current_action)
+            current_action = revert_to_reference_topo(observation, current_action, self.action_space, self.reset_topo)
         if self.line_disc:
-            current_action = self.disconnection_rule(observation, current_action=current_action)
-        return current_action
-
-    def reconnection_rule(self, observation: BaseObservation, current_action: BaseAction) -> BaseAction:
-        """
-        This method reconnects all disconnected lines if this improves the current rho max values based on simulation.
-        """
-        line_stat_s = observation.line_status
-        cooldown = observation.time_before_cooldown_line
-        can_be_reco = ~line_stat_s & (cooldown == 0)
-        if can_be_reco.any():
-            (
-                sim_obs,
-                _,
-                _,
-                _,
-            ) = observation.simulate(current_action)
-            cur_max_rho = sim_obs.rho.max() if sim_obs.rho.max() > 0 else 2
-            for id_ in can_be_reco.nonzero()[0]:
-                # reconnect all lines that improve the current action
-                action = current_action + self.action_space({"set_line_status": [(id_, +1)]})
-                (
-                    sim_obs,
-                    _,
-                    _,
-                    _,
-                ) = observation.simulate(action)
-                if cur_max_rho > (sim_obs.rho.max() if sim_obs.rho.max() > 0 else 2):
-                    current_action = action
-        return current_action
-
-    def revert_to_reference_topo(self, observation: BaseObservation, current_action: BaseAction) -> BaseAction:
-        rho_max = (observation.rho.max() if observation.rho.max() > 0 else 2)
-        if (rho_max < self.reset_topo) and (observation.current_step < observation.max_step - 1):
-            # Get all subs that are not in default topology
-            subs_changed = np.unique(observation._topo_vect_to_sub[observation.topo_vect != 1])
-            if len(subs_changed):
-                (
-                    sim_obs,
-                    _,
-                    _,
-                    _,
-                ) = observation.simulate(current_action)
-                cur_max_rho = sim_obs.rho.max() if sim_obs.rho.max() > 0 else 2
-                # Simulate going back to reference topology for each substation that has changed
-                action_options = []
-                max_rhos = np.zeros(len(subs_changed))
-                rewards = np.zeros(len(subs_changed))
-                for i, sub in enumerate(subs_changed):
-                    action = self.action_space(
-                        {"set_bus": {
-                            "substations_id":
-                                [(sub, np.ones(observation.sub_info[sub], dtype=int))]
-                        }
-                        })
-                    action_options.append(action)
-                    sim_obs, rw, done, info = observation.simulate(current_action + action)
-                    max_rhos[i] = sim_obs.rho.max() if sim_obs.rho.max() > 0 else 2
-                    rewards[i] = rw
-                if max_rhos[np.argmax(rewards)] < cur_max_rho:
-                    # add the best revert action.
-                    current_action += action_options[np.argmax(rewards)]
-                    # print(current_action)
-        return current_action
-
-    def disconnection_rule(self, observation: BaseObservation, current_action: BaseAction) -> BaseAction:
-        # This method manually disconnect a line during sustained periods of overflow in order to avoid permanent
-        # damage. Reconnect the line back soon after the cooldown period ends.
-        # This can help when parameters.NB_TIMESTEP_RECONNECTION > parameters.NB_TIMESTEP_COOLDOWN_LINE
-        if np.any(observation.timestep_overflow > 1):
-            (
-                sim_obs,
-                _,
-                _,
-                _,
-            ) = observation.simulate(current_action)
-            cur_max_rho = sim_obs.rho.max() if sim_obs.rho.max() > 0 else 2
-            # Manually disconnect lines that are overflowed for more than 1 time step.
-            id_ = observation.timestep_overflow.argmax()
-            action = current_action + self.action_space({"set_line_status": [(id_, -1)]})
-            (
-                sim_obs,
-                _,
-                _,
-                _,
-            ) = observation.simulate(action)
-            if cur_max_rho > (sim_obs.rho.max() if sim_obs.rho.max() > 0 else 2):
-                # only disconnect when this benefits the current action.
-                current_action = action
-            # print(current_action)
+            current_action = disconnection_rule(observation, current_action, self.action_space)
         return current_action
 
     def simulate_combinations(self,
@@ -374,4 +286,3 @@ def _store_summary_metrics(res: List[runner_returned_type], path_results: Path) 
 
     # Log a brief summary
     logger.info(f"Summary metrics: Completed Episodes % = {completed_pct:.2f}, Survived Steps % = {survived_pct:.2f}")
-

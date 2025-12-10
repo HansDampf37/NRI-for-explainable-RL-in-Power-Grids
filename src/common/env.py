@@ -1,5 +1,6 @@
 """
-This script wraps a grid2op environment with a gymnasium API and applies heuristic actions automatically.
+This module provides a Gymnasium-compatible wrapper around Grid2Op environments and integrates heuristic actions.
+It aligns the environment-side heuristics with the BaselineAgent behavior to ensure consistency during training and evaluation.
 """
 import logging
 import time
@@ -9,6 +10,7 @@ from typing import Optional, Dict, Tuple, Callable, List
 
 import grid2op
 import numpy as np
+from grid2op.Action import BaseAction
 from grid2op.Observation import BaseObservation
 from grid2op.gym_compat import DiscreteActSpace, BoxGymObsSpace
 from gymnasium import Env, Space
@@ -18,24 +20,28 @@ from stable_baselines3.common.monitor import Monitor
 
 from .constants import SEED
 from .rewards import MazeRLReward
+from .heuristic_actions import reconnection_rule, revert_to_reference_topo, disconnection_rule
 
 
 def _default_act_space(env: grid2op.Environment) -> DiscreteActSpace:
+    """Create a discrete Gym action space keeping only topology actions (set_bus)."""
     return DiscreteActSpace(env.action_space, attr_to_keep=["set_bus"])
 
 
 def _default_obs_space(env: grid2op.Environment) -> BoxGymObsSpace:
+    """Create a boxed Gym observation space keeping selected attributes for RL."""
     return BoxGymObsSpace(grid2op_observation_space=env.observation_space,
                           attr_to_keep=["rho", "p_or", "gen_p", "load_p"])
 
 
 class G2OpGymEnv(Monitor):
     """
-    Gymnasium-compatible wrapper for Grid2Op environments with heuristic actions.
+    Gymnasium-compatible wrapper for Grid2Op environments with heuristic actions and episode logging.
 
-    This class wraps a Grid2Op environment and exposes it through a standard Gymnasium interface.
-    This wrapper implements the same logic as GymEnvWithRecoWithDN (automatically reconnect powerlines do nothing if load is low).
-    Additionally, the do-nothing action is applied whenever the maximum line load is lower than safe_max_rho.
+    Responsibilities:
+    - Build a Gym-compatible action/observation space on top of Grid2Op.
+    - Wrap the underlying environment with a heuristic layer mirroring BaselineAgent rules.
+    - Record per-episode metrics via Monitor, including custom info key 'nb_steps' counting heuristic steps.
     """
 
     def __init__(self,
@@ -45,11 +51,14 @@ class G2OpGymEnv(Monitor):
                  seed: int = SEED,
                  rule_config: Optional[dict] = None):
         """
-        Constructor.
-        @param env_name: the name of the grid2op environment
-        @param act_space_creation: lambda function that creates the action space
-        @param obs_space_creation: lambda function that creates the observation space
-        @param rule_config: heuristic configuration to match BaselineAgent behavior
+        Initialize the Gym wrapper.
+
+        Parameters:
+        :param env_name: Grid2Op environment name.
+        :param act_space_creation: factory to build Gym action space from Grid2Op action space.
+        :param obs_space_creation: factory to build Gym observation space from Grid2Op observation space.
+        :param seed: RNG seed for the Grid2Op environment.
+        :param rule_config: heuristic configuration (line_reco, line_disc, reset_topo, activation_threshold).
         """
         logging.getLogger("pandapower.convert_format").disabled = True
         Env.__init__(self)
@@ -231,7 +240,7 @@ class GymEnvWithHeuristicsAndLogs(GymEnvWithHeuristics, ABC):
 
 class HeuristicEnv(GymEnvWithHeuristicsAndLogs):
     """
-    TODO docstring
+    Gym environment that applies heuristic actions according to the provided rule-configuration
     """
     def __init__(self, init_env: grid2op.Environment, with_forecast: bool=False, rule_config: Optional[dict] = None):
         super().__init__(env_init=init_env, reward_cumul="init", with_forecast=with_forecast)
@@ -241,77 +250,18 @@ class HeuristicEnv(GymEnvWithHeuristicsAndLogs):
         self._line_disc = rule_config.get("line_disc", False)
         self._reset_topo = rule_config.get("reset_topo", 0.5)
 
-    def heuristic_actions(self, observation: BaseObservation, reward: float, done: bool, info: Dict) -> List: # TODO return type
-        """
-        TODO docstring
-        @param observation:
-        @param reward:
-        @param done:
-        @param info:
-        @return:
-        """
+    def heuristic_actions(self, observation: BaseObservation, reward: float, done: bool, info: Dict) -> List[BaseAction]:
         current_action = self.init_env.action_space({})
         # reconnection_rule
         if self._line_reco:
-            current_action = self._reconnection_rule(observation, current_action)
+            current_action = reconnection_rule(observation, current_action, self.init_env.action_space)
         # revert_to_reference_topo
         if self._reset_topo:
-            current_action = self._revert_to_reference_topo(observation, current_action, self._reset_topo)
+            current_action = revert_to_reference_topo(observation, current_action, self.init_env.action_space, self._reset_topo)
         # disconnection_rule
         if self._line_disc:
-            current_action = self._disconnection_rule(observation, current_action)
+            current_action = disconnection_rule(observation, current_action, self.init_env.action_space)
         # If no change, return empty list
         if current_action == self.init_env.action_space({}):
             return []
         return [current_action]
-
-    def _reconnection_rule(self, observation: BaseObservation, current_action):
-        line_stat_s = observation.line_status
-        cooldown = observation.time_before_cooldown_line
-        can_be_reco = ~line_stat_s & (cooldown == 0)
-        if can_be_reco.any():
-            sim_obs, _, _, _ = observation.simulate(current_action)
-            cur_max_rho = sim_obs.rho.max() if sim_obs.rho.max() > 0 else 2
-            for id_ in can_be_reco.nonzero()[0]:
-                action = current_action + self.init_env.action_space({"set_line_status": [(int(id_), +1)]})
-                sim_obs, _, _, _ = observation.simulate(action)
-                if cur_max_rho > (sim_obs.rho.max() if sim_obs.rho.max() > 0 else 2):
-                    current_action = action
-        return current_action
-
-    def _revert_to_reference_topo(self, observation: BaseObservation, current_action, reset_topo: float):
-        rho_max = (observation.rho.max() if observation.rho.max() > 0 else 2)
-        if (rho_max < reset_topo) and (observation.current_step < observation.max_step - 1):
-            subs_changed = np.unique(observation._topo_vect_to_sub[observation.topo_vect != 1])
-            if len(subs_changed):
-                sim_obs, _, _, _ = observation.simulate(current_action)
-                cur_max_rho = sim_obs.rho.max() if sim_obs.rho.max() > 0 else 2
-                action_options = []
-                max_rhos = np.zeros(len(subs_changed))
-                rewards = np.zeros(len(subs_changed))
-                for i, sub in enumerate(subs_changed):
-                    action = self.init_env.action_space(
-                        {"set_bus": {
-                            "substations_id":
-                                [(int(sub), np.ones(observation.sub_info[int(sub)], dtype=int))]
-                        }
-                        })
-                    action_options.append(action)
-                    sim_obs, rw, tmp_done, tmp_info = observation.simulate(current_action + action)
-                    max_rhos[i] = sim_obs.rho.max() if sim_obs.rho.max() > 0 else 2
-                    rewards[i] = rw
-                if len(rewards) and max_rhos[int(np.argmax(rewards))] < cur_max_rho:
-                    current_action += action_options[int(np.argmax(rewards))]
-        return current_action
-
-    def _disconnection_rule(self, observation: BaseObservation, current_action):
-        if np.any(observation.timestep_overflow > 1):
-            sim_obs, _, _, _ = observation.simulate(current_action)
-            cur_max_rho = sim_obs.rho.max() if sim_obs.rho.max() > 0 else 2
-            id_ = int(observation.timestep_overflow.argmax())
-            action = current_action + self.init_env.action_space({"set_line_status": [(id_, -1)]})
-            sim_obs, _, _, _ = observation.simulate(action)
-            if cur_max_rho > (sim_obs.rho.max() if sim_obs.rho.max() > 0 else 2):
-                current_action = action
-        return current_action
-
