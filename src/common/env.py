@@ -102,7 +102,7 @@ class G2OpGymEnv(Monitor):
         observation, reward, terminated, truncated, info = self.env.step(action)
         self.rewards.append(float(reward))
         self._ep_len += int(info['nb_steps'])
-        self._episode_actions.append(action)
+        self._episode_actions.append(repr(action))
         if terminated or truncated:
             ep_rew = sum(self.rewards)
             ep_info = {"r": round(ep_rew, 6), "l": self._ep_len, "t": round(time.time() - self.t_start, 6),
