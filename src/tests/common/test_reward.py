@@ -1,13 +1,14 @@
 import unittest
 
 import grid2op
+from grid2op.Reward import L2RPNReward
 
-from src.common.rewards import MazeRLReward, BaseWithBonus
+from src.common.rewards import BaseWithBonus
 
 
 class TestReward(unittest.TestCase):
     def setUp(self):
-        self.env = grid2op.make("l2rpn_case14_sandbox", reward_class=MazeRLReward)
+        self.env = grid2op.make("l2rpn_case14_sandbox", reward_class=L2RPNReward)
         self.env.reset()
 
     def test_reward(self):

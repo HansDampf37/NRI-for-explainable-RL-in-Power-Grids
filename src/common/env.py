@@ -12,6 +12,7 @@ import grid2op
 import numpy as np
 from grid2op.Action import BaseAction
 from grid2op.Observation import BaseObservation
+from grid2op.Reward import L2RPNReward
 from grid2op.gym_compat import DiscreteActSpace, BoxGymObsSpace
 from gymnasium import Env, Space
 from l2rpn_baselines.utils import GymEnvWithHeuristics
@@ -19,7 +20,6 @@ from lightsim2grid import LightSimBackend
 from stable_baselines3.common.monitor import Monitor
 
 from .constants import SEED
-from .rewards import MazeRLReward
 from .heuristic_actions import reconnection_rule, revert_to_reference_topo, disconnection_rule
 
 logger = logging.getLogger(__name__)
@@ -69,7 +69,7 @@ class G2OpGymEnv(Monitor):
         self._interactions = 0
         self._episode_actions = []
         # create env
-        self._g2op_env = grid2op.make(env_name, backend=LightSimBackend(), reward_class=MazeRLReward)
+        self._g2op_env = grid2op.make(env_name, backend=LightSimBackend(), reward_class=L2RPNReward)
         self._g2op_env.seed(seed)
         self._gym_env = HeuristicEnv(
             self._g2op_env,
