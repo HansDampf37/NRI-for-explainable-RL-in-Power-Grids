@@ -9,7 +9,7 @@ from omegaconf import DictConfig, OmegaConf
 from src.common.constants import set_experiment_name, SEED
 from .CustomPPO import G2OpPPO
 from ..RAFeatureExtractor import BaselineFeatureExtractorSB3
-from ..utils import get_env, evaluate, EvalCallback
+from ..utils import get_env, evaluate, EvalCallback, CurriculumCallback
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +78,15 @@ def main(cfg: DictConfig):
         cfg=cfg,
         verbose=1 if cfg.rl.verbose else 0
     )
-    algorithm.learn(total_timesteps=cfg.rl.train.timesteps, tb_log_name=name, log_interval=1, callback=eval_callback)
+    curriculum_cb = CurriculumCallback(
+        total_timesteps=cfg.rl.train.timesteps,
+        level2_at_fraction=float(cfg.env.curriculum_level_config.level2_at_fraction),
+        level3_at_fraction=float(cfg.env.curriculum_level_config.level3_at_fraction),
+        start_level=int(cfg.env.curriculum_level_config.start_level),
+        verbose=1 if cfg.rl.verbose else 0,
+    )
+
+    algorithm.learn(total_timesteps=cfg.rl.train.timesteps, tb_log_name=name, log_interval=1, callback=[eval_callback, curriculum_cb])
     algorithm.save(os.path.join(MODELS_PATH, group, name + ".zip"))
 
     # evaluate and return results

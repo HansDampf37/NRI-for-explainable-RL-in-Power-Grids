@@ -6,7 +6,22 @@ rule_config:
     reset_topo: 0.9
     simulate: true
 
+curriculum_level_config:
+    start_level: 1
+    level2_at_fraction: 0.2        # 1/5 of total training time
+    level3_at_fraction: 0.4666667  # 7/15 of total training time
+
 training_env:
     _target_: src.common.env.G2OpGymEnv
     env_name: "${env.name}_train"
     rule_config: ${env.rule_config}
+    curriculum_level_settings:
+        -   NO_OVERFLOW_DISCONNECTION: True
+            SOFT_OVERFLOW_THRESHOLD: 99
+            HARD_OVERFLOW_THRESHOLD: 999
+            NB_TIMESTEP_OVERFLOW_ALLOWED: 99
+        -   NO_OVERFLOW_DISCONNECTION: False
+            SOFT_OVERFLOW_THRESHOLD: 2
+            HARD_OVERFLOW_THRESHOLD: 99
+            NB_TIMESTEP_OVERFLOW_ALLOWED: 15
+        - null

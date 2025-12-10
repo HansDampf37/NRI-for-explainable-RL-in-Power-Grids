@@ -28,6 +28,7 @@ def get_env(cfg: DictConfig, env_name: Optional[str] = None) -> G2OpGymEnv:
         rule_config=cfg.env.rule_config,
         obs_space_creation=lambda e: instantiate(cfg.rl.obs_space, grid2op_observation_space=e.observation_space),
         act_space_creation=lambda e: instantiate(cfg.rl.act_space, grid2op_action_space=e.action_space),
+        curriculum_learning=cfg.env.training_env.curriculum_level_settings,
     )
     return env
 
@@ -43,9 +44,46 @@ def get_env_mlp_baseline(cfg, env_name: Optional[str] = None) -> G2OpGymEnv:
         cfg.env.training_env.env_name if env_name is None else env_name,
         rule_config=cfg.env.rule_config,
         obs_space_creation=lambda e: BoxGymObsSpace(grid2op_observation_space=e.observation_space),
-        act_space_creation=lambda e: instantiate(cfg.rl.act_space, grid2op_action_space=e.action_space)
+        act_space_creation=lambda e: instantiate(cfg.rl.act_space, grid2op_action_space=e.action_space),
+        curriculum_learning=cfg.env.training_env.curriculum_level_settings,
     )
     return env
+
+
+class CurriculumCallback(BaseCallback):
+    """
+    Generic curriculum learning callback switching environment difficulty levels.
+
+    Arguments:
+    - total_timesteps: total training timesteps to compute progress thresholds
+    - level2_at_fraction: switch to level 2 when progress >= this fraction (default 1/5)
+    - level3_at_fraction: switch to level 3 when progress >= this fraction (default 7/15)
+    - start_level: initial level set externally on env creation (default 1)
+
+    This callback will call `set_curriculum(level)` on the underlying environment(s) via VecEnv.env_method.
+    """
+    def __init__(self, total_timesteps: int, level2_at_fraction: float = 1.0/5.0, level3_at_fraction: float = 7.0/15.0, start_level: int = 1, verbose: int = 0):
+        super().__init__(verbose)
+        self.total_timesteps = int(total_timesteps)
+        self.level2_timestep = int(float(level2_at_fraction) * self.total_timesteps)
+        self.level3_timestep = int(float(level3_at_fraction) * self.total_timesteps)
+        self.start_level = int(start_level)
+        self._switched_to_2 = False
+        self._switched_to_3 = False
+
+    def _on_training_start(self) -> None:
+        # ensure env starts at requested level
+        self.training_env.env_method("set_curriculum", int(self.start_level))
+
+    def _on_step(self) -> bool:
+        t = int(self.model.num_timesteps)
+        if not self._switched_to_3 and t >= self.level3_timestep:
+            self.training_env.env_method("set_curriculum", 3)
+            self._switched_to_3 = self._switched_to_2 = True
+        elif not self._switched_to_2 and t >= self.level2_timestep:
+            self.training_env.env_method("set_curriculum", 2)
+            self._switched_to_2 = True
+        return True
 
 
 def evaluate(algorithm: BaseAlgorithm, env_creation, path_results: Path, cfg: DictConfig, verbose = True) -> Dict[str, Dict[str, Dict[str, Any]]]:

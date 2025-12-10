@@ -158,12 +158,14 @@ def evaluate_agent(agent: BaseAgent, env: Environment, path_results: Path, num_e
         env_seeds=[SEED] * num_episodes,
     )
 
-    # Compute and store summary metrics across episodes
-    _store_summary_metrics(res=res, path_results=path_results)
-
     if verbose:
         # print results
         _print_runner_results(res)
+
+    # Compute and store summary metrics across episodes
+    _store_summary_metrics(res=res, path_results=path_results, verbose=verbose)
+
+    if verbose:
         logger.info(f"Evaluation results are stored in: {path_results}")
 
     return res
@@ -239,14 +241,13 @@ def evaluate_sb3_alg(alg: BaseAlgorithm, env: G2OpGymEnv, path_results: Path, nu
 
 
 def _print_runner_results(res: List[runner_returned_type]):
-    logger.info("The results for the evaluated agent are:")
     for _, chron_id, cum_reward, nb_time_step, max_ts, data in res:
         logger.info(f"Chronics: '{chron_id}', Return: {cum_reward:.2f}, "
                     f"Survival Duration: {nb_time_step:.0f} / {max_ts:.0f}, "
                     f"Per-step-reward: {np.nan_to_num(data.rewards).mean():.2f} ± {np.nan_to_num(data.rewards).std():.2f}")
 
 
-def _store_summary_metrics(res: List[runner_returned_type], path_results: Path) -> None:
+def _store_summary_metrics(res: List[runner_returned_type], path_results: Path, verbose: bool = True) -> None:
     """
     Compute averaged Completed Episodes % and Survived Steps % across episodes and store them in a summary JSON.
 
@@ -255,6 +256,7 @@ def _store_summary_metrics(res: List[runner_returned_type], path_results: Path) 
 
     :param res: list of runner returns
     :param path_results: the folder in which to store the summary_metrics.json
+    :param verbose: print extra explanatory or diagnostic information
     """
     # only include episodes with positive max_timesteps
     res = [ep_info for ep_info in res if ep_info[4] > 0]
@@ -269,13 +271,13 @@ def _store_summary_metrics(res: List[runner_returned_type], path_results: Path) 
         completed_flags.append(1.0 if nb_time_step >= max_ts else 0.0)
         survived_ratios.append(float(nb_time_step) / float(max_ts))
 
-    completed_pct = (sum(completed_flags) / float(len(completed_flags)))
-    survived_pct = float(np.mean(survived_ratios))
+    completed_episodes_frac = (sum(completed_flags) / float(len(completed_flags)))
+    survived_steps_frac = float(np.mean(survived_ratios))
 
     summary = {
         "episodes": len(res),
-        "completed_episodes_pct": round(completed_pct * 100, 4),
-        "survived_steps_pct": round(survived_pct * 100, 4)
+        "completed_episodes_pct": round(completed_episodes_frac * 100, 4),
+        "survived_steps_pct": round(survived_steps_frac * 100, 4)
     }
 
     # Persist a summary file in the root result folder
@@ -285,4 +287,5 @@ def _store_summary_metrics(res: List[runner_returned_type], path_results: Path) 
         json.dump(summary, f, indent=4)
 
     # Log a brief summary
-    logger.info(f"Summary metrics: Completed Episodes % = {completed_pct:.2f}, Survived Steps % = {survived_pct:.2f}")
+    if verbose:
+        logger.info(f"Summary metrics: Completed Episodes: {completed_episodes_frac * 100:.2f}%, Survived Steps: {survived_steps_frac * 100:.2f}%")

@@ -8,7 +8,7 @@ from stable_baselines3 import DQN
 
 from src.common.constants import set_experiment_name, logger, SEED
 from .CustomDQN import SoftmaxDQN
-from ..utils import get_env_mlp_baseline, evaluate, EvalCallback
+from ..utils import get_env_mlp_baseline, evaluate, EvalCallback, CurriculumCallback
 
 
 @hydra.main(config_path="../../../hydra_configs", config_name="config", version_base="1.3")
@@ -64,12 +64,12 @@ def main(cfg: DictConfig):
             exploration_final_eps=cfg.rl.dqn.sb3.exploration_final_eps,
             target_update_interval=cfg.rl.dqn.sb3.target_update_interval,
             learning_starts=cfg.rl.dqn.sb3.learning_starts,
-            buffer_size=cfg.rl.dqn.sb3.buffer_size,
-            batch_size=cfg.rl.dqn.sb3.batch_size,
-            learning_rate=cfg.rl.dqn.sb3.learning_rate,
             policy_kwargs={
                 "net_arch": cfg.rl.dqn.sb3.policy_kwargs.net_arch,
             },
+            buffer_size=cfg.rl.dqn.sb3.buffer_size,
+            batch_size=cfg.rl.dqn.sb3.batch_size,
+            learning_rate=cfg.rl.dqn.sb3.learning_rate,
             seed=SEED,
         )
 
@@ -81,7 +81,15 @@ def main(cfg: DictConfig):
         path_results_root=Path(path_results, "checkpoints"),
         cfg=cfg,
     )
-    algorithm.learn(total_timesteps=cfg.rl.train.timesteps, tb_log_name=name, log_interval=cfg.rl.train.log_interval, callback=eval_callback)
+    curriculum_cb = CurriculumCallback(
+        total_timesteps=cfg.rl.train.timesteps,
+        level2_at_fraction=float(cfg.env.curriculum_level_config.level2_at_fraction),
+        level3_at_fraction=float(cfg.env.curriculum_level_config.level3_at_fraction),
+        start_level=int(cfg.env.curriculum_level_config.start_level),
+        verbose=1 if cfg.rl.verbose else 0,
+    )
+
+    algorithm.learn(total_timesteps=cfg.rl.train.timesteps, tb_log_name=name, log_interval=cfg.rl.train.log_interval, callback=[eval_callback, curriculum_cb])
     algorithm.save(os.path.join(MODELS_PATH, group, name + ".zip"))
 
     # evaluate

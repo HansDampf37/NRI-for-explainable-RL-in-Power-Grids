@@ -22,6 +22,8 @@ from .constants import SEED
 from .rewards import MazeRLReward
 from .heuristic_actions import reconnection_rule, revert_to_reference_topo, disconnection_rule
 
+logger = logging.getLogger(__name__)
+
 
 def _default_act_space(env: grid2op.Environment) -> DiscreteActSpace:
     """Create a discrete Gym action space keeping only topology actions (set_bus)."""
@@ -49,7 +51,8 @@ class G2OpGymEnv(Monitor):
                  act_space_creation: Callable[[grid2op.Environment], Space] = _default_act_space,
                  obs_space_creation: Callable[[grid2op.Environment], Space] = _default_obs_space,
                  seed: int = SEED,
-                 rule_config: Optional[dict] = None):
+                 rule_config: Optional[dict] = None,
+                 curriculum_learning: Optional[list] = None):
         """
         Initialize the Gym wrapper.
 
@@ -71,7 +74,8 @@ class G2OpGymEnv(Monitor):
         self._gym_env = HeuristicEnv(
             self._g2op_env,
             with_forecast=True,
-            rule_config=rule_config
+            rule_config=rule_config,
+            curriculum_learning=curriculum_learning
         )
         # this class acts as a monitor for self._gym_env
         Monitor.__init__(self, self._gym_env)
@@ -146,6 +150,8 @@ class G2OpGymEnv(Monitor):
         obs, reward, done, info = self._g2op_env.step(self._g2op_env.action_space({}))
         return self.observation_space.to_gym(obs), reward, done, False, info
 
+    def set_curriculum(self, level: int):
+        self._gym_env.set_curriculum(level)
 
 class GymEnvWithHeuristicsAndLogs(GymEnvWithHeuristics, ABC):
     """
@@ -242,13 +248,16 @@ class HeuristicEnv(GymEnvWithHeuristicsAndLogs):
     """
     Gym environment that applies heuristic actions according to the provided rule-configuration
     """
-    def __init__(self, init_env: grid2op.Environment, with_forecast: bool=False, rule_config: Optional[dict] = None):
+    def __init__(self, init_env: grid2op.Environment, with_forecast: bool=False, rule_config: Optional[list] = None, curriculum_learning: Optional[dict] = None):
         super().__init__(env_init=init_env, reward_cumul="init", with_forecast=with_forecast)
         rule_config = rule_config or {}
+        curriculum_learning = curriculum_learning or []
+        self._default_parameters = init_env.parameters
         self._activation_threshold = rule_config.get("activation_threshold", 0.95)
         self._line_reco = rule_config.get("line_reco", True)
         self._line_disc = rule_config.get("line_disc", False)
         self._reset_topo = rule_config.get("reset_topo", 0.5)
+        self._curriculum_learning = curriculum_learning
 
     def heuristic_actions(self, observation: BaseObservation, reward: float, done: bool, info: Dict) -> List[BaseAction]:
         current_action = self.init_env.action_space({})
@@ -265,3 +274,18 @@ class HeuristicEnv(GymEnvWithHeuristicsAndLogs):
         if current_action == self.init_env.action_space({}):
             return []
         return [current_action]
+
+    def set_curriculum(self, level: int):
+        logger.info(f"Change curriculum to level: {level}")
+        new_params = self._curriculum_learning[level] if level < len(self._curriculum_learning) else None
+        if new_params is not None:
+            p = self.init_env.parameters
+            p.init_from_dict(new_params)
+            self.init_env.change_parameters(p)
+            self.init_env.reset()
+        else:
+            # use default parameters
+            self.init_env.change_parameters(self._default_parameters)
+            self.init_env.reset()
+
+        logger.info(f"Parameters used: \n{self.init_env.parameters.to_dict()}")

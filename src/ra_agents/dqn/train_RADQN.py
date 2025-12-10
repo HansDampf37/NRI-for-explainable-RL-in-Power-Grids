@@ -15,7 +15,7 @@ from .RADQN import RADQN
 from ..RAFeatureExtractor import RAFeatureExtractorSB3
 from ..get_edge_probs import save_edge_probs
 from ..pretrain_encoder import main as pretrain_encoder
-from ..utils import get_env, evaluate, EvalCallback
+from ..utils import get_env, evaluate, EvalCallback, CurriculumCallback
 
 
 @hydra.main(config_path="../../../hydra_configs", config_name="config", version_base="1.3")
@@ -103,7 +103,15 @@ def main(cfg: DictConfig):
         path_results_root=Path(path_results, "checkpoints"),
         cfg=cfg,
     )
-    algorithm.learn(total_timesteps=cfg.rl.train.timesteps, tb_log_name=name, log_interval=cfg.rl.train.log_interval, callback=eval_callback)
+    curriculum_cb = CurriculumCallback(
+        total_timesteps=cfg.rl.train.timesteps,
+        level2_at_fraction=float(cfg.env.curriculum_level_config.level2_at_fraction),
+        level3_at_fraction=float(cfg.env.curriculum_level_config.level3_at_fraction),
+        start_level=int(cfg.env.curriculum_level_config.start_level),
+        verbose=1 if cfg.rl.verbose else 0,
+    )
+
+    algorithm.learn(total_timesteps=cfg.rl.train.timesteps, tb_log_name=name, log_interval=cfg.rl.train.log_interval, callback=[eval_callback, curriculum_cb])
     algorithm.save(os.path.join(MODELS_PATH, group, name + ".zip"))
 
     # evaluate
