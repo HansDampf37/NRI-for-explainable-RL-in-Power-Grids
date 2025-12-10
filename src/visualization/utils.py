@@ -16,7 +16,7 @@ from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 
-from src.common.graph_structured_observation_space import GraphObservationSpace, BusConnectivityGraphObsSpace
+from src.common.observation_space import GraphObservationSpace, BusConnectivityGraphObsSpace
 from src.nri.utils import fully_connected_edge_index
 
 logger = logging.getLogger(__name__)

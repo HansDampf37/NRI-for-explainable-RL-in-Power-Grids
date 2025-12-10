@@ -4,7 +4,7 @@ from typing import Dict
 from grid2op.gym_compat import BoxGymObsSpace, BoxGymActSpace
 from gymnasium.spaces import Discrete, Box
 
-from src.common.graph_structured_observation_space import BusConnectivityGraphObsSpace
+from src.common.observation_space import BusConnectivityGraphObsSpace
 from src.common.env import G2OpGymEnv
 
 

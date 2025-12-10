@@ -6,7 +6,7 @@ from torch import Tensor
 from torch_geometric.utils import to_dense_adj
 
 from src.common.env import G2OpGymEnv
-from src.common.graph_structured_observation_space import BusConnectivityGraphObsSpace, EDGE_INDEX
+from src.common.observation_space import BusConnectivityGraphObsSpace, EDGE_INDEX
 from src.nri.utils import fully_connected_edge_index, Edge2Node, Node2Edge, EdgeNode2Node, warn_large_loss, \
     fully_connected_edge_index_per_batch, get_prior_tensor, get_priors, prior_from_env
 from src.visualization.utils import PlottingArgs, get_node_styles, visualize_graph

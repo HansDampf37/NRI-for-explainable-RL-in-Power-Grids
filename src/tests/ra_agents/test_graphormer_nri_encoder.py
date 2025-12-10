@@ -5,7 +5,7 @@ import torch
 from torch.nn import functional as F
 
 from src.common.env import G2OpGymEnv
-from src.common.graph_structured_observation_space import BusConnectivityGraphObsSpace, EDGE_INDEX
+from src.common.observation_space import BusConnectivityGraphObsSpace, EDGE_INDEX
 from src.nri.utils import prior_from_env
 from src.ra_agents.graphormer.GraphormerEncoder import GraphormerNRIEncoder
 from src.ra_agents.pretrain_encoder import create_dataset, GraphDataset, train

@@ -13,7 +13,7 @@ import torch
 from tqdm import tqdm
 
 from src.common.env import G2OpGymEnv
-from src.common.graph_structured_observation_space import EDGE_INDEX
+from src.common.observation_space import EDGE_INDEX
 from src.visualization import visualize_graph, PlottingArgs, get_node_styles
 from .RARL import RARL
 

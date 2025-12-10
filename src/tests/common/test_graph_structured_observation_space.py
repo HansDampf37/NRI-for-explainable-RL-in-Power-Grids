@@ -6,7 +6,7 @@ import numpy as np
 from grid2op.gym_compat import GymEnv
 from torch_geometric.data.data import Data
 
-from src.common.graph_structured_observation_space import EDGE_INDEX, NODES, EDGE_MASK, BusConnectivityGraphObsSpace, \
+from src.common.observation_space import EDGE_INDEX, NODES, EDGE_MASK, BusConnectivityGraphObsSpace, \
     gym2pytorch_geometric_data, GLOBAL
 
 

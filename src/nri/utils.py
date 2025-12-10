@@ -11,7 +11,7 @@ from torch_geometric.utils import dense_to_sparse
 
 from src.common.MLP import MLP
 from src.common.env import G2OpGymEnv
-from src.common.graph_structured_observation_space import GraphObservationSpace, EDGE_INDEX
+from src.common.observation_space import GraphObservationSpace, EDGE_INDEX
 
 logger = logging.getLogger(__name__)
 

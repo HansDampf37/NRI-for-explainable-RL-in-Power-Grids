@@ -8,7 +8,7 @@ import numpy as np
 from grid2op.Agent import DoNothingAgent
 
 from src.common.constants import enable_test_mode
-from src.common.graph_structured_observation_space import NODES
+from src.common.observation_space import NODES
 from src.nri.create_dataset import generate_dataset
 from src.nri.train_nri import main as train_nri
 from src.nri.utils import get_env, prior_from_env

@@ -23,7 +23,7 @@ from tqdm import tqdm
 
 from src.common.constants import set_experiment_name
 from src.common.env import G2OpGymEnv
-from src.common.graph_structured_observation_space import NODES, EDGE_INDEX, EDGE_MASK
+from src.common.observation_space import NODES, EDGE_INDEX, EDGE_MASK
 from src.nri.utils import prior_from_env
 from .Encoder import Encoder
 from .graphormer.GraphormerEncoder import GraphormerNRIEncoder

@@ -17,7 +17,7 @@ from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 
 from src.common.constants import logger, set_experiment_name, SEED
-from src.common.graph_structured_observation_space import EDGE_INDEX, EDGE_MASK, GraphObservationSpace
+from src.common.observation_space import EDGE_INDEX, EDGE_MASK, GraphObservationSpace
 from src.common.rewards import MazeRLReward
 
 

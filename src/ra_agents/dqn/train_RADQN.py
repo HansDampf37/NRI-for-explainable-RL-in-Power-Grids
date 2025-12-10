@@ -7,7 +7,7 @@ import torch
 from omegaconf import DictConfig, OmegaConf
 
 from src.common.constants import set_experiment_name, logger, SEED
-from src.common.graph_structured_observation_space import EDGE_INDEX, BusConnectivityGraphObsSpace
+from src.common.observation_space import EDGE_INDEX, BusConnectivityGraphObsSpace
 from src.nri.utils import prior_from_env
 from src.visualization.utils import PlottingArgs, get_node_styles
 from .HuberKLLoss import HuberKLLoss

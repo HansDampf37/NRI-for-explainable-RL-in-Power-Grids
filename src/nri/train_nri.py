@@ -16,7 +16,7 @@ from tqdm import tqdm
 
 from src.common.constants import logger, set_experiment_name
 from src.common.env import G2OpGymEnv
-from src.common.graph_structured_observation_space import  EDGE_INDEX
+from src.common.observation_space import  EDGE_INDEX
 from src.common.mask_observations import get_feature_mask
 from .ElboObjective import ElboLoss
 from .NRI import NRIModule

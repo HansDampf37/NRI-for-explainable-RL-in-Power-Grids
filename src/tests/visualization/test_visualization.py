@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from matplotlib import pyplot as plt
 
-from src.common.graph_structured_observation_space import BusConnectivityGraphObsSpace, EDGE_INDEX
+from src.common.observation_space import BusConnectivityGraphObsSpace, EDGE_INDEX
 from src.visualization.utils import get_node_styles, visualize_graph, latent_edge_hist, PlottingArgs, visualize_posterior
 
 

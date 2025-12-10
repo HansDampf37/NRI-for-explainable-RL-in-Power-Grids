@@ -4,7 +4,7 @@ import numpy as np
 import torch
 
 from src.common.env import G2OpGymEnv
-from src.common.graph_structured_observation_space import BusConnectivityGraphObsSpace, EDGE_INDEX
+from src.common.observation_space import BusConnectivityGraphObsSpace, EDGE_INDEX
 from src.nri.utils import prior_from_env
 from src.ra_agents.Encoder import Encoder
 from torch.nn import functional as F

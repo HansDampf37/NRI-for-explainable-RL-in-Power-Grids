@@ -13,7 +13,7 @@ from stable_baselines3.dqn.dqn import SelfDQN
 from stable_baselines3.dqn.policies import DQNPolicy, QNetwork
 from torch import nn, Tensor
 
-from src.common.graph_structured_observation_space import GraphObservationSpace
+from src.common.observation_space import GraphObservationSpace
 from src.visualization.utils import visualize_graph, PlottingArgs, visualize_posterior
 from .HuberKLLoss import HuberKLLoss
 from .CustomDQN import SoftmaxDQN

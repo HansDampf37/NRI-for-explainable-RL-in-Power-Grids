@@ -10,7 +10,7 @@ from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from torch import nn, Tensor
 from torch_geometric.utils import to_dense_batch
 
-from src.common.graph_structured_observation_space import GraphObservationSpace, NODES, EDGE_INDEX, EDGE_MASK
+from src.common.observation_space import GraphObservationSpace, NODES, EDGE_INDEX, EDGE_MASK
 from src.nri.Sampling import GumbelSoftmax
 from src.nri.utils import fully_connected_edge_index_per_batch
 from .Encoder import Encoder

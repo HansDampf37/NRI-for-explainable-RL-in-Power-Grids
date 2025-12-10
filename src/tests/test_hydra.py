@@ -7,7 +7,7 @@ from hydra.utils import instantiate
 
 from src.common.action_space import ReducedActionSpace
 from src.common.env import G2OpGymEnv
-from src.common.graph_structured_observation_space import BusConnectivityGraphObsSpace
+from src.common.observation_space import BusConnectivityGraphObsSpace
 
 
 class TestHydra(unittest.TestCase):
