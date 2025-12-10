@@ -1,12 +1,12 @@
 name: "l2rpn_case14_sandbox"
-safe_max_rho: 0.95
-line_reco: true
-line_disc: false
-reset_topo: 0.5
-simulate: true
-agent_k: 3
+rule_config:
+    activation_threshold: 0.95
+    line_reco: true
+    line_disc: false
+    reset_topo: 0.5
+    simulate: true
 
 training_env:
-  _target_: src.common.env.G2OpGymEnv
-  env_name: "${env.name}_train"
-  safe_max_rho: ${env.safe_max_rho}
+    _target_: src.common.env.G2OpGymEnv
+    env_name: "${env.name}_train"
+    rule_config: ${env.rule_config}

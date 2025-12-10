@@ -3,27 +3,31 @@ This script wraps a grid2op environment with a gymnasium API and applies heurist
 """
 import logging
 import time
-from typing import Optional, Dict, Tuple, Callable
+from abc import ABC
 from collections import Counter
-
-import numpy as np
+from typing import Optional, Dict, Tuple, Callable, List
 
 import grid2op
+import numpy as np
 from grid2op.Observation import BaseObservation
 from grid2op.gym_compat import DiscreteActSpace, BoxGymObsSpace
 from gymnasium import Env, Space
-from l2rpn_baselines.utils import GymEnvWithRecoWithDN
+from l2rpn_baselines.utils import GymEnvWithHeuristics
 from lightsim2grid import LightSimBackend
 from stable_baselines3.common.monitor import Monitor
 
 from .constants import SEED
 from .rewards import MazeRLReward
 
+
 def _default_act_space(env: grid2op.Environment) -> DiscreteActSpace:
     return DiscreteActSpace(env.action_space, attr_to_keep=["set_bus"])
 
+
 def _default_obs_space(env: grid2op.Environment) -> BoxGymObsSpace:
-    return BoxGymObsSpace(grid2op_observation_space=env.observation_space, attr_to_keep=["rho", "p_or", "gen_p", "load_p"])
+    return BoxGymObsSpace(grid2op_observation_space=env.observation_space,
+                          attr_to_keep=["rho", "p_or", "gen_p", "load_p"])
+
 
 class G2OpGymEnv(Monitor):
     """
@@ -36,16 +40,16 @@ class G2OpGymEnv(Monitor):
 
     def __init__(self,
                  env_name: str = "l2rpn_case14_sandbox",
-                 safe_max_rho: float = 0.95,
                  act_space_creation: Callable[[grid2op.Environment], Space] = _default_act_space,
                  obs_space_creation: Callable[[grid2op.Environment], Space] = _default_obs_space,
-                 seed: int = SEED):
+                 seed: int = SEED,
+                 rule_config: Optional[dict] = None):
         """
         Constructor.
         @param env_name: the name of the grid2op environment
-        @param safe_max_rho: do nothing if max rho is below this value
         @param act_space_creation: lambda function that creates the action space
         @param obs_space_creation: lambda function that creates the observation space
+        @param rule_config: heuristic configuration to match BaselineAgent behavior
         """
         logging.getLogger("pandapower.convert_format").disabled = True
         Env.__init__(self)
@@ -55,7 +59,12 @@ class G2OpGymEnv(Monitor):
         # create env
         self._g2op_env = grid2op.make(env_name, backend=LightSimBackend(), reward_class=MazeRLReward)
         self._g2op_env.seed(seed)
-        self._gym_env = GymEnvWithRecoDNWrapper(self._g2op_env, safe_max_rho=safe_max_rho, with_forecast=True)
+        self._gym_env = HeuristicEnv(
+            self._g2op_env,
+            with_forecast=True,
+            rule_config=rule_config
+        )
+        # this class acts as a monitor for self._gym_env
         Monitor.__init__(self, self._gym_env)
 
         # create observation space
@@ -129,8 +138,20 @@ class G2OpGymEnv(Monitor):
         return self.observation_space.to_gym(obs), reward, done, False, info
 
 
-class GymEnvWithRecoDNWrapper(GymEnvWithRecoWithDN):
+class GymEnvWithHeuristicsAndLogs(GymEnvWithHeuristics, ABC):
+    """
+    This class sole purpose is to include an attribute nb_steps in its info that models the number of steps taken on the
+    environment including heuristic actions. Whenever the step method is called the env is stepped 1 + n heuristic actions.
+
+    info[nb_steps] = 1 + n
+
+    In order to do that it overwrites some methods without changing any logic except the addition of nb_steps
+    """
+
     def step(self, gym_action):
+        """
+        Overwrite step to add nb_steps attribute to info
+        """
         g2op_act_tmp = self.action_space.from_gym(gym_action)
         g2op_act = self.fix_action(g2op_act_tmp, self._previous_act)
         g2op_obs, reward, done, info = self.init_env.step(g2op_act)
@@ -146,6 +167,9 @@ class GymEnvWithRecoDNWrapper(GymEnvWithRecoWithDN):
             return gym_obs, float(reward), done, info
 
     def reset(self, *, seed=None, return_info=False, options=None):
+        """
+        Overwrite reset to add nb_steps attribute to info
+        """
         if hasattr(type(self), "_gymnasium") and type(self)._gymnasium:
             return_info = True
 
@@ -172,6 +196,9 @@ class GymEnvWithRecoDNWrapper(GymEnvWithRecoWithDN):
             return gym_obs
 
     def apply_heuristics_actions(self, g2op_obs: BaseObservation, reward: float, done: bool, info: Dict) -> Tuple[BaseObservation, float, bool, Dict]:
+        """
+        Overwrite apply_heuristics_actions to add nb_steps attribute to info
+        """
         need_action = True
         res_reward = reward
 
@@ -200,3 +227,91 @@ class GymEnvWithRecoDNWrapper(GymEnvWithRecoWithDN):
             if done:
                 break
         return g2op_obs, res_reward, done, info
+
+
+class HeuristicEnv(GymEnvWithHeuristicsAndLogs):
+    """
+    TODO docstring
+    """
+    def __init__(self, init_env: grid2op.Environment, with_forecast: bool=False, rule_config: Optional[dict] = None):
+        super().__init__(env_init=init_env, reward_cumul="init", with_forecast=with_forecast)
+        rule_config = rule_config or {}
+        self._activation_threshold = rule_config.get("activation_threshold", 0.95)
+        self._line_reco = rule_config.get("line_reco", True)
+        self._line_disc = rule_config.get("line_disc", False)
+        self._reset_topo = rule_config.get("reset_topo", 0.5)
+
+    def heuristic_actions(self, observation: BaseObservation, reward: float, done: bool, info: Dict) -> List: # TODO return type
+        """
+        TODO docstring
+        @param observation:
+        @param reward:
+        @param done:
+        @param info:
+        @return:
+        """
+        current_action = self.init_env.action_space({})
+        # reconnection_rule
+        if self._line_reco:
+            current_action = self._reconnection_rule(observation, current_action)
+        # revert_to_reference_topo
+        if self._reset_topo:
+            current_action = self._revert_to_reference_topo(observation, current_action, self._reset_topo)
+        # disconnection_rule
+        if self._line_disc:
+            current_action = self._disconnection_rule(observation, current_action)
+        # If no change, return empty list
+        if current_action == self.init_env.action_space({}):
+            return []
+        return [current_action]
+
+    def _reconnection_rule(self, observation: BaseObservation, current_action):
+        line_stat_s = observation.line_status
+        cooldown = observation.time_before_cooldown_line
+        can_be_reco = ~line_stat_s & (cooldown == 0)
+        if can_be_reco.any():
+            sim_obs, _, _, _ = observation.simulate(current_action)
+            cur_max_rho = sim_obs.rho.max() if sim_obs.rho.max() > 0 else 2
+            for id_ in can_be_reco.nonzero()[0]:
+                action = current_action + self.init_env.action_space({"set_line_status": [(int(id_), +1)]})
+                sim_obs, _, _, _ = observation.simulate(action)
+                if cur_max_rho > (sim_obs.rho.max() if sim_obs.rho.max() > 0 else 2):
+                    current_action = action
+        return current_action
+
+    def _revert_to_reference_topo(self, observation: BaseObservation, current_action, reset_topo: float):
+        rho_max = (observation.rho.max() if observation.rho.max() > 0 else 2)
+        if (rho_max < reset_topo) and (observation.current_step < observation.max_step - 1):
+            subs_changed = np.unique(observation._topo_vect_to_sub[observation.topo_vect != 1])
+            if len(subs_changed):
+                sim_obs, _, _, _ = observation.simulate(current_action)
+                cur_max_rho = sim_obs.rho.max() if sim_obs.rho.max() > 0 else 2
+                action_options = []
+                max_rhos = np.zeros(len(subs_changed))
+                rewards = np.zeros(len(subs_changed))
+                for i, sub in enumerate(subs_changed):
+                    action = self.init_env.action_space(
+                        {"set_bus": {
+                            "substations_id":
+                                [(int(sub), np.ones(observation.sub_info[int(sub)], dtype=int))]
+                        }
+                        })
+                    action_options.append(action)
+                    sim_obs, rw, tmp_done, tmp_info = observation.simulate(current_action + action)
+                    max_rhos[i] = sim_obs.rho.max() if sim_obs.rho.max() > 0 else 2
+                    rewards[i] = rw
+                if len(rewards) and max_rhos[int(np.argmax(rewards))] < cur_max_rho:
+                    current_action += action_options[int(np.argmax(rewards))]
+        return current_action
+
+    def _disconnection_rule(self, observation: BaseObservation, current_action):
+        if np.any(observation.timestep_overflow > 1):
+            sim_obs, _, _, _ = observation.simulate(current_action)
+            cur_max_rho = sim_obs.rho.max() if sim_obs.rho.max() > 0 else 2
+            id_ = int(observation.timestep_overflow.argmax())
+            action = current_action + self.init_env.action_space({"set_line_status": [(id_, -1)]})
+            sim_obs, _, _, _ = observation.simulate(action)
+            if cur_max_rho > (sim_obs.rho.max() if sim_obs.rho.max() > 0 else 2):
+                current_action = action
+        return current_action
+

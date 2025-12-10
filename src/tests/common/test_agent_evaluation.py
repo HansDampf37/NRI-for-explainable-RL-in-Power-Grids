@@ -10,7 +10,6 @@ from stable_baselines3 import DQN
 
 from src.common.baseline_agent import evaluate_agent, evaluate_sb3_alg
 from src.common.env import G2OpGymEnv
-from src.ra_agents.dqn import Sb3DQNTopologyPolicy
 from src.ra_agents.utils import evaluate, get_env_mlp_baseline
 
 
@@ -55,10 +54,8 @@ class TestAgentEvaluation(unittest.TestCase):
             with TemporaryDirectory() as tmpdir:
                 env = get_env_mlp_baseline(cfg, cfg.env.name)
                 dqn = DQN(env=env, policy="MlpPolicy")
-                topo_policy = Sb3DQNTopologyPolicy(dqn)
                 evaluate(
                     algorithm=dqn,
-                    topology_policy=topo_policy,
                     env_creation=get_env_mlp_baseline,
                     path_results=Path(tmpdir),
                     cfg=cfg

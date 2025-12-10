@@ -25,7 +25,7 @@ def get_env(cfg: DictConfig, env_name: Optional[str] = None) -> G2OpGymEnv:
     """
     env: G2OpGymEnv = G2OpGymEnv(
         cfg.env.training_env.env_name if env_name is None else env_name,
-        safe_max_rho=cfg.env.safe_max_rho,
+        rule_config=cfg.env.rule_config,
         obs_space_creation=lambda e: instantiate(cfg.rl.obs_space, grid2op_observation_space=e.observation_space),
         act_space_creation=lambda e: instantiate(cfg.rl.act_space, grid2op_action_space=e.action_space),
     )
@@ -41,7 +41,7 @@ def get_env_mlp_baseline(cfg, env_name: Optional[str] = None) -> G2OpGymEnv:
     """
     env: G2OpGymEnv = G2OpGymEnv(
         cfg.env.training_env.env_name if env_name is None else env_name,
-        safe_max_rho=cfg.env.safe_max_rho,
+        rule_config=cfg.env.rule_config,
         obs_space_creation=lambda e: BoxGymObsSpace(grid2op_observation_space=e.observation_space),
         act_space_creation=lambda e: instantiate(cfg.rl.act_space, grid2op_action_space=e.action_space)
     )
@@ -74,13 +74,7 @@ def evaluate(algorithm: BaseAlgorithm, env_creation, path_results: Path, cfg: Di
         agent = BaselineAgent(
             g2op_action_space=env_dataset._g2op_env.action_space,
             rl_policy=algorithm.policy,
-            rule_config={
-                "activation_threshold": cfg.env.safe_max_rho,
-                "line_reco": cfg.env.line_reco,
-                "line_disc": cfg.env.line_disc,
-                "reset_topo": cfg.env.reset_topo,
-                "simulate": cfg.env.simulate,
-            },
+            rule_config=cfg.env.rule_config
         )
         evaluate_agent(
             agent=agent,
