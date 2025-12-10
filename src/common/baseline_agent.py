@@ -124,10 +124,10 @@ class BaselineAgent(HeuristicsAgent):
         if HeuristicsAgent.activate_agent(self, observation):
             # Get action from trained RL-agent when in danger.
             gym_obs = self.rl_policy.observation_space.to_gym(observation)
-            topo_actions = [self.rl_policy.predict(gym_obs, deterministic=True)]
-            topo_actions_grid2op = [self.rl_policy.action_space.from_gym(action) for action in topo_actions]
+            topo_action, _ = self.rl_policy.predict(gym_obs, deterministic=True)
+            topo_action_grid2op = self.rl_policy.action_space.from_gym(topo_action)
 
-            action = HeuristicsAgent.simulate_combinations(self, observation, topo_actions_grid2op, rb_action)
+            action = HeuristicsAgent.simulate_combinations(self, observation, [topo_action_grid2op], rb_action)
         else:
             action = rb_action
 

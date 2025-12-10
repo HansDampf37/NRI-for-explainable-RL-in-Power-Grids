@@ -249,7 +249,7 @@ class HeuristicEnv(GymEnvWithHeuristicsAndLogs):
     Gym environment that applies heuristic actions according to the provided rule-configuration
     """
     def __init__(self, init_env: grid2op.Environment, with_forecast: bool=False, rule_config: Optional[dict] = None, curriculum_learning: Optional[list] = None):
-        super().__init__(env_init=init_env, reward_cumul="init", with_forecast=with_forecast)
+        super().__init__(env_init=init_env, reward_cumul="sum", with_forecast=with_forecast)
         rule_config = rule_config or {}
         curriculum_learning = curriculum_learning or []
         self._default_parameters = init_env.parameters
@@ -260,7 +260,15 @@ class HeuristicEnv(GymEnvWithHeuristicsAndLogs):
         self._curriculum_learning = curriculum_learning
 
     def heuristic_actions(self, observation: BaseObservation, reward: float, done: bool, info: Dict) -> List[BaseAction]:
-        current_action = self.init_env.action_space({})
+        rho_max = (observation.rho.max() if observation.rho.max() > 0 else 2)
+        if rho_max > self._activation_threshold:
+            current_action = self.init_env.action_space({})
+            current_action = self.apply_heuristic_additions_to_action(current_action, observation)
+            return [current_action]
+        else:
+            return []
+
+    def apply_heuristic_additions_to_action(self, current_action: BaseAction, observation: BaseObservation) -> BaseAction:
         # reconnection_rule
         if self._line_reco:
             current_action = reconnection_rule(observation, current_action, self.init_env.action_space)
@@ -270,10 +278,7 @@ class HeuristicEnv(GymEnvWithHeuristicsAndLogs):
         # disconnection_rule
         if self._line_disc:
             current_action = disconnection_rule(observation, current_action, self.init_env.action_space)
-        # If no change, return empty list
-        if current_action == self.init_env.action_space({}):
-            return []
-        return [current_action]
+        return current_action
 
     def set_curriculum(self, level: int):
         logger.info(f"Change curriculum to level: {level}")
@@ -288,4 +293,20 @@ class HeuristicEnv(GymEnvWithHeuristicsAndLogs):
             self.init_env.change_parameters(self._default_parameters)
             self.init_env.reset()
 
-        logger.info(f"Parameters used: \n{self.init_env.parameters.to_dict()}")
+        logger.info(f"Parameters used: {self.init_env.parameters.to_dict()}")
+
+    def step(self, gym_action):
+        g2op_act_tmp = self.action_space.from_gym(gym_action)
+        g2op_act = self.apply_heuristic_additions_to_action(g2op_act_tmp, self.init_env.current_obs)
+        g2op_act = self.fix_action(g2op_act, self._previous_act)
+        g2op_obs, reward, done, info = self.init_env.step(g2op_act)
+        info['nb_steps'] = 1
+        if not done:
+            g2op_obs, reward, done, info = self.apply_heuristics_actions(g2op_obs, reward, done, info)
+        self._previous_act = g2op_obs
+        gym_obs = self.observation_space.to_gym(g2op_obs)
+        if hasattr(type(self), "_gymnasium") and type(self)._gymnasium:
+            truncated = False
+            return gym_obs, float(reward), done, truncated, info
+        else:
+            return gym_obs, float(reward), done, info
