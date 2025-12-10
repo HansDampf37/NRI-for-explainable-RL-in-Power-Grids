@@ -7,9 +7,9 @@ rule_config:
     simulate: true
 
 curriculum_level_config:
-    start_level: 1
-    level2_at_fraction: 0.2        # 1/5 of total training time
-    level3_at_fraction: 0.4666667  # 7/15 of total training time
+    start_level: 0
+    level1_at_fraction: 0.2        # 1/5 of total training time
+    level2_at_fraction: 0.4666667  # 7/15 of total training time
 
 training_env:
     _target_: src.common.env.G2OpGymEnv

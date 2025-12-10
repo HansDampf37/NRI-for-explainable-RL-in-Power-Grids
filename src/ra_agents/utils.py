@@ -62,27 +62,27 @@ class CurriculumCallback(BaseCallback):
 
     This callback will call `set_curriculum(level)` on the underlying environment(s) via VecEnv.env_method.
     """
-    def __init__(self, total_timesteps: int, level2_at_fraction: float = 1.0/5.0, level3_at_fraction: float = 7.0/15.0, start_level: int = 1, verbose: int = 0):
+    def __init__(self, total_timesteps: int, level1_at_fraction: float = 1.0 / 5.0, level2_at_fraction: float = 7.0 / 15.0, start_level: int = 1, verbose: int = 0):
         super().__init__(verbose)
         self.total_timesteps = int(total_timesteps)
+        self.level1_timestep = int(float(level1_at_fraction) * self.total_timesteps)
         self.level2_timestep = int(float(level2_at_fraction) * self.total_timesteps)
-        self.level3_timestep = int(float(level3_at_fraction) * self.total_timesteps)
         self.start_level = int(start_level)
+        self._switched_to_1 = False
         self._switched_to_2 = False
-        self._switched_to_3 = False
 
     def _on_training_start(self) -> None:
         # ensure env starts at requested level
-        self.training_env.env_method("set_curriculum", int(self.start_level))
+        self.model.get_env().env_method("set_curriculum", int(self.start_level))
 
     def _on_step(self) -> bool:
         t = int(self.model.num_timesteps)
-        if not self._switched_to_3 and t >= self.level3_timestep:
-            self.training_env.env_method("set_curriculum", 3)
-            self._switched_to_3 = self._switched_to_2 = True
-        elif not self._switched_to_2 and t >= self.level2_timestep:
-            self.training_env.env_method("set_curriculum", 2)
-            self._switched_to_2 = True
+        if not self._switched_to_2 and t >= self.level2_timestep:
+            self.model.get_env().env_method("set_curriculum", 2)
+            self._switched_to_2 = self._switched_to_1 = True
+        elif not self._switched_to_1 and t >= self.level1_timestep:
+            self.model.get_env().env_method("set_curriculum", 1)
+            self._switched_to_1 = True
         return True
 
 

@@ -248,7 +248,7 @@ class HeuristicEnv(GymEnvWithHeuristicsAndLogs):
     """
     Gym environment that applies heuristic actions according to the provided rule-configuration
     """
-    def __init__(self, init_env: grid2op.Environment, with_forecast: bool=False, rule_config: Optional[list] = None, curriculum_learning: Optional[dict] = None):
+    def __init__(self, init_env: grid2op.Environment, with_forecast: bool=False, rule_config: Optional[dict] = None, curriculum_learning: Optional[list] = None):
         super().__init__(env_init=init_env, reward_cumul="init", with_forecast=with_forecast)
         rule_config = rule_config or {}
         curriculum_learning = curriculum_learning or []

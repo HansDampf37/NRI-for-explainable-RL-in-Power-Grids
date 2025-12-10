@@ -80,8 +80,8 @@ def main(cfg: DictConfig):
     )
     curriculum_cb = CurriculumCallback(
         total_timesteps=cfg.rl.train.timesteps,
+        level1_at_fraction=float(cfg.env.curriculum_level_config.level1_at_fraction),
         level2_at_fraction=float(cfg.env.curriculum_level_config.level2_at_fraction),
-        level3_at_fraction=float(cfg.env.curriculum_level_config.level3_at_fraction),
         start_level=int(cfg.env.curriculum_level_config.start_level),
         verbose=1 if cfg.rl.verbose else 0,
     )
