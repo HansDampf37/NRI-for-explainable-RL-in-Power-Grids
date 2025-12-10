@@ -8,12 +8,11 @@ the actions the topology policy returns the k best actions to the agent to simul
 import json
 import logging
 import os
-from abc import abstractmethod, ABC
 from pathlib import Path
 from typing import List, Optional
 
 import numpy as np
-from grid2op.Action import BaseAction, ActionSpace, TopologySetAction
+from grid2op.Action import BaseAction, ActionSpace
 from grid2op.Agent import BaseAgent
 from grid2op.Environment import Environment
 from grid2op.Episode import EpisodeData
@@ -247,6 +246,9 @@ def evaluate_agent(agent: BaseAgent, env: Environment, path_results: Path, num_e
         env_seeds=[SEED] * num_episodes,
     )
 
+    # Compute and store summary metrics across episodes
+    _store_summary_metrics(res=res, path_results=path_results)
+
     if verbose:
         # print results
         _print_runner_results(res)
@@ -330,3 +332,46 @@ def _print_runner_results(res: List[runner_returned_type]):
         logger.info(f"Chronics: '{chron_id}', Return: {cum_reward:.2f}, "
                     f"Survival Duration: {nb_time_step:.0f} / {max_ts:.0f}, "
                     f"Per-step-reward: {np.nan_to_num(data.rewards).mean():.2f} ± {np.nan_to_num(data.rewards).std():.2f}")
+
+
+def _store_summary_metrics(res: List[runner_returned_type], path_results: Path) -> None:
+    """
+    Compute averaged Completed Episodes % and Survived Steps % across episodes and store them in a summary JSON.
+
+    Completed Episodes %: fraction of episodes that reached their max allowed steps (nb_time_step == max_ts) * 100.
+    Survived Steps %: average over episodes of (nb_time_step / max_ts) * 100.
+
+    :param res: list of runner returns
+    :param path_results: the folder in which to store the summary_metrics.json
+    """
+    # only include episodes with positive max_timesteps
+    res = [ep_info for ep_info in res if ep_info[4] > 0]
+
+    if not len(res):
+        return
+
+    completed_flags = []
+    survived_ratios = []
+
+    for _, _, _, nb_time_step, max_ts, _ in res:
+        completed_flags.append(1.0 if nb_time_step >= max_ts else 0.0)
+        survived_ratios.append(float(nb_time_step) / float(max_ts))
+
+    completed_pct = (sum(completed_flags) / float(len(completed_flags)))
+    survived_pct = float(np.mean(survived_ratios))
+
+    summary = {
+        "episodes": len(res),
+        "completed_episodes_pct": round(completed_pct * 100, 4),
+        "survived_steps_pct": round(survived_pct * 100, 4)
+    }
+
+    # Persist a summary file in the root result folder
+    path_results.mkdir(parents=True, exist_ok=True)
+    summary_path = Path(path_results, "summary_metrics.json")
+    with open(summary_path, "w") as f:
+        json.dump(summary, f, indent=4)
+
+    # Log a brief summary
+    logger.info(f"Summary metrics: Completed Episodes % = {completed_pct:.2f}, Survived Steps % = {survived_pct:.2f}")
+
