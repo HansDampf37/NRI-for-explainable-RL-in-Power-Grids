@@ -3,7 +3,7 @@ rule_config:
     activation_threshold: 0.95
     line_reco: true
     line_disc: false
-    reset_topo: 0.5
+    reset_topo: 0.9
     simulate: true
 
 training_env:
