@@ -113,9 +113,7 @@ class BaselineAgent(HeuristicsAgent):
         super().__init__(g2op_action_space, rule_config)
         self.rl_policy = rl_policy
 
-    def act(
-            self, observation: BaseObservation, reward: float, done: bool = False
-    ) -> BaseAction:
+    def act(self, observation: BaseObservation, reward: float, done: bool = False) -> BaseAction:
         """
         Returns a grid2op action based on a RLlib observation.
         """
@@ -125,9 +123,11 @@ class BaselineAgent(HeuristicsAgent):
 
         if HeuristicsAgent.activate_agent(self, observation):
             # Get action from trained RL-agent when in danger.
-            topo_actions = [self.rl_policy.predict(observation, deterministic=True)]
+            gym_obs = self.rl_policy.observation_space.to_gym(observation)
+            topo_actions = [self.rl_policy.predict(gym_obs, deterministic=True)]
+            topo_actions_grid2op = [self.rl_policy.action_space.from_gym(action) for action in topo_actions]
 
-            action = HeuristicsAgent.simulate_combinations(self, observation, topo_actions, rb_action)
+            action = HeuristicsAgent.simulate_combinations(self, observation, topo_actions_grid2op, rb_action)
         else:
             action = rb_action
 
