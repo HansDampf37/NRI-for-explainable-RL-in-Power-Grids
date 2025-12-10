@@ -29,24 +29,6 @@ from src.common.env import G2OpGymEnv
 logger = logging.getLogger(__name__)
 
 
-class TopologyPolicy(ABC):
-    """
-    The Topology policy is used to suggest k topology actions for a given observation.
-    """
-
-    @abstractmethod
-    def get_k_best_actions(self, observation: BaseObservation, k: int = 3) -> List[TopologySetAction]:
-        """
-        Returns the k best actions given by the policy in grid2op action format. The action-space and observation-space
-        can be used to transform gym-like actions to a grid2op action and grid2op observation to gym like observations.
-
-        :param observation: The observation in grid2op format.
-        :param k: the number of best actions to return.
-        :return: a list with the k best actions
-        """
-        pass
-
-
 class HeuristicsAgent(BaseAgent):
     """
     This agent executes heuristic rules based on the rule_config given.

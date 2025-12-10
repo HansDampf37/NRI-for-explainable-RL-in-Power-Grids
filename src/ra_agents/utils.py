@@ -8,7 +8,7 @@ from omegaconf import DictConfig
 from stable_baselines3.common.base_class import BaseAlgorithm
 from stable_baselines3.common.callbacks import BaseCallback
 
-from src.common.baseline_agent import BaselineAgent, evaluate_agent, evaluate_sb3_alg, TopologyPolicy
+from src.common.baseline_agent import BaselineAgent, evaluate_agent, evaluate_sb3_alg
 from src.common.env import G2OpGymEnv
 from src.visualization import get_evaluation_metrics, visualize_agent_survival
 
