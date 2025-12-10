@@ -7,7 +7,7 @@ from omegaconf import DictConfig, OmegaConf
 from stable_baselines3 import DQN
 
 from src.common.constants import set_experiment_name, logger, SEED
-from .SoftmaxDQN import SoftmaxDQN
+from .CustomDQN import SoftmaxDQN
 from ..RAFeatureExtractor import BaselineFeatureExtractorSB3
 from ..utils import get_env, evaluate, EvalCallback
 

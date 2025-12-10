@@ -19,7 +19,7 @@ from torch import Tensor
 
 from src.common.graph_structured_observation_space import GraphObservationSpace, BusConnectivityGraphObsSpace
 from src.visualization.utils import visualize_graph, PlottingArgs, visualize_posterior
-from .PPO_G2Op import G2OpPPO
+from .CustomPPO import G2OpPPO
 from ..RARL import RARL
 
 

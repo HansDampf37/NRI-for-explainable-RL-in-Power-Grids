@@ -7,7 +7,7 @@ import hydra
 from omegaconf import DictConfig, OmegaConf
 
 from src.common.constants import set_experiment_name, SEED
-from .PPO_G2Op import G2OpPPO
+from .CustomPPO import G2OpPPO
 from ..RAFeatureExtractor import BaselineFeatureExtractorSB3
 from ..utils import get_env, evaluate, EvalCallback
 

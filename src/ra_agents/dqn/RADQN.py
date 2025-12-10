@@ -16,7 +16,7 @@ from torch import nn, Tensor
 from src.common.graph_structured_observation_space import GraphObservationSpace
 from src.visualization.utils import visualize_graph, PlottingArgs, visualize_posterior
 from .HuberKLLoss import HuberKLLoss
-from .SoftmaxDQN import SoftmaxDQN
+from .CustomDQN import SoftmaxDQN
 from ..RAFeatureExtractor import RAFeatureExtractorSB3
 from ..RARL import RARL
 
