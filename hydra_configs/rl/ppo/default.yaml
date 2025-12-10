@@ -10,7 +10,7 @@ sb3:
     clip_range: 0.3
     clip_range_vf: ~
     normalize_advantage: true
-    ent_coef: 0.01
+    ent_coef: 0.0
     vf_coef: 0.5
     kl_coef: 1.0
     max_grad_norm: 0.5
