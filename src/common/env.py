@@ -4,6 +4,9 @@ This script wraps a grid2op environment with a gymnasium API and applies heurist
 import logging
 import time
 from typing import Optional, Dict, Tuple, Callable
+from collections import Counter
+
+import numpy as np
 
 import grid2op
 from grid2op.Observation import BaseObservation
@@ -46,8 +49,9 @@ class G2OpGymEnv(Monitor):
         """
         logging.getLogger("pandapower.convert_format").disabled = True
         Env.__init__(self)
-        self.ep_len = 0
-        self.interactions = 0
+        self._ep_len = 0
+        self._interactions = 0
+        self._episode_actions = []
         # create env
         self._g2op_env = grid2op.make(env_name, backend=LightSimBackend(), reward_class=MazeRLReward)
         self._g2op_env.seed(seed)
@@ -71,29 +75,49 @@ class G2OpGymEnv(Monitor):
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
         # don't pass the seed since grid2op's GymEnv doesn't support seeding although its method suggest it
         obs, info = super().reset(options=options)
-        self.ep_len = int(info["nb_steps"])
-        self.interactions = 0
+        self._ep_len = int(info["nb_steps"])
+        self._interactions = 0
+        self._episode_actions = []
         return obs, info
 
     def step(self, action):
         observation, reward, terminated, truncated, info = self.env.step(action)
         self.rewards.append(float(reward))
-        self.ep_len += int(info['nb_steps'])
+        self._ep_len += int(info['nb_steps'])
+        self._episode_actions.append(action)
         if terminated or truncated:
             ep_rew = sum(self.rewards)
-            ep_info = {"r": round(ep_rew, 6), "l": self.ep_len, "t": round(time.time() - self.t_start, 6),
-                       "i": self.interactions}
+            ep_info = {"r": round(ep_rew, 6), "l": self._ep_len, "t": round(time.time() - self.t_start, 6),
+                       "i": self._interactions}
+
+            # compute action diversity metrics
+            if len(self._episode_actions) > 0:
+                counts = np.array(list(Counter(self._episode_actions).values()), dtype=float)
+                probs = counts / counts.sum()
+                # Shannon entropy (nats)
+                entropy = float(-np.sum(probs * np.log(probs + 1e-12)))
+                unique_actions = int(counts.size)
+                unique_ratio = float(unique_actions / len(self._episode_actions)) if len(self._episode_actions) > 0 else 0
+            else:
+                entropy = 0.0
+                unique_ratio = 0.0
+                unique_actions = 0
+
+            ep_info["action_entropy"] = round(entropy, 6)
+            ep_info["unique_action_ratio"] = round(unique_ratio, 6)
+            ep_info["unique_actions"] = unique_actions
+
             for key in self.info_keywords:
                 ep_info[key] = info[key]
             self.episode_returns.append(ep_rew)
-            self.episode_lengths.append(self.ep_len)
+            self.episode_lengths.append(self._ep_len)
             self.episode_times.append(time.time() - self.t_start)
             ep_info.update(self.current_reset_info)
             if self.results_writer:
                 self.results_writer.write_row(ep_info)
             info["episode"] = ep_info
         self.total_steps += 1
-        self.interactions += 1
+        self._interactions += 1
         return observation, reward, terminated, truncated, info
 
     def do_nothing(self):
