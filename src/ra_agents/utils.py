@@ -43,7 +43,7 @@ def get_env_mlp_baseline(cfg, env_name: Optional[str] = None) -> G2OpGymEnv:
     env: G2OpGymEnv = G2OpGymEnv(
         cfg.env.training_env.env_name if env_name is None else env_name,
         rule_config=cfg.env.rule_config,
-        obs_space_creation=lambda e: BoxGymObsSpace(grid2op_observation_space=e.observation_space),
+        obs_space_creation=lambda e: BoxGymObsSpace(grid2op_observation_space=e.observation_space, attr_to_keep=["rho", "topo_vect"]),
         act_space_creation=lambda e: instantiate(cfg.rl.act_space, grid2op_action_space=e.action_space),
         curriculum_learning=cfg.env.training_env.curriculum_level_settings,
     )

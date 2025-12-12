@@ -52,7 +52,7 @@ class G2OpGymEnv(Monitor):
                  obs_space_creation: Callable[[grid2op.Environment], Space] = _default_obs_space,
                  seed: int = SEED,
                  rule_config: Optional[dict] = None,
-                 curriculum_learning: Optional[list] = None):
+                 curriculum_learning: Optional[List[dict]] = None):
         """
         Initialize the Gym wrapper.
 
@@ -65,14 +65,14 @@ class G2OpGymEnv(Monitor):
         """
         logging.getLogger("pandapower.convert_format").disabled = True
         Env.__init__(self)
-        self._ep_len = 0
-        self._interactions = 0
-        self._episode_actions = []
+        self._steps_agent_and_heuristic = 0
+        self._steps_agent = 0
+        self._actions_this_episode = []
         # create env
-        self._g2op_env = grid2op.make(env_name, backend=LightSimBackend(), reward_class=L2RPNReward)
-        self._g2op_env.seed(seed)
+        g2op_env = grid2op.make(env_name, backend=LightSimBackend(), reward_class=L2RPNReward)
+        g2op_env.seed(seed)
         self._gym_env = HeuristicEnv(
-            self._g2op_env,
+            g2op_env,
             with_forecast=True,
             rule_config=rule_config,
             curriculum_learning=curriculum_learning
@@ -82,17 +82,21 @@ class G2OpGymEnv(Monitor):
 
         # create observation space
         self._gym_env.observation_space.close()
-        self._gym_env.observation_space = obs_space_creation(self._g2op_env)
+        self._gym_env.observation_space = obs_space_creation(g2op_env)
         self.observation_space = self._gym_env.observation_space
-        self.g2op_observation_space = self._g2op_env.observation_space
+        self.g2op_observation_space = g2op_env.observation_space
         self.observation_space.seed(seed)
 
         # create action space
         self._gym_env.action_space.close()
-        self._gym_env.action_space = act_space_creation(self._g2op_env)
+        self._gym_env.action_space = act_space_creation(g2op_env)
         self.action_space = self._gym_env.action_space
-        self.g2op_action_space = self._g2op_env.action_space
+        self.g2op_action_space = g2op_env.action_space
         self.action_space.seed(seed)
+
+    @property
+    def _g2op_env(self) -> grid2op.Environment:
+        return self.env.init_env # access the monitored gym_env's grid2op_env
 
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
         # don't pass the seed since grid2op's GymEnv doesn't support seeding although its method suggest it
@@ -152,7 +156,7 @@ class G2OpGymEnv(Monitor):
         Applies the DoNothing action
         :return: observation, reward, done, truncated, info
         """
-        obs, reward, done, info = self._g2op_env.step(self._g2op_env.action_space({}))
+        obs, reward, done, info = self._g2op_env.step(self.g2op_action_space({}))
         return self.observation_space.to_gym(obs), reward, done, False, info
 
     def set_curriculum(self, level: int):
@@ -253,7 +257,7 @@ class HeuristicEnv(GymEnvWithHeuristicsAndLogs):
     """
     Gym environment that applies heuristic actions according to the provided rule-configuration
     """
-    def __init__(self, init_env: grid2op.Environment, with_forecast: bool=False, rule_config: Optional[dict] = None, curriculum_learning: Optional[list] = None):
+    def __init__(self, init_env: grid2op.Environment, with_forecast: bool=False, rule_config: Optional[dict] = None, curriculum_learning: Optional[List[dict]] = None):
         super().__init__(env_init=init_env, reward_cumul="sum", with_forecast=with_forecast)
         rule_config = rule_config or {}
         curriculum_learning = curriculum_learning or []
@@ -261,7 +265,7 @@ class HeuristicEnv(GymEnvWithHeuristicsAndLogs):
         self._activation_threshold = rule_config.get("activation_threshold", 0.95)
         self._line_reco = rule_config.get("line_reco", True)
         self._line_disc = rule_config.get("line_disc", False)
-        self._reset_topo = rule_config.get("reset_topo", 0.5)
+        self._reset_topo = rule_config.get("reset_topo", 0.9)
         self._curriculum_learning = curriculum_learning
 
     def heuristic_actions(self, observation: BaseObservation, reward: float, done: bool, info: Dict) -> List[BaseAction]:
