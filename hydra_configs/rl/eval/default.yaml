@@ -1,3 +1,4 @@
-nb_episodes: 10
+nb_episodes: 50
 max_episode_length: ~
 num_samples_for_edge_average: 1000
+num_evaluations_during_training: 10

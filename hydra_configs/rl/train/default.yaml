@@ -1,4 +1,4 @@
-timesteps: 200_000
+timesteps: 250_000
 log_interval: 100
 pretrain_encoder:
     ds_size: 1000

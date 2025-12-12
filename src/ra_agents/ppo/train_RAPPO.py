@@ -104,7 +104,7 @@ def main(cfg: DictConfig):
     # train
     path_results = Path(EVAL_PATH, group, name)
     eval_callback = EvalCallback(
-        eval_freq=max(cfg.rl.train.timesteps // 10, 1),  # evaluate model 10 times during training
+        eval_freq=max(cfg.rl.train.timesteps // cfg.rl.eval.num_evaluations_during_training, 1),
         env_fn=get_env,
         path_results_root=Path(path_results, "checkpoints"),
         cfg=cfg,

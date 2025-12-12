@@ -5,7 +5,7 @@ defaults:
     -   optuna: default
     - _self_
 
-experiment_name: learning_progress
+experiment_name: improve_baseline
 timeout: ~
 
 hydra:
