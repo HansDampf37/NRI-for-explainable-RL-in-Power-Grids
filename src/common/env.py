@@ -104,6 +104,9 @@ class G2OpGymEnv(Monitor):
         self._steps_agent_and_heuristic = info["nb_steps"]
         self._steps_agent = 0
         self._actions_this_episode = []
+        # reset heuristic counters at episode start
+        if hasattr(self.env, "reset_heuristic_counters"):
+            self.env.reset_heuristic_counters()
         return obs, info
 
     def step(self, action):
@@ -118,7 +121,7 @@ class G2OpGymEnv(Monitor):
             ep_info = {
                 "r": round(ep_rew, 6), # reward
                 "l": self._steps_agent_and_heuristic, # length (agent + heuristics)
-                "i": self._steps_agent, # length (only agent)
+                "total_agent_steps": self._steps_agent, # length (only agent)
                 "t": round(time.time() - self.t_start, 6), # time
             }
 
@@ -138,6 +141,15 @@ class G2OpGymEnv(Monitor):
             ep_info["action_entropy"] = round(entropy, 6)
             ep_info["unique_action_ratio"] = round(unique_ratio, 6)
             ep_info["unique_actions"] = unique_actions
+
+            # include heuristic counters for this episode
+            if hasattr(self.env, "get_heuristic_counters"):
+                h = self.env.get_heuristic_counters()
+                ep_info["do_nothing"] = h["do_nothing"]
+                ep_info["line_reconnections"] = h["line_reconnections"]
+                ep_info["reset_topology"] = h["reset_topology"]
+                ep_info["line_disconnections"] = h["line_disconnections"]
+                ep_info["heuristic_steps"] = h["heuristic_steps"]
 
             for key in self.info_keywords:
                 ep_info[key] = info[key]
@@ -267,12 +279,39 @@ class HeuristicEnv(GymEnvWithHeuristicsAndLogs):
         self._line_disc = rule_config.get("line_disc", False)
         self._reset_topo = rule_config.get("reset_topo", 0.9)
         self._curriculum_learning = curriculum_learning
+        # heuristic counters per episode
+        self._hn_do_nothing = 0
+        self._hn_line_reco = 0
+        self._hn_reset_topo = 0
+        self._hn_line_disc = 0
+        self._hn_non_agent_steps = 0
+
+    def reset_heuristic_counters(self):
+        self._hn_do_nothing = 0
+        self._hn_line_reco = 0
+        self._hn_reset_topo = 0
+        self._hn_line_disc = 0
+        self._hn_non_agent_steps = 0
+
+    def get_heuristic_counters(self) -> Dict[str, int]:
+        return {
+            "do_nothing": self._hn_do_nothing,
+            "line_reconnections": self._hn_line_reco,
+            "reset_topology": self._hn_reset_topo,
+            "line_disconnections": self._hn_line_disc,
+            "heuristic_steps": self._hn_non_agent_steps,
+        }
 
     def heuristic_actions(self, observation: BaseObservation, reward: float, done: bool, info: Dict) -> List[BaseAction]:
         rho_max = (observation.rho.max() if observation.rho.max() > 0 else 2)
         if rho_max <= self._activation_threshold:
-            current_action = self.init_env.action_space({})
-            current_action = self.apply_heuristic_additions_to_action(current_action, observation)
+            initial_action = self.init_env.action_space({})
+            current_action = self.apply_heuristic_additions_to_action(initial_action, observation)
+            # count do-nothing if no heuristic additions modified the action
+            if current_action == initial_action:
+                self._hn_do_nothing += 1
+
+            self._hn_non_agent_steps += 1
             return [current_action]
         else:
             return []
@@ -280,13 +319,23 @@ class HeuristicEnv(GymEnvWithHeuristicsAndLogs):
     def apply_heuristic_additions_to_action(self, current_action: BaseAction, observation: BaseObservation) -> BaseAction:
         # reconnection_rule
         if self._line_reco:
-            current_action = reconnection_rule(observation, current_action, self.init_env.action_space)
+            updated = reconnection_rule(observation, current_action, self.init_env.action_space)
+            # if object identity changed, a reconnection action was added
+            if updated != current_action:
+                self._hn_line_reco += 1
+            current_action = updated
         # revert_to_reference_topo
         if self._reset_topo:
-            current_action = revert_to_reference_topo(observation, current_action, self.init_env.action_space, self._reset_topo)
+            updated = revert_to_reference_topo(observation, current_action, self.init_env.action_space, self._reset_topo)
+            if updated != current_action:
+                self._hn_reset_topo += 1
+            current_action = updated
         # disconnection_rule
         if self._line_disc:
-            current_action = disconnection_rule(observation, current_action, self.init_env.action_space)
+            updated = disconnection_rule(observation, current_action, self.init_env.action_space)
+            if updated != current_action:
+                self._hn_line_disc += 1
+            current_action = updated
         return current_action
 
     def set_curriculum(self, level: int):
