@@ -100,13 +100,14 @@ class G2OpGymEnv(Monitor):
 
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
         # don't pass the seed since grid2op's GymEnv doesn't support seeding although its method suggest it
+        # reset heuristic counters at episode start
+        if hasattr(self.env, "reset_heuristic_counters"):
+            self.env.reset_heuristic_counters()
+
         obs, info = super().reset(options=options)
         self._steps_agent_and_heuristic = info["nb_steps"]
         self._steps_agent = 0
         self._actions_this_episode = []
-        # reset heuristic counters at episode start
-        if hasattr(self.env, "reset_heuristic_counters"):
-            self.env.reset_heuristic_counters()
         return obs, info
 
     def step(self, action):
@@ -308,7 +309,7 @@ class HeuristicEnv(GymEnvWithHeuristicsAndLogs):
             initial_action = self.init_env.action_space({})
             current_action = self.apply_heuristic_additions_to_action(initial_action, observation)
             # count do-nothing if no heuristic additions modified the action
-            if current_action == initial_action:
+            if current_action is initial_action:
                 self._hn_do_nothing += 1
 
             self._hn_non_agent_steps += 1
