@@ -1,16 +1,17 @@
+experiment_name=improve_baseline
+cd ..
+
 sbatch <<'EOF'
 #!/bin/bash
 
 #SBATCH --job-name=ppo_mlp_baseline                                           # Name of the job
-#SBATCH --output=out/relations_unaware/ppo/train_baseline_mlp.%j.log            # Output file
-#SBATCH --error=out/relations_unaware/ppo/error_train_baseline_mlp.%j.log       # Error file
+#SBATCH --output=data/experiments/${experiment_name}/out/train_baseline_mlp.%j.log            # Output file
+#SBATCH --error=data/experiments/${experiment_name}/out/error_train_baseline_mlp.%j.log       # Error file
 #SBATCH --ntasks=1                                                            # Number of tasks
 #SBATCH --gres=gpu:1                                                          # Request 1 GPU
-#SBATCH --time=48:00:00                                                       # Max wall time (HH:MM:SS)
+#SBATCH --time=12:00:00                                                       # Max wall time (HH:MM:SS)
 #SBATCH --mem=10G                                                             # Memory requirement
 #SBATCH --partition=gpu_h100,gpu_a100_il,gpu_h100_il                          # Specify the GPU partition gpu_mi300
-
-cd ..
 
 module load devel/miniforge
 conda activate RL
