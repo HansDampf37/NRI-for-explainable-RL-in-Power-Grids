@@ -97,29 +97,35 @@ class G2OpGymEnv(Monitor):
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
         # don't pass the seed since grid2op's GymEnv doesn't support seeding although its method suggest it
         obs, info = super().reset(options=options)
-        self._ep_len = int(info["nb_steps"])
-        self._interactions = 0
-        self._episode_actions = []
+        self._steps_agent_and_heuristic = info["nb_steps"]
+        self._steps_agent = 0
+        self._actions_this_episode = []
         return obs, info
 
     def step(self, action):
         observation, reward, terminated, truncated, info = self.env.step(action)
         self.rewards.append(float(reward))
-        self._ep_len += int(info['nb_steps'])
-        self._episode_actions.append(repr(action))
+        self._steps_agent_and_heuristic += info['nb_steps']
+        self._actions_this_episode.append(int(action))
+        self.total_steps += 1
+        self._steps_agent += 1
         if terminated or truncated:
             ep_rew = sum(self.rewards)
-            ep_info = {"r": round(ep_rew, 6), "l": self._ep_len, "t": round(time.time() - self.t_start, 6),
-                       "i": self._interactions}
+            ep_info = {
+                "r": round(ep_rew, 6), # reward
+                "l": self._steps_agent_and_heuristic, # length (agent + heuristics)
+                "i": self._steps_agent, # length (only agent)
+                "t": round(time.time() - self.t_start, 6), # time
+            }
 
             # compute action diversity metrics
-            if len(self._episode_actions) > 0:
-                counts = np.array(list(Counter(self._episode_actions).values()), dtype=float)
+            if len(self._actions_this_episode) > 0:
+                counts = np.array(list(Counter(self._actions_this_episode).values()), dtype=float)
                 probs = counts / counts.sum()
                 # Shannon entropy (nats)
                 entropy = float(-np.sum(probs * np.log(probs + 1e-12)))
                 unique_actions = int(counts.size)
-                unique_ratio = float(unique_actions / len(self._episode_actions)) if len(self._episode_actions) > 0 else 0
+                unique_ratio = float(unique_actions / len(self._actions_this_episode)) if len(self._actions_this_episode) > 0 else 0
             else:
                 entropy = 0.0
                 unique_ratio = 0.0
@@ -132,14 +138,13 @@ class G2OpGymEnv(Monitor):
             for key in self.info_keywords:
                 ep_info[key] = info[key]
             self.episode_returns.append(ep_rew)
-            self.episode_lengths.append(self._ep_len)
+            self.episode_lengths.append(self._steps_agent_and_heuristic)
             self.episode_times.append(time.time() - self.t_start)
             ep_info.update(self.current_reset_info)
             if self.results_writer:
                 self.results_writer.write_row(ep_info)
             info["episode"] = ep_info
-        self.total_steps += 1
-        self._interactions += 1
+
         return observation, reward, terminated, truncated, info
 
     def do_nothing(self):
@@ -261,7 +266,7 @@ class HeuristicEnv(GymEnvWithHeuristicsAndLogs):
 
     def heuristic_actions(self, observation: BaseObservation, reward: float, done: bool, info: Dict) -> List[BaseAction]:
         rho_max = (observation.rho.max() if observation.rho.max() > 0 else 2)
-        if rho_max > self._activation_threshold:
+        if rho_max <= self._activation_threshold:
             current_action = self.init_env.action_space({})
             current_action = self.apply_heuristic_additions_to_action(current_action, observation)
             return [current_action]
