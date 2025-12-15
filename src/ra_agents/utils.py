@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import Optional, Callable, Dict, Any
+from typing import Optional, Callable, Dict, Any, List
 
 from grid2op.gym_compat import BoxGymObsSpace
 from hydra.utils import instantiate
@@ -28,7 +28,7 @@ def get_env(cfg: DictConfig, env_name: Optional[str] = None) -> G2OpGymEnv:
         rule_config=cfg.env.rule_config,
         obs_space_creation=lambda e: instantiate(cfg.rl.obs_space, grid2op_observation_space=e.observation_space),
         act_space_creation=lambda e: instantiate(cfg.rl.act_space, grid2op_action_space=e.action_space),
-        curriculum_learning=cfg.env.training_env.curriculum_level_settings,
+        curriculum_level_settings=cfg.env.training_env.curriculum_level_settings,
     )
     return env
 
@@ -45,7 +45,7 @@ def get_env_mlp_baseline(cfg, env_name: Optional[str] = None) -> G2OpGymEnv:
         rule_config=cfg.env.rule_config,
         obs_space_creation=lambda e: BoxGymObsSpace(grid2op_observation_space=e.observation_space, attr_to_keep=["rho", "topo_vect"]),
         act_space_creation=lambda e: instantiate(cfg.rl.act_space, grid2op_action_space=e.action_space),
-        curriculum_learning=cfg.env.training_env.curriculum_level_settings,
+        curriculum_level_settings=cfg.env.training_env.curriculum_level_settings,
     )
     return env
 
@@ -218,3 +218,27 @@ class EvalCallback(BaseCallback):
                 visualize_agent_survival(metrics, out_path, show=False)
                 if self.verbose > 0:
                     logger.info(f"Training summary saved at '{out_path}'.")
+
+def get_callbacks(cfg: DictConfig, path_results: Path, env_creation: Callable = get_env) -> List[BaseCallback]:
+    callbacks = []
+    if cfg.rl.eval.during_training.active:
+        eval_callback = EvalCallback(
+            eval_freq=max(cfg.rl.train.timesteps // cfg.rl.eval.during_training.num_evaluations_during_training, 1),
+            env_fn=env_creation,
+            path_results_root=Path(path_results, "checkpoints"),
+            cfg=cfg,
+            verbose=1 if cfg.rl.verbose else 0
+        )
+        callbacks.append(eval_callback)
+
+    if cfg.rl.train.curriculum_level_config.active:
+        curriculum_cb = CurriculumCallback(
+            total_timesteps=cfg.rl.train.timesteps,
+            level1_at_fraction=float(cfg.rl.train.curriculum_level_config.level1_at_fraction),
+            level2_at_fraction=float(cfg.rl.train.curriculum_level_config.level2_at_fraction),
+            start_level=int(cfg.rl.train.curriculum_level_config.start_level),
+            verbose=1 if cfg.rl.verbose else 0,
+        )
+        callbacks.append(curriculum_cb)
+
+    return callbacks

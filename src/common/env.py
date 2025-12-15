@@ -52,7 +52,7 @@ class G2OpGymEnv(Monitor):
                  obs_space_creation: Callable[[grid2op.Environment], Space] = _default_obs_space,
                  seed: int = SEED,
                  rule_config: Optional[dict] = None,
-                 curriculum_learning: Optional[List[dict]] = None):
+                 curriculum_level_settings: Optional[List[dict]] = None):
         """
         Initialize the Gym wrapper.
 
@@ -75,7 +75,7 @@ class G2OpGymEnv(Monitor):
             g2op_env,
             with_forecast=True,
             rule_config=rule_config,
-            curriculum_learning=curriculum_learning
+            curriculum_learning=curriculum_level_settings
         )
         # this class acts as a monitor for self._gym_env
         Monitor.__init__(self, self._gym_env)
