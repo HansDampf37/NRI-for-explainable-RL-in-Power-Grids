@@ -1,7 +1,7 @@
 defaults:
     -   env: case14
     -   nri: default
-    -   rl: test
+    -   rl: default
     -   optuna: default
     - _self_
 
