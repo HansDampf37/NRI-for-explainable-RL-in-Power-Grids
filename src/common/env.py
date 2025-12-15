@@ -20,7 +20,7 @@ from stable_baselines3.common.monitor import Monitor
 
 from .constants import SEED
 from .heuristic_actions import reconnection_rule, revert_to_reference_topo, disconnection_rule
-from .rewards import MazeRLReward
+from .rewards import HRL2023Reward
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +69,7 @@ class G2OpGymEnv(Monitor):
         self._steps_agent = 0
         self._actions_this_episode = []
         # create env
-        g2op_env = grid2op.make(env_name, backend=LightSimBackend(), reward_class=MazeRLReward)
+        g2op_env = grid2op.make(env_name, backend=LightSimBackend(), reward_class=HRL2023Reward)
         g2op_env.seed(seed)
         self._gym_env = HeuristicEnv(
             g2op_env,
@@ -325,18 +325,17 @@ class HeuristicEnv(GymEnvWithHeuristicsAndLogs):
             if updated != current_action:
                 self._hn_line_reco += 1
             current_action = updated
-        # revert_to_reference_topo
-        if self._reset_topo:
-            updated = revert_to_reference_topo(observation, current_action, self.init_env.action_space, self._reset_topo)
-            if updated != current_action:
-                self._hn_reset_topo += 1
-            current_action = updated
         # disconnection_rule
         if self._line_disc:
             updated = disconnection_rule(observation, current_action, self.init_env.action_space)
             if updated != current_action:
                 self._hn_line_disc += 1
             current_action = updated
+        # revert_to_reference_topo
+        updated = revert_to_reference_topo(observation, current_action, self.init_env.action_space, self._reset_topo)
+        if updated != current_action:
+            self._hn_reset_topo += 1
+        current_action = updated
         return current_action
 
     def set_curriculum(self, level: int):

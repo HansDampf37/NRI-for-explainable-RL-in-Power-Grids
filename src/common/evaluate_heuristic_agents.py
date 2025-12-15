@@ -6,7 +6,7 @@ from grid2op.Agent import RecoPowerlineAgent, DoNothingAgent
 from lightsim2grid import LightSimBackend
 from omegaconf import DictConfig
 
-from src.common.rewards import MazeRLReward
+from src.common.rewards import HRL2023Reward
 from .baseline_agent import evaluate_agent
 from .constants import EVAL_PATH, SEED
 
@@ -18,7 +18,7 @@ def evaluate(cfg: DictConfig):
     :param cfg: the hydra config
     """
     for dataset in ["train", "test", "val"]:
-        env = grid2op.make(f"{cfg.env.name}_{dataset}", backend=LightSimBackend(), reward_class=MazeRLReward)
+        env = grid2op.make(f"{cfg.env.name}_{dataset}", backend=LightSimBackend(), reward_class=HRL2023Reward)
         env.seed(SEED)
         for agent, name in zip([RecoPowerlineAgent(env.action_space), DoNothingAgent(env.action_space)], ["reco_powerline_agent", "do_nothing_agent"]):
             evaluate_agent(
