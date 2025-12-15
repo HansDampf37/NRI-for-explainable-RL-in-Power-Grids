@@ -309,7 +309,7 @@ class HeuristicEnv(GymEnvWithHeuristicsAndLogs):
             initial_action = self.init_env.action_space({})
             current_action = self.apply_heuristic_additions_to_action(initial_action, observation)
             # count do-nothing if no heuristic additions modified the action
-            if current_action is initial_action:
+            if current_action == initial_action:
                 self._hn_do_nothing += 1
 
             self._hn_non_agent_steps += 1

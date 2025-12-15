@@ -49,8 +49,8 @@ class TestAgentEvaluation(unittest.TestCase):
     def test_evaluate(self):
         with hydra.initialize(config_path="../../../hydra_configs", version_base="1.3"):
             cfg = hydra.compose(config_name="config")
-            cfg.rl.eval.nb_episodes = 1
-            cfg.rl.eval.max_episode_length = 10
+            cfg.rl.eval.final.nb_episodes = 1
+            cfg.rl.eval.final.max_episode_length = 10
             with TemporaryDirectory() as tmpdir:
                 env = get_env_mlp_baseline(cfg, cfg.env.name)
                 dqn = DQN(env=env, policy="MlpPolicy")

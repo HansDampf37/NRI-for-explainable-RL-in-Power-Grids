@@ -98,7 +98,7 @@ def main(cfg: DictConfig):
     # train
     path_results = Path(EVAL_PATH, group, name)
     eval_callback = EvalCallback(
-        eval_freq=max(cfg.rl.train.timesteps // cfg.rl.eval.num_evaluations_during_training, 1),
+        eval_freq=max(cfg.rl.train.timesteps // cfg.rl.eval.during_training.num_evaluations_during_training, 1),
         env_fn=get_env,
         path_results_root=Path(path_results, "checkpoints"),
         cfg=cfg,
@@ -122,7 +122,7 @@ def main(cfg: DictConfig):
         RARL_model=algorithm,
         env=env,
         save_path=Path(EDGE_PROBS_PATH, group, name + ".npy"),
-        num_samples=cfg.rl.eval.num_samples_for_edge_average,
+        num_samples=cfg.rl.eval.final.num_samples_for_edge_average,
     )
 
 
