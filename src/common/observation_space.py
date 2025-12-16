@@ -106,7 +106,7 @@ class BusConnectivityGraphObsSpace(GraphObservationSpace):
         super().__init__({
             NODES: Box(low=-np.inf, high=np.inf, shape=(num_node, x_dim), dtype=np.float32),
             EDGE_INDEX: Box(low=0, high=1, shape=(2, max_n_edge), dtype=np.int64),
-            EDGE_MASK: Box(low=0, high=1, shape=(max_n_edge,), dtype=np.bool),
+            EDGE_MASK: Box(low=0, high=1, shape=(max_n_edge,), dtype=np.bool_),
             GLOBAL: Box(low=-np.inf, high=np.inf, shape=(global_dim, )),
         })
 

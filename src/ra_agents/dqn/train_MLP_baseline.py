@@ -11,7 +11,7 @@ from .CustomDQN import SoftmaxDQN
 from ..utils import get_env_mlp_baseline, evaluate, get_callbacks
 
 
-@hydra.main(config_path="../../../configs", config_name="configs", version_base="1.3")
+@hydra.main(config_path="../../../configs", config_name="config", version_base="1.3")
 def main(cfg: DictConfig):
     logger.info(OmegaConf.to_yaml(cfg))
     set_experiment_name(cfg.experiment_name)

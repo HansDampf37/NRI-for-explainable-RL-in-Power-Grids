@@ -215,9 +215,12 @@ def evaluate_sb3_alg(alg: BaseAlgorithm, env: G2OpGymEnv, path_results: Path, nu
              episode_length,
              max_episode_length,
              EpisodeData(
-                 rewards=rewards,
-                 action_space=env._g2op_env.action_space, observation_space=env._g2op_env.observation_space,
-                 actions=actions, observations=observations)
+                 attack_space=env._g2op_env._opponent_action_space,
+                 action_space=env._g2op_env.action_space,
+                 observation_space=env._g2op_env.observation_space,
+                 helper_action_env=env._g2op_env.action_space,
+                 rewards=rewards, actions=actions, observations=observations,
+                 env_actions=[], attack=[])
              )
         )
 

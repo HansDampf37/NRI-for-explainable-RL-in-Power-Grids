@@ -1,2 +1,2 @@
 _target_: src.common.action_space.ReducedActionSpace_
-path: configs/act_space/l2rpn_case14_sandbox/medha.json
+path: data/action_spaces/l2rpn_case14_sandbox/medha.json

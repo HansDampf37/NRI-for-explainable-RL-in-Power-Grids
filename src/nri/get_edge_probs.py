@@ -136,7 +136,7 @@ def _find_latest_checkpoint_by_name(name_prefix: str) -> Optional[str]:
     return candidates[0]
 
 
-@hydra.main(config_path="../../configs", config_name="configs", version_base="1.3")
+@hydra.main(config_path="../../configs", config_name="config", version_base="1.3")
 def main(cfg: DictConfig):
     # prepare results
     # Prefer dataset paths defined in Hydra configs; fall back to the explicit ones if missing

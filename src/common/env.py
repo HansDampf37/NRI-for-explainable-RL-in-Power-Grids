@@ -11,6 +11,7 @@ from typing import Optional, Dict, Tuple, Callable, List
 import grid2op
 import numpy as np
 from grid2op.Action import BaseAction
+from grid2op.Environment import Environment
 from grid2op.Observation import BaseObservation
 from grid2op.gym_compat import DiscreteActSpace, BoxGymObsSpace
 from gymnasium import Env, Space
@@ -25,12 +26,12 @@ from .rewards import HRL2023Reward
 logger = logging.getLogger(__name__)
 
 
-def _default_act_space(env: grid2op.Environment) -> DiscreteActSpace:
+def _default_act_space(env: Environment) -> DiscreteActSpace:
     """Create a discrete Gym action space keeping only topology actions (set_bus)."""
     return DiscreteActSpace(env.action_space, attr_to_keep=["set_bus"])
 
 
-def _default_obs_space(env: grid2op.Environment) -> BoxGymObsSpace:
+def _default_obs_space(env: Environment) -> BoxGymObsSpace:
     """Create a boxed Gym observation space keeping selected attributes for RL."""
     return BoxGymObsSpace(grid2op_observation_space=env.observation_space,
                           attr_to_keep=["rho", "p_or", "gen_p", "load_p"])
@@ -48,8 +49,8 @@ class G2OpGymEnv(Monitor):
 
     def __init__(self,
                  env_name: str = "l2rpn_case14_sandbox",
-                 act_space_creation: Callable[[grid2op.Environment], Space] = _default_act_space,
-                 obs_space_creation: Callable[[grid2op.Environment], Space] = _default_obs_space,
+                 act_space_creation: Callable[[Environment], Space] = _default_act_space,
+                 obs_space_creation: Callable[[Environment], Space] = _default_obs_space,
                  seed: int = SEED,
                  rule_config: Optional[dict] = None,
                  curriculum_level_settings: Optional[List[dict]] = None):
@@ -95,7 +96,7 @@ class G2OpGymEnv(Monitor):
         self.action_space.seed(seed)
 
     @property
-    def _g2op_env(self) -> grid2op.Environment:
+    def _g2op_env(self) -> Environment:
         return self.env.init_env # access the monitored gym_env's grid2op_env
 
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
@@ -270,7 +271,7 @@ class HeuristicEnv(GymEnvWithHeuristicsAndLogs):
     """
     Gym environment that applies heuristic actions according to the provided rule-configuration
     """
-    def __init__(self, init_env: grid2op.Environment, with_forecast: bool=False, rule_config: Optional[dict] = None, curriculum_learning: Optional[List[dict]] = None):
+    def __init__(self, init_env: Environment, with_forecast: bool=False, rule_config: Optional[dict] = None, curriculum_learning: Optional[List[dict]] = None):
         super().__init__(env_init=init_env, reward_cumul="sum", with_forecast=with_forecast)
         rule_config = rule_config or {}
         curriculum_learning = curriculum_learning or []
