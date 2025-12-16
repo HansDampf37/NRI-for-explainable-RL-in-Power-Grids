@@ -7,8 +7,6 @@ from typing import Optional, Tuple, Dict, List
 import torch
 import torch.nn.functional as f
 from gymnasium.spaces import Discrete
-from ray.rllib.algorithms.ppo import PPOTorchPolicy
-from ray.rllib.models import ModelV2
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.utils.typing import TensorType, ModelConfigDict
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
@@ -245,30 +243,42 @@ class BaselineFeatureExtractorSB3(BaseFeaturesExtractor):
         return self.gnn(x=x, batch=batch, edge_index=edge_index_batch.to(dtype=torch.long))
 
 class RLlibGNNModel(TorchModelV2, nn.Module):
-    def __init__(self, obs_space: GraphObservationSpace, action_space: Discrete, model_config: ModelConfigDict, name: str):
-        super().__init__(obs_space, action_space, action_space.n, model_config, name)
-        print("Init Model with the following args: ", model_config)
+    def __init__(self,
+                 obs_space: GraphObservationSpace,
+                 action_space: Discrete,
+                 num_outputs: int,
+                 model_config: ModelConfigDict,
+                 name: str):
+        TorchModelV2.__init__(self, obs_space, action_space, num_outputs, model_config, name)
+        nn.Module.__init__(self)
         self.gnn: BaselineGNN = BaselineGNN(
             x_dim=obs_space.x_dim,
-            hidden_dim=model_config['gnn']['hidden_dim'],
-            x_out_dim=model_config['gnn']['out_dim'],
-            num_layers=model_config['gnn']['num_layers'],
-            dropout_prob=model_config['gnn'].get('dropout_prob', 0.0),
-            residual=model_config['gnn'].get('residual', True),
+            hidden_dim=model_config['custom_model_config']['gnn']['hidden_dim'],
+            x_out_dim=model_config['custom_model_config']['gnn']['out_dim'],
+            num_layers=model_config['custom_model_config']['gnn']['num_layers'],
+            dropout_prob=model_config['custom_model_config']['gnn'].get('dropout_prob', 0.0),
+            residual=model_config['custom_model_config']['gnn'].get('residual', True),
         )
         # Build downstream MLP head(s)
-        mlp_dim: int = model_config['mlp']['dim']
-        mlp_layers: int = model_config['mlp']['num_layers']
-        mlp_modules: List[nn.Module] = []
-        for _ in range(mlp_layers):
-            mlp_modules.append(nn.Linear(mlp_dim, mlp_dim))
-            mlp_modules.append(nn.ReLU())
-        self.mlp = nn.Sequential(*mlp_modules)
+        mlp = self._build_mlp(model_config)
+        self.mlp_policy = mlp
+        self.mlp_value = self.mlp_policy if model_config["vf_share_layers"] else self._build_mlp(model_config)
+
         # Policy logits and value head
-        self.policy_logits = nn.Linear(mlp_dim, action_space.n)
-        self.value_head = nn.Linear(mlp_dim, 1)
+        self.policy_logits = nn.Linear(model_config['mlp']['dim'], self.num_outputs)
+        self.value_head = nn.Linear(model_config['mlp']['dim'], 1)
         # cache for value function output
         self._value_out: Optional[Tensor] = None
+
+    def _build_mlp(self, model_config):
+        mlp_dim: int = model_config['mlp']['dim']
+        mlp_layers: int = model_config['mlp']['num_layers']
+        mlp_modules: List[nn.Module] = [nn.Linear(model_config['gnn']['out_dim'], mlp_dim)]
+        for _ in range(mlp_layers - 1):
+            mlp_modules.append(nn.Linear(mlp_dim, mlp_dim))
+            mlp_modules.append(nn.ReLU())
+        mlp = nn.Sequential(*mlp_modules)
+        return mlp
 
     def forward(self, input_dict: Dict[str, TensorType], state: List[TensorType], seq_lens: TensorType) -> Tuple[TensorType, List[TensorType]]:
         node_features_batch = input_dict["obs"][NODES]  # [B, N, node_in_dim]
@@ -293,7 +303,7 @@ class RLlibGNNModel(TorchModelV2, nn.Module):
 
         # GNN to produce graph-level representation [B, mlp_dim]
         gnn_out: Tensor = self.gnn(x=x, batch=batch, edge_index=edge_index_batch.to(dtype=torch.long))
-        mlp_out: Tensor = self.mlp(gnn_out)
+        mlp_out: Tensor = self.mlp_policy(gnn_out)
         logits: Tensor = self.policy_logits(mlp_out)
         # store value for value_function()
         self._value_out = self.value_head(mlp_out).squeeze(-1)
@@ -303,23 +313,3 @@ class RLlibGNNModel(TorchModelV2, nn.Module):
         # RLlib expects shape [B]
         assert self._value_out is not None, "value_function called before forward"
         return self._value_out
-
-class GNNPolicy(PPOTorchPolicy):
-    """
-    RLlib policy using a GNN-based model.
-    """
-    def __init__(self, observation_space: GraphObservationSpace, action_space: Discrete, config: ModelConfigDict):
-        self.model_config = config["model"]["custom_model_config"]
-        super().__init__(
-            observation_space,
-            action_space,
-            config,
-        )
-
-    def make_model(self) -> ModelV2:
-        return RLlibGNNModel(
-            obs_space=self.observation_space,
-            action_space=self.action_space,
-            model_config=self.model_config,
-            name="gnn_model",
-        )

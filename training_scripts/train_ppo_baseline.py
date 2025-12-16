@@ -10,9 +10,10 @@ from typing import Any, Dict, Tuple
 import grid2op
 from ray.rllib.algorithms import ppo  # import the type of agents
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.policy import PolicySpec
 
-from src.ra_agents.RAFeatureExtractor import GNNPolicy
+from src.ra_agents.RAFeatureExtractor import RLlibGNNModel
 from src.rl4pnc.experiments.utils import run_training
 from src.rl4pnc.experiments.yaml import load_config
 from src.rl4pnc.grid2op_env.custom_environment import CustomizedGrid2OpEnvironment
@@ -22,6 +23,7 @@ from src.rl4pnc.multi_agent.policy import (
 )
 
 REPORT_END = False
+ModelCatalog.register_custom_model("gnn_model", RLlibGNNModel)
 
 
 def setup_config(workdir_path: str, input_path: str, seed: int = None, opponent=False) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -33,6 +35,7 @@ def setup_config(workdir_path: str, input_path: str, seed: int = None, opponent=
     os.chdir(workdir_path)
     config_path = os.path.join(workdir_path, input_path)
     ppo_config = ppo.PPOConfig().to_dict()
+    ppo_config["_disable_preprocessor_api"] = True
     custom_config = load_config(config_path)
     if seed:
         print(f"Running experiment with seed {seed}.")
@@ -80,9 +83,9 @@ def setup_config(workdir_path: str, input_path: str, seed: int = None, opponent=
             ),
         ),
         "reinforcement_learning_policy": PolicySpec(  # performs RL topology
-            policy_class=GNNPolicy,  # use default policy of PPO
             config={
                 "model": {
+                    "custom_model": "gnn_model",
                     "custom_model_config": {
                         "gnn": {
                             "hidden_dim": 64,
