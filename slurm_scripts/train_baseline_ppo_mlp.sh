@@ -1,7 +1,7 @@
 experiment_name=improve_baseline
 cd ..
 
-sbatch <<'EOF'
+sbatch << EOF
 #!/bin/bash
 
 #SBATCH --job-name=ppo_mlp_baseline                                           # Name of the job
