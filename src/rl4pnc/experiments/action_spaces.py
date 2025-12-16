@@ -21,7 +21,7 @@ from grid2op.Observation import BaseObservation
 from grid2op.Environment import BaseEnv, MultiEnvMultiProcess, SingleEnvMultiProcess
 from lightsim2grid import LightSimBackend
 
-from rl4pnc.grid2op_env.utils import get_possible_topologies
+from src.rl4pnc.grid2op_env.utils import get_possible_topologies
 
 
 def get_changeable_substations_tennet(env: BaseEnv) -> list[int]:

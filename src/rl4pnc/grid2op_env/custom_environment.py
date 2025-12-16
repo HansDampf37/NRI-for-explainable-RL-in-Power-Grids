@@ -18,7 +18,7 @@ from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils.typing import MultiAgentDict
 from ray.tune.registry import register_env
 
-from rl4pnc.grid2op_env.utils import (
+from src.rl4pnc.grid2op_env.utils import (
     CustomDiscreteActions,
     get_possible_topologies,
     setup_converter,
@@ -29,7 +29,7 @@ from rl4pnc.grid2op_env.utils import (
     load_actions
 )
 
-from rl4pnc.grid2op_env.observation_converter import ObservationConverter
+from src.rl4pnc.grid2op_env.observation_converter import ObservationConverter
 
 
 OBSTYPE = TypeVar("OBSTYPE")

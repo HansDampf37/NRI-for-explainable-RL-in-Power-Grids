@@ -111,7 +111,7 @@ class BusConnectivityGraphObsSpace(GraphObservationSpace):
         })
 
         if verbose:
-            logger.info(f"Using graph observation space with {self.num_nodes} nodes, ≤ {self.max_num_edges} edges and {self.x_dim} features per node ({", ".join(self.node_feature_names)}).")
+            logger.info(f"Using graph observation space with {self.num_nodes} nodes, ≤ {self.max_num_edges} edges and {self.x_dim} features per node ({', '.join(self.node_feature_names)}).")
 
     def to_gym(self, g2op_obs: BaseObservation) -> dict[str, npt.NDArray]:
         # get data

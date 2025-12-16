@@ -25,8 +25,8 @@ from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from yaml.loader import FullLoader, Loader, UnsafeLoader
 from yaml.nodes import MappingNode, ScalarNode, SequenceNode
 
-from rl4pnc.experiments.callback import CustomMetricsCallback
-from rl4pnc.experiments.rewards import (
+from src.rl4pnc.experiments.callback import CustomMetricsCallback
+from src.rl4pnc.experiments.rewards import (
     LossReward,
     ScaledL2RPNReward,
     AlphaZeroRW,
@@ -34,7 +34,7 @@ from rl4pnc.experiments.rewards import (
     ConstantReward,
 )
 from grid2op.Reward import L2RPNReward,LinesCapacityReward
-from rl4pnc.multi_agent.policy import policy_mapping_fn
+from src.rl4pnc.multi_agent.policy import policy_mapping_fn
 
 
 def discrete_constructor(

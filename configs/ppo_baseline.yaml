@@ -1,7 +1,7 @@
 setup:
   max_ep_len: 8064
   duration: 0 # HH:MM or minutes of training before stopping, used if value > 0
-  nb_timesteps: 1_000
+  nb_timesteps: &nb_timesteps 100_000
   checkpoint_freq: 2
   verbose: 0
   my_log_level: 1

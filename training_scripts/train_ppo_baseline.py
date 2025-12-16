@@ -5,7 +5,7 @@ Trains PPO baseline agent.
 import argparse
 import logging
 import os
-from typing import Any
+from typing import Any, Dict, Tuple
 
 import grid2op
 
@@ -24,9 +24,9 @@ from src.rl4pnc.experiments.utils import run_training
 REPORT_END = False
 
 
-def setup_config(workdir_path: str, input_path: str, seed: int = None, opponent=False) -> (dict[str, Any], dict[str, Any]):
+def setup_config(workdir_path: str, input_path: str, seed: int = None, opponent=False) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """
-    Loads the json as configs and sets it up for training.
+    Loads the JSON as configs and sets it up for training.
     """
     # load base PPO configs and load in hyperparameters
     # Access the parsed arguments
@@ -158,8 +158,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.file_path:
-        ppo_config, custom_config = setup_config(args.workdir, args.file_path, seed=args.seed, opponent=args.opponent)
-        result_grid = run_training(ppo_config, custom_config["setup"], args.job_id)
+        _ppo_config, _custom_config = setup_config(args.workdir, args.file_path, seed=args.seed, opponent=args.opponent)
+        _result_grid = run_training(_ppo_config, _custom_config["setup"], args.job_id)
     else:
         parser.print_help()
         logging.error("\nError: --file_path is required to specify configs location.")
