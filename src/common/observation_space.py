@@ -106,12 +106,12 @@ class BusConnectivityGraphObsSpace(GraphObservationSpace):
         super().__init__({
             NODES: Box(low=-np.inf, high=np.inf, shape=(num_node, x_dim), dtype=np.float32),
             EDGE_INDEX: Box(low=0, high=1, shape=(2, max_n_edge), dtype=np.int64),
-            EDGE_MASK: Box(low=0, high=1, shape=(max_n_edge,), dtype=np.bool),
+            EDGE_MASK: Box(low=0, high=1, shape=(max_n_edge,), dtype=np.bool_),
             GLOBAL: Box(low=-np.inf, high=np.inf, shape=(global_dim, )),
         })
 
         if verbose:
-            logger.info(f"Using graph observation space with {self.num_nodes} nodes, ≤ {self.max_num_edges} edges and {self.x_dim} features per node ({", ".join(self.node_feature_names)}).")
+            logger.info(f"Using graph observation space with {self.num_nodes} nodes, ≤ {self.max_num_edges} edges and {self.x_dim} features per node ({', '.join(self.node_feature_names)}).")
 
     def to_gym(self, g2op_obs: BaseObservation) -> dict[str, npt.NDArray]:
         # get data

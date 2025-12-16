@@ -27,6 +27,8 @@ def objective(trial: BaseTrial):
     _cfg.rl.model.features_extractor_kwargs.out_dim = hidden_out_dim
     _cfg.rl.model.features_extractor_kwargs.num_layers = trial.suggest_int('num_layers', 2, 4)
     _cfg.rl.verbose=False
+    _cfg.rl.train.curriculum_level_config.active = False # disable curriculum for optuna
+    _cfg.rl.eval.during_training.active = False # disable intermediate evaluations for optuna
     logger.info(f"Starting trial {trial.number} with:"
                 f"\n\tPrior: {_cfg.rl.model.prior_for_graph_edges_existing}"
                 f"\n\tKL_ceof: {_cfg.rl.ppo.sb3.kl_coef}"
@@ -38,7 +40,7 @@ def objective(trial: BaseTrial):
     return float(sum(val_sd) / len(val_sd)) if len(val_sd) > 0 else 0.0
 
 
-@hydra.main(config_path="../hydra_configs", config_name="config", version_base="1.3")
+@hydra.main(config_path="../configs", config_name="config", version_base="1.3")
 def main(cfg: DictConfig):
     global _cfg
     _cfg = cfg

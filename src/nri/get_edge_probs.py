@@ -93,7 +93,7 @@ def save_edge_probs(
     :param dataset: the dataset to run the module on
     :param batch_size: the batch size
     :param edge_index: optional edge index [2, E] to restrict latent edges considered
-    :param save_path: optional output path. If None, uses data/edge_probabilities if it exists, otherwise data/edge_probs
+    :param save_path: optional output path. If None, uses results/edge_probabilities if it exists, otherwise results/edge_probs
     :return: the averaged edge type probabilities as numpy array of shape [E, NUM_EDGE_TYPES]
     """
     from src.common.constants import EDGE_PROBS_PATH
@@ -117,7 +117,7 @@ def save_edge_probs(
 
 def _find_latest_checkpoint_by_name(name_prefix: str) -> Optional[str]:
     """
-    Finds the newest checkpoint file in data/models/nri whose filename starts with the given name_prefix.
+    Finds the newest checkpoint file in results/models/nri whose filename starts with the given name_prefix.
     Returns absolute path or None if not found.
     """
     from src.common.constants import MODELS_PATH
@@ -136,10 +136,10 @@ def _find_latest_checkpoint_by_name(name_prefix: str) -> Optional[str]:
     return candidates[0]
 
 
-@hydra.main(config_path="../../hydra_configs", config_name="config", version_base="1.3")
+@hydra.main(config_path="../../configs", config_name="config", version_base="1.3")
 def main(cfg: DictConfig):
-    # prepare data
-    # Prefer dataset paths defined in Hydra config; fall back to the explicit ones if missing
+    # prepare results
+    # Prefer dataset paths defined in Hydra configs; fall back to the explicit ones if missing
     train_path = to_absolute_path(cfg.nri.train.training_dataset_path)
     test_path = to_absolute_path(cfg.nri.train.testing_dataset_path)
 
@@ -158,13 +158,13 @@ def main(cfg: DictConfig):
     checkpoint_path = _find_latest_checkpoint_by_name(name_prefix)
     if checkpoint_path is None:
         # fallback to a known checkpoint if available
-        fallback_ckpt = 'data/models/nri/NRI_2025-10-21_23-22_500_steps_with_forecast.pt'
+        fallback_ckpt = 'results/models/nri/NRI_2025-10-21_23-22_500_steps_with_forecast.pt'
         fallback_abs = to_absolute_path(fallback_ckpt)
         if os.path.isfile(fallback_abs):
             checkpoint_path = fallback_abs
         else:
             raise FileNotFoundError(
-                f"No checkpoint found matching prefix '{name_prefix}' in data/models/nri and fallback '{fallback_ckpt}' missing."
+                f"No checkpoint found matching prefix '{name_prefix}' in results/models/nri and fallback '{fallback_ckpt}' missing."
             )
 
     nri_weights = torch.load(checkpoint_path, map_location=device)

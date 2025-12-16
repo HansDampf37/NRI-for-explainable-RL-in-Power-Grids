@@ -17,7 +17,7 @@ from grid2op.Observation import BaseObservation
 
 def reconnection_rule(observation: BaseObservation, current_action: BaseAction, action_space: ActionSpace) -> BaseAction:
     """
-    Reconnect all disconnected lines if simulation shows an improvement (lower max rho).
+    Reconnect all disconnected lines.
 
     :param observation: The current observation.
     :param current_action: The action (so far).
@@ -28,13 +28,9 @@ def reconnection_rule(observation: BaseObservation, current_action: BaseAction, 
     cooldown = observation.time_before_cooldown_line
     can_be_reco = ~line_stat_s & (cooldown == 0)
     if can_be_reco.any():
-        sim_obs, _, _, _ = observation.simulate(current_action)
-        cur_max_rho = sim_obs.rho.max() if sim_obs.rho.max() > 0 else 2
         for id_ in can_be_reco.nonzero()[0]:
-            action = current_action + action_space({"set_line_status": [(int(id_), +1)]})
-            sim_obs, _, _, _ = observation.simulate(action)
-            if cur_max_rho > (sim_obs.rho.max() if sim_obs.rho.max() > 0 else 2):
-                current_action = action
+            current_action += action_space({"set_line_status": [(int(id_), +1)]})
+
     return current_action
 
 

@@ -11,7 +11,6 @@ import numpy as np
 from grid2op.Agent import BaseAgent, RandomAgent, DoNothingAgent, RecoPowerlineAgent, TopologyGreedy
 from grid2op.Environment import Environment
 from grid2op.Observation import BaseObservation
-from grid2op.Reward import L2RPNReward
 from hydra.utils import instantiate
 from lightsim2grid import LightSimBackend
 from omegaconf import DictConfig, OmegaConf
@@ -19,6 +18,7 @@ from tqdm import tqdm
 
 from src.common.constants import logger, set_experiment_name, SEED
 from src.common.observation_space import EDGE_INDEX, EDGE_MASK, GraphObservationSpace
+from src.common.rewards import HRL2023Reward
 
 
 class AgentFailsEarly(Exception):
@@ -97,15 +97,15 @@ def generate_dataset(num_sims: int, length: int, agent: BaseAgent, env: Environm
     return {grid_entity: np.stack(trajectories[grid_entity]) for grid_entity in trajectories.keys()}
 
 
-@hydra.main(config_path="../../hydra_configs", config_name="config", version_base="1.3")
+@hydra.main(config_path="../../configs", config_name="config", version_base="1.3")
 def main(cfg: DictConfig):
     logger.info(OmegaConf.to_yaml(cfg))
     set_experiment_name(cfg.experiment_name)
     from src.common.constants import NRI_DATASETS_PATH
     # create env + observation space
-    env_train = grid2op.make(cfg.nri.dataset_creation.env_name + "_train", backend=LightSimBackend(), reward_class=L2RPNReward)
-    env_test = grid2op.make(cfg.nri.dataset_creation.env_name + "_test", backend=LightSimBackend(), reward_class=L2RPNReward)
-    env_val = grid2op.make(cfg.nri.dataset_creation.env_name + "_val", backend=LightSimBackend(), reward_class=L2RPNReward)
+    env_train = grid2op.make(cfg.nri.dataset_creation.env_name + "_train", backend=LightSimBackend(), reward_class=HRL2023Reward)
+    env_test = grid2op.make(cfg.nri.dataset_creation.env_name + "_test", backend=LightSimBackend(), reward_class=HRL2023Reward)
+    env_val = grid2op.make(cfg.nri.dataset_creation.env_name + "_val", backend=LightSimBackend(), reward_class=HRL2023Reward)
     [env.seed(SEED) for env in [env_train, env_test, env_val]]
     observation_converter: GraphObservationSpace = instantiate(
         cfg.nri.dataset_creation.obs_space,

@@ -7,11 +7,11 @@ from typing import Optional
 import numpy as np
 import torch
 
-LOGS_PATH = Path("data/logs")
-MODELS_PATH = Path("data/models")
-NRI_DATASETS_PATH = Path("data/nri_datasets")
-EVAL_PATH = Path("data/evaluations")
-EDGE_PROBS_PATH = Path("data/edge_probs")
+LOGS_PATH = Path("results/logs")
+MODELS_PATH = Path("results/models")
+NRI_DATASETS_PATH = Path("results/nri_datasets")
+EVAL_PATH = Path("results/evaluations")
+EDGE_PROBS_PATH = Path("results/edge_probs")
 
 SEED = 42
 random.seed(SEED)
@@ -28,11 +28,11 @@ logger.setLevel(logging.INFO)
 def set_experiment_name(experiment_name: Optional[str]):
     global LOGS_PATH, MODELS_PATH, NRI_DATASETS_PATH, EVAL_PATH, EDGE_PROBS_PATH
     if experiment_name is not None and not _testing:
-        LOGS_PATH = Path("data/experiments", experiment_name, "logs")
-        MODELS_PATH = Path("data/experiments", experiment_name, "models")
-        NRI_DATASETS_PATH = Path("data/experiments", experiment_name, "nri_datasets")
-        EVAL_PATH = Path("data/experiments", experiment_name, "evaluations")
-        EDGE_PROBS_PATH = Path("data/experiments", experiment_name, "edge_probs")
+        LOGS_PATH = Path("results/experiments", experiment_name, "logs")
+        MODELS_PATH = Path("results/experiments", experiment_name, "models")
+        NRI_DATASETS_PATH = Path("results/experiments", experiment_name, "nri_datasets")
+        EVAL_PATH = Path("results/experiments", experiment_name, "evaluations")
+        EDGE_PROBS_PATH = Path("results/experiments", experiment_name, "edge_probs")
 
 
 def enable_test_mode():

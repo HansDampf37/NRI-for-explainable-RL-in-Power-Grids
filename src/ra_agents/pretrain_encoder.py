@@ -38,7 +38,7 @@ class GraphDataset(InMemoryDataset):
         self.data, self.slices = self.collate(data_list)
 
 
-@hydra.main(config_path="../../hydra_configs", config_name="config", version_base="1.3")
+@hydra.main(config_path="../../configs", config_name="config", version_base="1.3")
 def main(cfg: DictConfig):
     """
     Pretrains a graphormer encoder.

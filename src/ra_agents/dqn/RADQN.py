@@ -205,7 +205,10 @@ class RADQN(SoftmaxDQN, RARL):
             huber_losses.append(huber.item())
             kl_divs.append(kl.item())
             mean_posteriors.append(posterior_distributions.mean(dim=0).detach().cpu().numpy()) # mean over batch dim -> [E, K]
-            var_posteriors.append(posterior_distributions.var(dim=0).detach().cpu().numpy()) # mean over batch dim -> [E, K]
+            if posterior_distributions.shape[0] > 1:
+                var_posteriors.append(posterior_distributions.var(dim=0).detach().cpu().numpy()) # mean over batch dim -> [E, K]
+            else:
+                var_posteriors.append(torch.zeros(posterior_distributions.shape[1:]))
 
             # Optimize the policy
             self.policy.optimizer.zero_grad()

@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import Optional, Callable, Dict, Any
+from typing import Optional, Callable, Dict, Any, List
 
 from grid2op.gym_compat import BoxGymObsSpace
 from hydra.utils import instantiate
@@ -28,7 +28,7 @@ def get_env(cfg: DictConfig, env_name: Optional[str] = None) -> G2OpGymEnv:
         rule_config=cfg.env.rule_config,
         obs_space_creation=lambda e: instantiate(cfg.rl.obs_space, grid2op_observation_space=e.observation_space),
         act_space_creation=lambda e: instantiate(cfg.rl.act_space, grid2op_action_space=e.action_space),
-        curriculum_learning=cfg.env.training_env.curriculum_level_settings,
+        curriculum_level_settings=cfg.env.training_env.curriculum_level_settings,
     )
     return env
 
@@ -45,7 +45,7 @@ def get_env_mlp_baseline(cfg, env_name: Optional[str] = None) -> G2OpGymEnv:
         rule_config=cfg.env.rule_config,
         obs_space_creation=lambda e: BoxGymObsSpace(grid2op_observation_space=e.observation_space, attr_to_keep=["rho", "topo_vect"]),
         act_space_creation=lambda e: instantiate(cfg.rl.act_space, grid2op_action_space=e.action_space),
-        curriculum_learning=cfg.env.training_env.curriculum_level_settings,
+        curriculum_level_settings=cfg.env.training_env.curriculum_level_settings,
     )
     return env
 
@@ -86,7 +86,7 @@ class CurriculumCallback(BaseCallback):
         return True
 
 
-def evaluate(algorithm: BaseAlgorithm, env_creation, path_results: Path, cfg: DictConfig, verbose = True) -> Dict[str, Dict[str, Dict[str, Any]]]:
+def evaluate(algorithm: BaseAlgorithm, env_creation, path_results: Path, cfg: DictConfig, verbose = True, final: bool= True) -> Dict[str, Dict[str, Dict[str, Any]]]:
     """
     Evaluates an algorithm and associated agent on train/test/val envs.
     Stores results and plots in path_results, and returns a dict of metrics:
@@ -104,6 +104,7 @@ def evaluate(algorithm: BaseAlgorithm, env_creation, path_results: Path, cfg: Di
     :param path_results: Path where the results will be stored
     :param cfg: Hydra config
     :param verbose: print extra explanatory or diagnostic information
+    :param final: if this argument is true, the evaluation goes on for longer (the config inside rl.eval.final is used)
     :return metrics: Dict of metrics
     """
     # Run evaluations and persist artifacts
@@ -118,16 +119,16 @@ def evaluate(algorithm: BaseAlgorithm, env_creation, path_results: Path, cfg: Di
             agent=agent,
             env=env_dataset._g2op_env,
             path_results=Path(path_results, "agent", dataset),
-            num_episodes=cfg.rl.eval.nb_episodes,
-            max_episode_length=cfg.rl.eval.max_episode_length,
+            num_episodes=cfg.rl.eval.final.nb_episodes if final else cfg.rl.eval.during_training.nb_episodes,
+            max_episode_length=cfg.rl.eval.final.max_episode_length if final else cfg.rl.eval.during_training.max_episode_length,
             verbose=verbose
         )
         evaluate_sb3_alg(
             alg=algorithm,
             env=env_dataset,
             path_results=Path(path_results, "rl_algorithm", dataset),
-            num_episodes=cfg.rl.eval.nb_episodes,
-            max_episode_length=cfg.rl.eval.max_episode_length,
+            num_episodes=cfg.rl.eval.final.nb_episodes if final else cfg.rl.eval.during_training.nb_episodes,
+            max_episode_length=cfg.rl.eval.final.max_episode_length if final else cfg.rl.eval.during_training.max_episode_length,
             verbose=verbose
         )
 
@@ -138,8 +139,8 @@ def evaluate(algorithm: BaseAlgorithm, env_creation, path_results: Path, cfg: Di
     # Generate summary plots
     # Include two heuristic baselines for agent summary
     metrics_agent_with_baselines = metrics_agent + [
-        get_evaluation_metrics(Path("data/evaluations/heuristic_agents/reco_powerline_agent/train"), "Reconnect Powerline"),
-        get_evaluation_metrics(Path("data/evaluations/heuristic_agents/do_nothing_agent/train"), "Do Nothing"),
+        get_evaluation_metrics(Path("results/evaluations/heuristic_agents/reco_powerline_agent/train"), "Reconnect Powerline"),
+        get_evaluation_metrics(Path("results/evaluations/heuristic_agents/do_nothing_agent/train"), "Do Nothing"),
     ]
     visualize_agent_survival(metrics_agent_with_baselines, Path(path_results, "agent_summary.png"), show=False)
     visualize_agent_survival(metrics_topo_policy, Path(path_results, "rl_algorithm_summary.png"), show=False)
@@ -180,7 +181,8 @@ class EvalCallback(BaseCallback):
                 env_creation=self.env_fn,
                 path_results=path,
                 cfg=self.cfg,
-                verbose=self.verbose > 0
+                verbose=self.verbose > 0,
+                final=False
             )
         return True
 
@@ -216,3 +218,27 @@ class EvalCallback(BaseCallback):
                 visualize_agent_survival(metrics, out_path, show=False)
                 if self.verbose > 0:
                     logger.info(f"Training summary saved at '{out_path}'.")
+
+def get_callbacks(cfg: DictConfig, path_results: Path, env_creation: Callable = get_env) -> List[BaseCallback]:
+    callbacks = []
+    if cfg.rl.eval.during_training.active:
+        eval_callback = EvalCallback(
+            eval_freq=max(cfg.rl.train.timesteps // cfg.rl.eval.during_training.num_evaluations_during_training, 1),
+            env_fn=env_creation,
+            path_results_root=Path(path_results, "checkpoints"),
+            cfg=cfg,
+            verbose=1 if cfg.rl.verbose else 0
+        )
+        callbacks.append(eval_callback)
+
+    if cfg.rl.train.curriculum_level_config.active:
+        curriculum_cb = CurriculumCallback(
+            total_timesteps=cfg.rl.train.timesteps,
+            level1_at_fraction=float(cfg.rl.train.curriculum_level_config.level1_at_fraction),
+            level2_at_fraction=float(cfg.rl.train.curriculum_level_config.level2_at_fraction),
+            start_level=int(cfg.rl.train.curriculum_level_config.start_level),
+            verbose=1 if cfg.rl.verbose else 0,
+        )
+        callbacks.append(curriculum_cb)
+
+    return callbacks

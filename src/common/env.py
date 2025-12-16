@@ -11,8 +11,8 @@ from typing import Optional, Dict, Tuple, Callable, List
 import grid2op
 import numpy as np
 from grid2op.Action import BaseAction
+from grid2op.Environment import Environment
 from grid2op.Observation import BaseObservation
-from grid2op.Reward import L2RPNReward
 from grid2op.gym_compat import DiscreteActSpace, BoxGymObsSpace
 from gymnasium import Env, Space
 from l2rpn_baselines.utils import GymEnvWithHeuristics
@@ -21,16 +21,17 @@ from stable_baselines3.common.monitor import Monitor
 
 from .constants import SEED
 from .heuristic_actions import reconnection_rule, revert_to_reference_topo, disconnection_rule
+from .rewards import HRL2023Reward
 
 logger = logging.getLogger(__name__)
 
 
-def _default_act_space(env: grid2op.Environment) -> DiscreteActSpace:
+def _default_act_space(env: Environment) -> DiscreteActSpace:
     """Create a discrete Gym action space keeping only topology actions (set_bus)."""
     return DiscreteActSpace(env.action_space, attr_to_keep=["set_bus"])
 
 
-def _default_obs_space(env: grid2op.Environment) -> BoxGymObsSpace:
+def _default_obs_space(env: Environment) -> BoxGymObsSpace:
     """Create a boxed Gym observation space keeping selected attributes for RL."""
     return BoxGymObsSpace(grid2op_observation_space=env.observation_space,
                           attr_to_keep=["rho", "p_or", "gen_p", "load_p"])
@@ -48,11 +49,11 @@ class G2OpGymEnv(Monitor):
 
     def __init__(self,
                  env_name: str = "l2rpn_case14_sandbox",
-                 act_space_creation: Callable[[grid2op.Environment], Space] = _default_act_space,
-                 obs_space_creation: Callable[[grid2op.Environment], Space] = _default_obs_space,
+                 act_space_creation: Callable[[Environment], Space] = _default_act_space,
+                 obs_space_creation: Callable[[Environment], Space] = _default_obs_space,
                  seed: int = SEED,
                  rule_config: Optional[dict] = None,
-                 curriculum_learning: Optional[List[dict]] = None):
+                 curriculum_level_settings: Optional[List[dict]] = None):
         """
         Initialize the Gym wrapper.
 
@@ -69,13 +70,13 @@ class G2OpGymEnv(Monitor):
         self._steps_agent = 0
         self._actions_this_episode = []
         # create env
-        g2op_env = grid2op.make(env_name, backend=LightSimBackend(), reward_class=L2RPNReward)
+        g2op_env = grid2op.make(env_name, backend=LightSimBackend(), reward_class=HRL2023Reward)
         g2op_env.seed(seed)
         self._gym_env = HeuristicEnv(
             g2op_env,
             with_forecast=True,
             rule_config=rule_config,
-            curriculum_learning=curriculum_learning
+            curriculum_learning=curriculum_level_settings
         )
         # this class acts as a monitor for self._gym_env
         Monitor.__init__(self, self._gym_env)
@@ -95,7 +96,7 @@ class G2OpGymEnv(Monitor):
         self.action_space.seed(seed)
 
     @property
-    def _g2op_env(self) -> grid2op.Environment:
+    def _g2op_env(self) -> Environment:
         return self.env.init_env # access the monitored gym_env's grid2op_env
 
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
@@ -270,7 +271,7 @@ class HeuristicEnv(GymEnvWithHeuristicsAndLogs):
     """
     Gym environment that applies heuristic actions according to the provided rule-configuration
     """
-    def __init__(self, init_env: grid2op.Environment, with_forecast: bool=False, rule_config: Optional[dict] = None, curriculum_learning: Optional[List[dict]] = None):
+    def __init__(self, init_env: Environment, with_forecast: bool=False, rule_config: Optional[dict] = None, curriculum_learning: Optional[List[dict]] = None):
         super().__init__(env_init=init_env, reward_cumul="sum", with_forecast=with_forecast)
         rule_config = rule_config or {}
         curriculum_learning = curriculum_learning or []
@@ -309,7 +310,7 @@ class HeuristicEnv(GymEnvWithHeuristicsAndLogs):
             initial_action = self.init_env.action_space({})
             current_action = self.apply_heuristic_additions_to_action(initial_action, observation)
             # count do-nothing if no heuristic additions modified the action
-            if current_action is initial_action:
+            if current_action == initial_action:
                 self._hn_do_nothing += 1
 
             self._hn_non_agent_steps += 1
@@ -325,18 +326,17 @@ class HeuristicEnv(GymEnvWithHeuristicsAndLogs):
             if updated != current_action:
                 self._hn_line_reco += 1
             current_action = updated
-        # revert_to_reference_topo
-        if self._reset_topo:
-            updated = revert_to_reference_topo(observation, current_action, self.init_env.action_space, self._reset_topo)
-            if updated != current_action:
-                self._hn_reset_topo += 1
-            current_action = updated
         # disconnection_rule
         if self._line_disc:
             updated = disconnection_rule(observation, current_action, self.init_env.action_space)
             if updated != current_action:
                 self._hn_line_disc += 1
             current_action = updated
+        # revert_to_reference_topo
+        updated = revert_to_reference_topo(observation, current_action, self.init_env.action_space, self._reset_topo)
+        if updated != current_action:
+            self._hn_reset_topo += 1
+        current_action = updated
         return current_action
 
     def set_curriculum(self, level: int):

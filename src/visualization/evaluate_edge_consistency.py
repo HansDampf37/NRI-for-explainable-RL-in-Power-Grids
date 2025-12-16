@@ -3,7 +3,7 @@ Evaluate and visualize consistency of edge-type probability predictions across m
 
 Usage (from repo root):
     python visualization/evaluate_edge_consistency.py \
-        --data-dir data/edge_probabilities \
+        --results-dir results/edge_probabilities \
         --prefix edges_testing_NRI_with_forecast \
         --out-dir output/edge_consistency \
         --top-k 20
@@ -628,7 +628,7 @@ def main() -> None:
     above for an example invocation.
     """
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data-dir', required=True)
+    parser.add_argument('--results-dir', required=True)
     parser.add_argument('--prefix', required=True)
     parser.add_argument('--out-dir', default='output/edge_consistency')
     parser.add_argument('--top-k', type=int, default=20)

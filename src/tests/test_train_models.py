@@ -26,7 +26,7 @@ class TestTrainingFunctions(unittest.TestCase):
 
     @staticmethod
     def _setup_cfg():
-        with hydra.initialize(config_path="../../hydra_configs", version_base="1.3"):
+        with hydra.initialize(config_path="../../configs", version_base="1.3"):
             cfg = hydra.compose(config_name="config")
             test_train_cfg = hydra.compose(config_name="rl/train/test")
             test_eval_cfg = hydra.compose(config_name="rl/eval/test")
@@ -144,13 +144,19 @@ class TestTrainingFunctions(unittest.TestCase):
     def test_load_relations_aware_ppo(self):
         cfg = self._setup_cfg()
         # assure loading the algorithm works
-        rappo = RAPPO.load("src/tests/resources/rappo.zip")
-        rappo.set_prior(prior_from_env(1.0, get_env(cfg)))
+        rappo = RAPPO(get_env(cfg))
+        with tempfile.TemporaryDirectory() as tmpdir:
+            rappo.save(Path(tmpdir, "rappo_test"))
+            rappo = RAPPO.load(Path(tmpdir, "rappo_test"))
+            self.assertIsInstance(rappo, RAPPO)
 
     def test_load_relations_aware_dqn(self):
         cfg = self._setup_cfg()
         # assure loading the algorithm works
-        radqn = RADQN.load("src/tests/resources/radqn.zip")
-        radqn.set_loss_function(HuberKLLoss(prior_from_env(1.0, get_env(cfg))))
+        radqn = RADQN(get_env(cfg))
+        with tempfile.TemporaryDirectory() as tmpdir:
+            radqn.save(Path(tmpdir, "radqn_test"))
+            radqn = RADQN.load(Path(tmpdir, "radqn_test"))
+            self.assertIsInstance(radqn, RADQN)
 
 

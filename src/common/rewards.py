@@ -2,6 +2,7 @@ import numpy as np
 from grid2op.Action import BaseAction
 from grid2op.Environment import BaseEnv
 from grid2op.Reward import BaseReward, L2RPNReward
+from grid2op.dtypes import dt_float
 
 
 class MazeRLReward(BaseReward):
@@ -45,3 +46,27 @@ class BaseWithBonus(BaseReward):
         else:
             return -300
 
+class HRL2023Reward(L2RPNReward):
+    def initialize(self, env):
+        self.reward_min = dt_float(0.0)
+        self.reward_max = dt_float(1.0)
+
+    def __call__(self, action, env, has_error, is_done, is_illegal, is_ambiguous):
+        if is_done:
+            return -0.5
+        else:
+            r_margins = super().__call__(action, env, has_error, is_done, is_illegal, is_ambiguous)
+            n_line = env.n_line
+            return r_margins / n_line
+
+#def __call__(self, action, env, has_error, is_done, is_illegal, is_ambiguous):
+#    if is_done:
+#        return -0.5
+
+#    flows = env.get_obs().a_or
+#    limits = env.get_thermal_limit()
+
+#    margins = np.maximum((limits - flows) / limits, 0.0)
+#    reward_per_line = 1.0 - (1.0 - margins) ** 2
+
+#    return reward_per_line.mean()
