@@ -47,8 +47,8 @@ class TestAgentEvaluation(unittest.TestCase):
             self.assertTrue(len(os.listdir(tmpdir)) != 0)
 
     def test_evaluate(self):
-        with hydra.initialize(config_path="../../../hydra_configs", version_base="1.3"):
-            cfg = hydra.compose(config_name="config")
+        with hydra.initialize(config_path="../../../configs", version_base="1.3"):
+            cfg = hydra.compose(config_name="configs")
             cfg.rl.eval.final.nb_episodes = 1
             cfg.rl.eval.final.max_episode_length = 10
             with TemporaryDirectory() as tmpdir:

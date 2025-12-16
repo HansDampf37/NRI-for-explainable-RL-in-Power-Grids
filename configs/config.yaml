@@ -10,4 +10,4 @@ timeout: ~
 
 hydra:
     run:
-        dir: data/experiments/${experiment_name}/hydra/${now:%Y-%m-%d_%H-%M-%S}
+        dir: results/experiments/${experiment_name}/hydra/${now:%Y-%m-%d_%H-%M-%S}

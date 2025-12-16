@@ -97,7 +97,7 @@ def generate_dataset(num_sims: int, length: int, agent: BaseAgent, env: Environm
     return {grid_entity: np.stack(trajectories[grid_entity]) for grid_entity in trajectories.keys()}
 
 
-@hydra.main(config_path="../../hydra_configs", config_name="config", version_base="1.3")
+@hydra.main(config_path="../../configs", config_name="configs", version_base="1.3")
 def main(cfg: DictConfig):
     logger.info(OmegaConf.to_yaml(cfg))
     set_experiment_name(cfg.experiment_name)

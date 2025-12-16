@@ -139,8 +139,8 @@ def evaluate(algorithm: BaseAlgorithm, env_creation, path_results: Path, cfg: Di
     # Generate summary plots
     # Include two heuristic baselines for agent summary
     metrics_agent_with_baselines = metrics_agent + [
-        get_evaluation_metrics(Path("data/evaluations/heuristic_agents/reco_powerline_agent/train"), "Reconnect Powerline"),
-        get_evaluation_metrics(Path("data/evaluations/heuristic_agents/do_nothing_agent/train"), "Do Nothing"),
+        get_evaluation_metrics(Path("results/evaluations/heuristic_agents/reco_powerline_agent/train"), "Reconnect Powerline"),
+        get_evaluation_metrics(Path("results/evaluations/heuristic_agents/do_nothing_agent/train"), "Do Nothing"),
     ]
     visualize_agent_survival(metrics_agent_with_baselines, Path(path_results, "agent_summary.png"), show=False)
     visualize_agent_survival(metrics_topo_policy, Path(path_results, "rl_algorithm_summary.png"), show=False)

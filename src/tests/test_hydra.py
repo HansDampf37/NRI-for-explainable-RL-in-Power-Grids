@@ -12,28 +12,28 @@ from src.common.observation_space import BusConnectivityGraphObsSpace
 
 class TestHydra(unittest.TestCase):
     def test_hydra_obs_space(self):
-        with hydra.initialize(config_path="../../hydra_configs", version_base="1.3"):
+        with hydra.initialize(config_path="../../configs", version_base="1.3"):
             cfg = hydra.compose(config_name="obs_space/bus_connectivity_graph_obs_space")
             env = grid2op.make("l2rpn_case14_sandbox")
             obs_space = instantiate(cfg.obs_space, grid2op_observation_space=env.observation_space)
             self.assertIsInstance(obs_space, BusConnectivityGraphObsSpace)
 
     def test_hydra_act_space(self):
-        with hydra.initialize(config_path="../../hydra_configs", version_base="1.3"):
+        with hydra.initialize(config_path="../../configs", version_base="1.3"):
             cfg = hydra.compose(config_name="act_space/discrete_set_bus")
             env = grid2op.make("l2rpn_case14_sandbox")
             act_space = instantiate(cfg.act_space, grid2op_action_space=env.action_space)
             self.assertIsInstance(act_space, DiscreteActSpace)
 
     def test_hydra_reduced_act_space(self):
-        with hydra.initialize(config_path="../../hydra_configs", version_base="1.3"):
+        with hydra.initialize(config_path="../../configs", version_base="1.3"):
             cfg = hydra.compose(config_name="act_space/reduced_act_space")
             env = grid2op.make("l2rpn_case14_sandbox")
             act_space = instantiate(cfg.act_space, grid2op_action_space=env.action_space)
             self.assertIsInstance(act_space, ReducedActionSpace)
 
     def test_hydra_env_creation(self):
-        with hydra.initialize(config_path="../../hydra_configs", version_base="1.3"):
+        with hydra.initialize(config_path="../../configs", version_base="1.3"):
             env_cfg = hydra.compose(config_name="env/case14")
             obs_cfg = hydra.compose(config_name="obs_space/bus_connectivity_graph_obs_space")
             act_cfg = hydra.compose(config_name="act_space/reduced_act_space")

@@ -29,7 +29,7 @@ def evaluate(cfg: DictConfig):
             )
 
 
-@hydra.main(config_path="../../hydra_configs", config_name="config", version_base="1.3")
+@hydra.main(config_path="../../configs", config_name="configs", version_base="1.3")
 def main(cfg: DictConfig):
     evaluate(cfg)
 

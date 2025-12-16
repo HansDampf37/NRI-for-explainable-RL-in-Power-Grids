@@ -13,7 +13,7 @@ from ..utils import get_env_mlp_baseline, evaluate, get_callbacks
 logger = logging.getLogger(__name__)
 
 
-@hydra.main(config_path="../../../hydra_configs", config_name="config", version_base="1.3")
+@hydra.main(config_path="../../../configs", config_name="configs", version_base="1.3")
 def main(cfg: DictConfig):
     if cfg.rl.verbose:
         logger.info(OmegaConf.to_yaml(cfg))

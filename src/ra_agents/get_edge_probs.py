@@ -84,7 +84,7 @@ def save_edge_probs(
 
     :param RARL_model: the RARL alg to run
     :param env: the env to run the module on
-    :param save_path: optional output path. If None, uses data/edge_probabilities
+    :param save_path: optional output path. If None, uses results/edge_probabilities
     :param num_samples: number of samples to average over
     :param verbose: print extra explanatory or diagnostic information
     :return: the averaged edge type probabilities as numpy array of shape [E, NUM_EDGE_TYPES]

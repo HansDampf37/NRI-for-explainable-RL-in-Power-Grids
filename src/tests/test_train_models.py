@@ -26,8 +26,8 @@ class TestTrainingFunctions(unittest.TestCase):
 
     @staticmethod
     def _setup_cfg():
-        with hydra.initialize(config_path="../../hydra_configs", version_base="1.3"):
-            cfg = hydra.compose(config_name="config")
+        with hydra.initialize(config_path="../../configs", version_base="1.3"):
+            cfg = hydra.compose(config_name="configs")
             test_train_cfg = hydra.compose(config_name="rl/train/test")
             test_eval_cfg = hydra.compose(config_name="rl/eval/test")
 
