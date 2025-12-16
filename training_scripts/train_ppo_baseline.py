@@ -8,18 +8,18 @@ import os
 from typing import Any, Dict, Tuple
 
 import grid2op
-
 from ray.rllib.algorithms import ppo  # import the type of agents
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.policy.policy import PolicySpec
 
+from src.ra_agents.RAFeatureExtractor import GNNPolicy
+from src.rl4pnc.experiments.utils import run_training
 from src.rl4pnc.experiments.yaml import load_config
 from src.rl4pnc.grid2op_env.custom_environment import CustomizedGrid2OpEnvironment
 from src.rl4pnc.multi_agent.policy import (
     DoNothingPolicy,
     SelectAgentPolicy,
 )
-from src.rl4pnc.experiments.utils import run_training
 
 REPORT_END = False
 
@@ -80,8 +80,22 @@ def setup_config(workdir_path: str, input_path: str, seed: int = None, opponent=
             ),
         ),
         "reinforcement_learning_policy": PolicySpec(  # performs RL topology
-            policy_class=None,  # use default policy of PPO
-            config=None,
+            policy_class=GNNPolicy,  # use default policy of PPO
+            config={
+                "model": {
+                    "custom_model_config": {
+                        "gnn": {
+                            "hidden_dim": 64,
+                            "out_dim": 64,
+                            "num_layers": 2,
+                        },
+                        "mlp": {
+                            "dim": 256,
+                            "num_layers": 3
+                        }
+                    }
+                }
+            },
         ),
         "do_nothing_policy": PolicySpec(  # performs do-nothing action
             policy_class=DoNothingPolicy,

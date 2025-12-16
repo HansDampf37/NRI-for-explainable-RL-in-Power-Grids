@@ -230,9 +230,7 @@ def add_constructors() -> None:
     yaml.FullLoader.add_constructor("!RewardRho", binbin_reward_constructor)
     yaml.FullLoader.add_constructor("!ConstantReward", constant_reward_constructor)
     yaml.FullLoader.add_constructor("!policy_mapping_fn", policy_mapping_fn_constructor)
-    yaml.FullLoader.add_constructor(
-        "!CustomMetricsCallback", custom_metrics_callback_constructor
-    )
+    yaml.FullLoader.add_constructor("!CustomMetricsCallback", custom_metrics_callback_constructor)
     yaml.FullLoader.add_constructor("!Discrete", discrete_constructor)
     yaml.FullLoader.add_constructor("!AlgorithmConfig", algorithm_config_constructor)
     yaml.FullLoader.add_constructor("!quniform", tune_search_quniform_constructor)
@@ -240,13 +238,9 @@ def add_constructors() -> None:
     yaml.FullLoader.add_constructor("!grid_search", tune_search_grid_search_constructor)
     yaml.FullLoader.add_constructor("!choice", tune_choice_constructor)
     yaml.FullLoader.add_constructor("!PowerlineSetAction", powerline_action_constructor)
-    yaml.FullLoader.add_constructor(
-        "!RandomLineOpponent", randomline_opponent_constructor
-    )
+    yaml.FullLoader.add_constructor("!RandomLineOpponent", randomline_opponent_constructor)
     yaml.FullLoader.add_constructor("!BaseActionBudget", baseaction_budget_constructor)
-    yaml.FullLoader.add_constructor(
-        "!workdir", path_workdir_constructor
-    )
+    yaml.FullLoader.add_constructor("!workdir", path_workdir_constructor)
 
 
 def load_config(path: str) -> Any:
