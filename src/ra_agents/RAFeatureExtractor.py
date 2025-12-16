@@ -265,15 +265,15 @@ class RLlibGNNModel(TorchModelV2, nn.Module):
         self.mlp_value = self.mlp_policy if model_config["vf_share_layers"] else self._build_mlp(model_config)
 
         # Policy logits and value head
-        self.policy_logits = nn.Linear(model_config['mlp']['dim'], self.num_outputs)
-        self.value_head = nn.Linear(model_config['mlp']['dim'], 1)
+        self.policy_logits = nn.Linear(model_config['custom_model_config']['mlp']['dim'], self.num_outputs)
+        self.value_head = nn.Linear(model_config['custom_model_config']['mlp']['dim'], 1)
         # cache for value function output
         self._value_out: Optional[Tensor] = None
 
     def _build_mlp(self, model_config):
-        mlp_dim: int = model_config['mlp']['dim']
-        mlp_layers: int = model_config['mlp']['num_layers']
-        mlp_modules: List[nn.Module] = [nn.Linear(model_config['gnn']['out_dim'], mlp_dim)]
+        mlp_dim: int = model_config['custom_model_config']['mlp']['dim']
+        mlp_layers: int = model_config['custom_model_config']['mlp']['num_layers']
+        mlp_modules: List[nn.Module] = [nn.Linear(model_config['custom_model_config']['gnn']['out_dim'], mlp_dim)]
         for _ in range(mlp_layers - 1):
             mlp_modules.append(nn.Linear(mlp_dim, mlp_dim))
             mlp_modules.append(nn.ReLU())
