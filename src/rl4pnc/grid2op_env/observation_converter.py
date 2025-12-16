@@ -1,16 +1,15 @@
-import numpy as np
-from datetime import date
-import torch
 import os
+from datetime import date
+
 import gymnasium as gym
-from grid2op import Observation
-from grid2op import Environment
+import numpy as np
+from grid2op.Observation import BaseObservation
 from grid2op.Parameters import Parameters
+from grid2op.gym_compat import GymEnv
 from grid2op.gym_compat import ScalerAttrConverter
 from grid2op.gym_compat.gym_obs_space import GymnasiumObservationSpace
-from grid2op.Observation import BaseObservation
-from grid2op.gym_compat import GymEnv
 
+from src.common.observation_space import BusConnectivityGraphObsSpace, GraphObservationSpace
 from src.rl4pnc.grid2op_env.utils import get_attr_list
 
 
@@ -38,38 +37,59 @@ class ObservationConverter:
         self.env_gym = gym_env
         self.cur_gym_obs = None
         self.env_name = gym_env.init_env.env_name
-        # Select attributes and normalize observation space
-        self.env_gym.observation_space = self.rescale_observation_space(
-            env_config["lib_dir"],
-            env_config.get("g2op_input", ["p_i", "p_l", "r", "o"])
-        )
+        # choose observation space mode
+        self.obs_space_mode = env_config.get("observation_space", "BoxGymObsSpace")
 
-        # Standard attributes of g2op that are included:
-        attr = dict(self.env_gym.observation_space.spaces.items())
-        # print("Used as RL obs: ", attr)
-        # Custom attributes added:
-        custom_attr = self.custom_observation_space(input_attr=env_config.get("custom_input"))
-        self.custom_attr = list(custom_attr.keys())
-        # update attribute list for observation space with custom attributes
-        attr.update(custom_attr)
-        # initialize danger variable in case it is used.
-        self.danger = env_config.get("danger", 0.9)
-        self.thermal_limit_under400 = (gym_env.init_env.get_thermal_limit() < 400)
-        # update history variable and extend observation space
-        self.history = env_config.get("n_history", 1)
-        if self.history > 1:
-            attr = extend_with_history(attr, self.history)
-        # print("Updated RL obs: ", attr)
+        if self.obs_space_mode == "BusConnectivityGraphObsSpace":
+            # Graph observation mode: use our graph obs space for the RL agent
+            graph_obs_space: GraphObservationSpace = BusConnectivityGraphObsSpace(
+                grid2op_observation_space=gym_env.init_env.observation_space,
+                normalization_boundaries=None,
+                verbose=env_config.get("verbose", False),
+            )
+            self.history = 1  # history not supported in graph mode
+            self.custom_attr = []
+            self._obs_space_in_preferred_format = True
+            self.env_gym.observation_space = graph_obs_space
+            self.observation_space = gym.spaces.Dict(
+                {
+                    "high_level_agent": gym.spaces.Discrete(2),
+                    "reinforcement_learning_agent": graph_obs_space,
+                    "do_nothing_agent": gym.spaces.Discrete(1),
+                }
+            )
+        else:
+            # Default Box-based observation mode (existing behavior)
+            # Select attributes and normalize observation space
+            self.env_gym.observation_space = self.rescale_observation_space(
+                env_config["lib_dir"],
+                env_config.get("g2op_input", ["p_i", "p_l", "r", "o"])
+            )
 
-        self._obs_space_in_preferred_format = True
-        self.observation_space = gym.spaces.Dict(
-            {
-                "high_level_agent": gym.spaces.Discrete(2),
-                "reinforcement_learning_agent":
-                    gym.spaces.Dict(attr),
-                "do_nothing_agent": gym.spaces.Discrete(1),
-            }
-        )
+            # Standard attributes of g2op that are included:
+            attr = dict(self.env_gym.observation_space.spaces.items())
+            # Custom attributes added:
+            custom_attr = self.custom_observation_space(input_attr=env_config.get("custom_input"))
+            self.custom_attr = list(custom_attr.keys())
+            # update attribute list for observation space with custom attributes
+            attr.update(custom_attr)
+            # initialize danger variable in case it is used.
+            self.danger = env_config.get("danger", 0.9)
+            self.thermal_limit_under400 = (gym_env.init_env.get_thermal_limit() < 400)
+            # update history variable and extend observation space
+            self.history = env_config.get("n_history", 1)
+            if self.history > 1:
+                attr = extend_with_history(attr, self.history)
+
+            self._obs_space_in_preferred_format = True
+            self.observation_space = gym.spaces.Dict(
+                {
+                    "high_level_agent": gym.spaces.Discrete(2),
+                    "reinforcement_learning_agent":
+                        gym.spaces.Dict(attr),
+                    "do_nothing_agent": gym.spaces.Discrete(1),
+                }
+            )
 
     def rescale_observation_space(self,
                                   lib_dir: str,
@@ -134,6 +154,11 @@ class ObservationConverter:
         self.cur_gym_obs = None
 
     def convert_obs(self, g2op_obs: BaseObservation):
+        if self.obs_space_mode == "BusConnectivityGraphObsSpace":
+            # Directly map to graph obs space
+            rl_obs = self.env_gym.observation_space.to_gym(g2op_obs)
+            return rl_obs
+        # default Box behavior
         cur_gym_obs = dict(self.env_gym.observation_space.to_gym(g2op_obs))
         # print("Current gym obs: ", cur_gym_obs)
         cur_gym_obs.update(self.convert_custom_obs(g2op_obs))

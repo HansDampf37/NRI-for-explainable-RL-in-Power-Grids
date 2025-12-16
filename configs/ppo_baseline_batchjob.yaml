@@ -73,6 +73,8 @@ environment:
     action_space: medha # options: assym, medha, tennet, d3qn2022, masked
     mask: 3 # only used if action space is "masked" (as in SMAAC from Yoon et al. 2021)
     lib_dir: !workdir
+    # NEW: Choose observation space implementation
+    observation_space: !BusConnectivityGraphObsSpace # !Box # or !BusConnectivityGraphObsSpace
     grid2op_kwargs:
       # general kwargs
       reward_class: !AlphaZeroRW #!ScaledL2RPNReward #L2RPNReward #!LossRwRescaled2 #!LossRwNew #!AlphaZeroRW #!LinesCapacityReward #!LossReward #!RewardRho #!ConstantReward

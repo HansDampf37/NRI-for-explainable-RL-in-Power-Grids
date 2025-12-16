@@ -2,7 +2,7 @@
 Implements yaml configs loading.
 """
 import os
-from typing import Any, Callable, Union
+from typing import Any, Callable, Union, Type
 
 import yaml
 from grid2op.Action import BaseAction, PowerlineSetAction
@@ -35,6 +35,23 @@ from src.rl4pnc.experiments.rewards import (
 )
 from grid2op.Reward import L2RPNReward,LinesCapacityReward
 from src.rl4pnc.multi_agent.policy import policy_mapping_fn
+
+# Observation space tag constructors
+
+def box_obs_space_constructor(
+    loader: Union[Loader, FullLoader, UnsafeLoader], node: MappingNode
+) -> str:
+    """Custom constructor for default Box-based observation space selector."""
+    # No payload expected; return selector token
+    return "BoxGymObsSpace"
+
+
+def bus_connectivity_graph_obs_space_constructor(
+    loader: Union[Loader, FullLoader, UnsafeLoader], node: MappingNode
+) -> str:
+    """Custom constructor for BusConnectivityGraphObsSpace selector."""
+    # No payload expected; return selector token
+    return "BusConnectivityGraphObsSpace"
 
 
 def discrete_constructor(
@@ -241,6 +258,8 @@ def add_constructors() -> None:
     yaml.FullLoader.add_constructor("!RandomLineOpponent", randomline_opponent_constructor)
     yaml.FullLoader.add_constructor("!BaseActionBudget", baseaction_budget_constructor)
     yaml.FullLoader.add_constructor("!workdir", path_workdir_constructor)
+    yaml.FullLoader.add_constructor("!Box", box_obs_space_constructor)
+    yaml.FullLoader.add_constructor("!BusConnectivityGraphObsSpace", bus_connectivity_graph_obs_space_constructor)
 
 
 def load_config(path: str) -> Any:

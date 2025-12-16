@@ -106,6 +106,7 @@ class CustomizedGrid2OpEnvironment(MultiAgentEnv):
         self.env_gym.action_space = CustomDiscreteActions(converter)
         # specific to rllib
         self.action_space = self.define_action_space(env_config)
+        print("Observation space: ", self.observation_space)
 
         # 5. customize observation space
         self.observation_converter = self.setup_obs_converter(self.env_gym, env_config)
