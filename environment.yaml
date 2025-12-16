@@ -72,7 +72,6 @@ dependencies:
       - greenlet==3.3.0
       - grid2op==1.10.5
       - grpcio==1.76.0
-      - gym==0.26.2
       - gym-notices==0.1.0
       - gymnasium==0.29.1
       - hydra-core==1.3.2
