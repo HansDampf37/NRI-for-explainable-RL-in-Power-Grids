@@ -13,7 +13,8 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.policy import PolicySpec
 
-from src.ra_agents.RAFeatureExtractor import RLlibGNNModel
+from src.ra_agents.RAFeatureExtractor import RLlibGNNModel, RLlibRAGNNModel
+from src.ra_agents.ppo.rllib.rappo.RAPPO import RAPPOTorchPolicy
 from src.rl4pnc.experiments.utils import run_training
 from src.rl4pnc.experiments.yaml import load_config
 from src.rl4pnc.grid2op_env.custom_environment import CustomizedGrid2OpEnvironment
@@ -24,6 +25,8 @@ from src.rl4pnc.multi_agent.policy import (
 
 REPORT_END = False
 ModelCatalog.register_custom_model("gnn_model", RLlibGNNModel)
+ModelCatalog.register_custom_model("ragnn_model", RLlibRAGNNModel)
+ModelCatalog.register_custom_model("rappo", RAPPOTorchPolicy)
 
 
 def setup_config(workdir_path: str, input_path: str, seed: int = None, opponent=False, model_type: str="MLP") -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -44,9 +47,9 @@ def setup_config(workdir_path: str, input_path: str, seed: int = None, opponent=
 
     # Set observation space based on model_type
     print(f"Using model type: {model_type}")
-    if model_type == "GNN":
+    if model_type == "GNN" or model_type == "RAGNN":
         custom_config["environment"]["env_config"]["observation_space"] = "BusConnectivityGraphObsSpace"
-    else:  # MLP
+    elif model_type == "MLP":  # MLP
         custom_config["environment"]["env_config"]["observation_space"] = "BoxGymObsSpace"
 
     for key in custom_config.keys():
@@ -71,6 +74,17 @@ def setup_config(workdir_path: str, input_path: str, seed: int = None, opponent=
         ))
     change_workdir(workdir_path, ppo_config["env_config"]["env_name"])
     # ppo_config["env_config"]["lib_dir"] = os.path.join(workdir_path, ppo_config["env_config"]["lib_dir"])
+    if model_type == "GNN":
+        policy_class = None
+        model_name = "gnn_model"
+    elif model_type == "RAGNN":
+        policy_class = RAPPOTorchPolicy
+        model_name = "ragnn_model"
+    elif model_type == "MLP":
+        policy_class = None
+        model_name = None
+    else:
+        raise ValueError(f"Model type {model_type} not supported.")
 
     policies = {
         "high_level_policy": PolicySpec(  # chooses RL or do-nothing agent
@@ -89,7 +103,10 @@ def setup_config(workdir_path: str, input_path: str, seed: int = None, opponent=
                 .rollouts(preprocessor_pref=None)
             ),
         ),
-        "reinforcement_learning_policy": PolicySpec(config={}), # configured in custom config already
+        "reinforcement_learning_policy": PolicySpec(
+            policy_class=policy_class,
+            config={"model": {"custom_model": model_name}} if model_name else {},
+        ),
         "do_nothing_policy": PolicySpec(  # performs do-nothing action
             policy_class=DoNothingPolicy,
             config=(AlgorithmConfig()),

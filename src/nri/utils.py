@@ -97,10 +97,8 @@ def get_priors(prob_graph_edges_exist: float, num_graph_edges: int, num_non_grap
     # Solve for prior for non-graph edges
     p2 = (num_total_edges * p_hat - num_graph_edges * p1) / num_non_graph_edges
 
-    assert np.all(0 <= p1) and np.all(p1 <= 1) and np.isclose(np.sum(p1),
-                                                              1), "Prior for graph edges is not a probability distribution."
-    assert np.all(0 <= p2) and np.all(p2 <= 1) and np.isclose(np.sum(p2),
-                                                              1), "Prior for non graph edges is not a probability distribution."
+    assert np.all(0 <= p1) and np.all(p1 <= 1) and np.isclose(np.sum(p1),1), f"Prior for graph edges is not a probability distribution. {p1}, p_hat: {p_hat}, p2: {p2}, num_graph_edges: {num_graph_edges}, num_non_graph_edges: {num_non_graph_edges}, total: {num_total_edges}"
+    assert np.all(0 <= p2) and np.all(p2 <= 1) and np.isclose(np.sum(p2), 1), f"Prior for non graph edges is not a probability distribution. {p2}, p_hat: {p_hat}, p1: {p1}, num_graph_edges: {num_graph_edges}, num_non_graph_edges: {num_non_graph_edges}, total: {num_total_edges}"
 
     return Tensor(p1), Tensor(p2)
 

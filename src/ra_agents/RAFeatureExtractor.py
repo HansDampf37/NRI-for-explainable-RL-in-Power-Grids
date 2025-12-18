@@ -25,7 +25,7 @@ from .graphormer.GraphormerEncoder import GraphormerNRIEncoder
 
 class RAFeatureExtractor(nn.Module):
     """
-    Combines an NRI encoder with a relations aware GGN (RA-GNN).
+    Combines an NRI encoder with a relation-aware GGN (RA-GNN).
 
     The encoder predicts edge-type logits for each edge. These logits are used both
     to compute soft edge-type probabilities (for monitoring) and to sample discrete
@@ -39,11 +39,11 @@ class RAFeatureExtractor(nn.Module):
         4. Pass node features and sampled edges into the GNN.
 
     Args:
-        x_dim (int): Input node feature dimension.
-        hidden_dim (int): Hidden dimension shared by encoder and GNN.
-        x_out_dim (int): Output node feature dimension.
-        num_edge_types (int): Number of edge types (K).
-        dropout_prob (float): Dropout probability used in both encoder and GNN.
+    :param x_dim (int): Input node feature dimension.
+    :param hidden_dim (int): Hidden dimension shared by encoder and GNN.
+    :param x_out_dim (int): Output node feature dimension.
+    :param num_edge_types (int): Number of edge types (K).
+    :param dropout_prob (float): Dropout probability used in both encoder and GNN.
     """
 
     def __init__(
@@ -253,6 +253,7 @@ class RLlibGNNModel(TorchModelV2, nn.Module):
                  name: str):
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs, model_config, name)
         nn.Module.__init__(self)
+        print("Instantiate GNN Model")
         self.gnn: BaselineGNN = BaselineGNN(
             x_dim=obs_space.x_dim,
             hidden_dim=model_config['custom_model_config']['gnn']['hidden_dim'],
@@ -305,6 +306,86 @@ class RLlibGNNModel(TorchModelV2, nn.Module):
         mlp_input_dict = {"obs": gnn_out}
         logits, _ = self.mlp(mlp_input_dict, state, seq_lens)
         return logits, []
+
+    def value_function(self) -> Tensor:
+        # RLlib expects shape [B]
+        return self.mlp.value_function()
+
+class RLlibRAGNNModel(TorchModelV2, nn.Module):
+    def __init__(self,
+                 obs_space: GraphObservationSpace,
+                 action_space: Discrete,
+                 num_outputs: int,
+                 model_config: ModelConfigDict,
+                 name: str):
+        TorchModelV2.__init__(self, obs_space, action_space, num_outputs, model_config, name)
+        nn.Module.__init__(self)
+        print("Instantiate RAGNN Model")
+        self.ragnn: RAFeatureExtractor = RAGraphormerFeatureExtractor(
+            x_dim=obs_space.x_dim,
+            hidden_dim=model_config['custom_model_config']['gnn']['hidden_dim'],
+            x_out_dim=model_config['custom_model_config']['gnn']['out_dim'],
+            num_layers=model_config['custom_model_config']['gnn']['num_layers'],
+            dropout_prob=model_config['custom_model_config']['gnn'].get('dropout_prob', 0.0),
+            num_edge_types=model_config['custom_model_config']['gnn'].get('num_edge_types', 2),
+            max_degree=model_config['custom_model_config']['encoder']['max_degree'],
+            max_path_distance=model_config['custom_model_config']['encoder']['max_path_distance'],
+        )
+        # Build downstream MLP head(s)
+        # Create a Box space for the GNN output to pass to FCN
+        gnn_output_space = Box(
+            low=-float('inf'),
+            high=float('inf'),
+            shape=(model_config['custom_model_config']['gnn']['out_dim'],),
+            dtype=np.float32
+        )
+        self.mlp = FullyConnectedNetwork(
+            obs_space=gnn_output_space,
+            action_space=action_space,
+            num_outputs=num_outputs,
+            model_config=model_config,
+            name=name + "_fully_connected_network",
+        )
+        self.batched_p_z_given_x: Optional[Tensor] = None
+
+    def forward(self, input_dict: Dict[str, TensorType], state: List[TensorType], seq_lens: TensorType) -> Tuple[TensorType, List[TensorType]]:
+        node_features_batch = input_dict["obs"][NODES]  # [B, N, node_in_dim]
+        edge_index_batch = input_dict["obs"][EDGE_INDEX]  # [B, 2, E_max]
+        edge_mask = input_dict["obs"][EDGE_MASK]  # [B, E_max]
+
+        B, N, _ = node_features_batch.shape
+        device = node_features_batch.device
+
+        # Flatten nodes
+        x = node_features_batch.reshape(B * N, -1)
+        batch = torch.arange(B, device=device).repeat_interleave(N)
+
+        # Mask edges
+        valid_edges = edge_mask.bool()
+        edge_index_batch = edge_index_batch.permute(1, 0, 2)  # [2, B, E_max]
+        edge_index_batch = edge_index_batch[:, valid_edges]  # [2, total_E]
+
+        # Add per-graph node offsets
+        offsets = (torch.arange(B, device=device) * N).repeat_interleave(valid_edges.sum(1))
+        edge_index_batch += offsets.unsqueeze(0)
+
+        # RAGNN to produce graph-level representation [B, gnn_out_dim]
+        gnn_out, self.batched_p_z_given_x = self.ragnn(x=x, batch=batch, powerline_edge_index=edge_index_batch.to(dtype=torch.long))
+
+        # Pass GNN output through FCN (which expects input_dict format)
+        mlp_input_dict = {"obs": gnn_out}
+        logits, _ = self.mlp(mlp_input_dict, state, seq_lens)
+        return logits, []
+
+    def get_posterior(self) -> Tensor:
+        """
+        Returns the posterior distribution for the most recent forward pass.
+        Note that a forward call has to be performed first before this method can return anything and thus that calling
+        this method does not cause an extra forward pass through the network.
+        :return: Posterior distribution tensor of shape [BATCH, NUM_EDGES, NUM_EDGE_TYPES].
+        """
+        assert self.batched_p_z_given_x is not None, "Posterior not computed yet."
+        return self.batched_p_z_given_x
 
     def value_function(self) -> Tensor:
         # RLlib expects shape [B]

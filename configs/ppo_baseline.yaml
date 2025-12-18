@@ -1,7 +1,7 @@
 setup:
   max_ep_len: 8064
   duration: 0 # HH:MM or minutes of training before stopping, used if value > 0
-  nb_timesteps: &nb_timesteps 100_000
+  nb_timesteps: 100_000
   checkpoint_freq: 2
   verbose: 0
   my_log_level: 1
@@ -37,17 +37,23 @@ training:
   sgd_minibatch_size: 32 #!choice [32, 64, 128] #
   train_batch_size: 128 #80 #!choice [128, 256, 512] #
   batch_mode: complete_episodes
+  relation_awareness: # this section is only used if model_type == "RAGNN", select model type via cli args
+    prior_prob_for_graph_edge: 0.9
+    beta: 1.0
+    temperature: 0.2
   model:
 #    custom_model : linfcn
     fcnet_hiddens: [256,256,256] # !choice [[256,256,256], [128,128,128]] #
     fcnet_activation: relu #!choice [relu, tanh] #
     post_fcnet_hiddens: [256,128]
     custom_model_config:
-      gnn: # this section is only used if model_type == "GNN" or "RAGNN" select model type via cli args
+      gnn: # this section is only used if model_type == "GNN" or "RAGNN", select model type via cli args
         hidden_dim: 64
         out_dim: 64
         num_layers: 2
-
+      encoder: # this section is only used if model_type == "RAGNN", select model type via cli args
+        max_degree: 7 # todo change if bigger envs are considered
+        max_path_distance: 9 # todo change if bigger envs are considered
   _enable_learner_api: False
   
 rl_module:
