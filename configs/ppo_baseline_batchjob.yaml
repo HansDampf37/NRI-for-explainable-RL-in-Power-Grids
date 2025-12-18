@@ -32,6 +32,7 @@ training:
   gamma: 0.99 #!quniform [0.975, 0.995, 0.001] #
   lr: 0.0001 #!qloguniform [0.0001, 0.005, 0.0001] #
 #  use_kl_loss: False # setting this similar to orig EVDS implementation
+  model_type: "GNN"  # Options: "MLP" (Box obs space + standard PPO) or "GNN" (BusConnectivityGraphObsSpace + RLlibGNNModel)
   kl_coeff: 0.2
   entropy_coeff: 0.0 # 0.0 # with opponent: 0.01 #!choice [0.1, 0.0] #
   clip_param:  0.3 # !choice [0.2, 0.3] # epsilon
@@ -73,8 +74,6 @@ environment:
     action_space: medha # options: assym, medha, tennet, d3qn2022, masked
     mask: 3 # only used if action space is "masked" (as in SMAAC from Yoon et al. 2021)
     lib_dir: !workdir
-    # NEW: Choose observation space implementation
-    observation_space: !BusConnectivityGraphObsSpace # !Box # or !BusConnectivityGraphObsSpace
     grid2op_kwargs:
       # general kwargs
       reward_class: !AlphaZeroRW #!ScaledL2RPNReward #L2RPNReward #!LossRwRescaled2 #!LossRwNew #!AlphaZeroRW #!LinesCapacityReward #!LossReward #!RewardRho #!ConstantReward

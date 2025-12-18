@@ -41,6 +41,16 @@ def setup_config(workdir_path: str, input_path: str, seed: int = None, opponent=
         print(f"Running experiment with seed {seed}.")
         custom_config["debugging"]["seed"] = seed
         custom_config["environment"]["env_config"]["seed"] = seed
+
+    # Set observation space based on model_type
+    model_type = custom_config.get("training", {}).get("model_type", "MLP")
+    print(f"Using model type: {model_type}")
+
+    if model_type == "GNN":
+        custom_config["environment"]["env_config"]["observation_space"] = "BusConnectivityGraphObsSpace"
+    else:  # MLP
+        custom_config["environment"]["env_config"]["observation_space"] = "BoxGymObsSpace"
+
     for key in custom_config.keys():
         if key != "setup":
             ppo_config.update(custom_config[key])
@@ -63,6 +73,32 @@ def setup_config(workdir_path: str, input_path: str, seed: int = None, opponent=
         ))
     change_workdir(workdir_path, ppo_config["env_config"]["env_name"])
     # ppo_config["env_config"]["lib_dir"] = os.path.join(workdir_path, ppo_config["env_config"]["lib_dir"])
+
+    # Configure RL policy based on model type
+    model_type = custom_config.get("training", {}).get("model_type", "MLP")
+
+    if model_type == "GNN":
+        # Use GNN model with custom config
+        rl_policy_config = {
+            "model": {
+                "custom_model": "gnn_model",
+                "custom_model_config": {
+                    "gnn": {
+                        "hidden_dim": 64,
+                        "out_dim": 64,
+                        "num_layers": 2,
+                    },
+                    "mlp": {
+                        "dim": 256,
+                        "num_layers": 3
+                    }
+                }
+            }
+        }
+    else:  # MLP
+        # Use standard PPO model with fcnet configuration from config
+        rl_policy_config = {}
+
     policies = {
         "high_level_policy": PolicySpec(  # chooses RL or do-nothing agent
             policy_class=SelectAgentPolicy,
@@ -83,22 +119,7 @@ def setup_config(workdir_path: str, input_path: str, seed: int = None, opponent=
             ),
         ),
         "reinforcement_learning_policy": PolicySpec(  # performs RL topology
-            config={
-                "model": {
-                    "custom_model": "gnn_model",
-                    "custom_model_config": {
-                        "gnn": {
-                            "hidden_dim": 64,
-                            "out_dim": 64,
-                            "num_layers": 2,
-                        },
-                        "mlp": {
-                            "dim": 256,
-                            "num_layers": 3
-                        }
-                    }
-                }
-            },
+            config=rl_policy_config,
         ),
         "do_nothing_policy": PolicySpec(  # performs do-nothing action
             policy_class=DoNothingPolicy,

@@ -23,6 +23,8 @@ debugging:
 
 training:
   checkpoint_trainable_policies_only: True
+  # Model selection: "MLP" or "GNN"
+  model_type: "GNN"  # Options: "MLP" (Box obs space + standard PPO) or "GNN" (BusConnectivityGraphObsSpace + RLlibGNNModel)
   # tunable parameters
   gamma: 0.99 #!quniform [0.95, 0.99, 0.01] #
   lr: 0.0001 #!qloguniform [0.0005, 0.005, 0.0001] #
@@ -67,8 +69,6 @@ environment:
     action_space: medha
     mask: 5
     lib_dir: !workdir
-    # NEW: Choose observation space implementation
-    observation_space: !BusConnectivityGraphObsSpace #!Box # or !BusConnectivityGraphObsSpace
     grid2op_kwargs:
       # general kwargs
       reward_class: !RewardRho
