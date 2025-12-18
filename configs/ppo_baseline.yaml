@@ -24,7 +24,6 @@ debugging:
 training:
   checkpoint_trainable_policies_only: True
   # Model selection: "MLP" or "GNN"
-  model_type: "GNN"  # Options: "MLP" (Box obs space + standard PPO) or "GNN" (BusConnectivityGraphObsSpace + RLlibGNNModel)
   # tunable parameters
   gamma: 0.99 #!quniform [0.95, 0.99, 0.01] #
   lr: 0.0001 #!qloguniform [0.0005, 0.005, 0.0001] #
@@ -43,6 +42,12 @@ training:
     fcnet_hiddens: [256,256,256] # !choice [[256,256,256], [128,128,128]] #
     fcnet_activation: relu #!choice [relu, tanh] #
     post_fcnet_hiddens: [256,128]
+    custom_model_config:
+      gnn: # this section is only used if model_type == "GNN" or "RAGNN" select model type via cli args
+        hidden_dim: 64
+        out_dim: 64
+        num_layers: 2
+
   _enable_learner_api: False
   
 rl_module:

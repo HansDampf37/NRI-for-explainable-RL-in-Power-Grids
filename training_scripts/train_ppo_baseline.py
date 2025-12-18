@@ -26,7 +26,7 @@ REPORT_END = False
 ModelCatalog.register_custom_model("gnn_model", RLlibGNNModel)
 
 
-def setup_config(workdir_path: str, input_path: str, seed: int = None, opponent=False) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+def setup_config(workdir_path: str, input_path: str, seed: int = None, opponent=False, model_type: str="MLP") -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """
     Loads the JSON as configs and sets it up for training.
     """
@@ -43,9 +43,7 @@ def setup_config(workdir_path: str, input_path: str, seed: int = None, opponent=
         custom_config["environment"]["env_config"]["seed"] = seed
 
     # Set observation space based on model_type
-    model_type = custom_config.get("training", {}).get("model_type", "MLP")
     print(f"Using model type: {model_type}")
-
     if model_type == "GNN":
         custom_config["environment"]["env_config"]["observation_space"] = "BusConnectivityGraphObsSpace"
     else:  # MLP
@@ -74,38 +72,12 @@ def setup_config(workdir_path: str, input_path: str, seed: int = None, opponent=
     change_workdir(workdir_path, ppo_config["env_config"]["env_name"])
     # ppo_config["env_config"]["lib_dir"] = os.path.join(workdir_path, ppo_config["env_config"]["lib_dir"])
 
-    # Configure RL policy based on model type
-    model_type = custom_config.get("training", {}).get("model_type", "MLP")
-
-    if model_type == "GNN":
-        # Use GNN model with custom config
-        rl_policy_config = {
-            "model": {
-                "custom_model": "gnn_model",
-                "custom_model_config": {
-                    "gnn": {
-                        "hidden_dim": 64,
-                        "out_dim": 64,
-                        "num_layers": 2,
-                    },
-                    "mlp": {
-                        "dim": 256,
-                        "num_layers": 3
-                    }
-                }
-            }
-        }
-    else:  # MLP
-        # Use standard PPO model with fcnet configuration from config
-        rl_policy_config = {}
-
     policies = {
         "high_level_policy": PolicySpec(  # chooses RL or do-nothing agent
             policy_class=SelectAgentPolicy,
             config=(
                 AlgorithmConfig()
                 .training(
-                    # _enable_learner_api=False,
                     model={
                         "custom_model_config": {
                             "rho_threshold": custom_config["environment"]["env_config"][
@@ -114,20 +86,13 @@ def setup_config(workdir_path: str, input_path: str, seed: int = None, opponent=
                         }
                     },
                 )
-                # .rl_module(_enable_rl_module_api=False)
                 .rollouts(preprocessor_pref=None)
             ),
         ),
-        "reinforcement_learning_policy": PolicySpec(  # performs RL topology
-            config=rl_policy_config,
-        ),
+        "reinforcement_learning_policy": PolicySpec(config={}), # configured in custom config already
         "do_nothing_policy": PolicySpec(  # performs do-nothing action
             policy_class=DoNothingPolicy,
-            config=(
-                AlgorithmConfig()
-                # .training(_enable_learner_api=False)
-                # .rl_module(_enable_rl_module_api=False)
-            ),
+            config=(AlgorithmConfig()),
         ),
     }
 
@@ -191,12 +156,19 @@ if __name__ == "__main__":
         action='store_true',
         help="Train on environment with opponent.",
     )
+    parser.add_argument(
+        "-m",
+        "--model-type",
+        type=str,
+        default="MLP",
+        help="Model type to use for RL policy. (MLP, GNN, or RAGNN)",
+    )
 
     # Parse the command-line arguments
     args = parser.parse_args()
 
     if args.file_path:
-        _ppo_config, _custom_config = setup_config(args.workdir, args.file_path, seed=args.seed, opponent=args.opponent)
+        _ppo_config, _custom_config = setup_config(args.workdir, args.file_path, seed=args.seed, opponent=args.opponent, model_type=args.model_type)
         _result_grid = run_training(_ppo_config, _custom_config["setup"], args.job_id)
     else:
         parser.print_help()

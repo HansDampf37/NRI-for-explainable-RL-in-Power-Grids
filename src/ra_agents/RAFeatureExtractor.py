@@ -4,9 +4,11 @@ with sb3 compatible APIs.
 """
 from typing import Optional, Tuple, Dict, List
 
+import numpy as np
 import torch
 import torch.nn.functional as f
-from gymnasium.spaces import Discrete
+from gymnasium.spaces import Discrete, Box
+from ray.rllib.models.torch.fcnet import FullyConnectedNetwork
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.utils.typing import TensorType, ModelConfigDict
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
@@ -260,25 +262,20 @@ class RLlibGNNModel(TorchModelV2, nn.Module):
             residual=model_config['custom_model_config']['gnn'].get('residual', True),
         )
         # Build downstream MLP head(s)
-        mlp = self._build_mlp(model_config)
-        self.mlp_policy = mlp
-        self.mlp_value = self.mlp_policy if model_config["vf_share_layers"] else self._build_mlp(model_config)
-
-        # Policy logits and value head
-        self.policy_logits = nn.Linear(model_config['custom_model_config']['mlp']['dim'], self.num_outputs)
-        self.value_head = nn.Linear(model_config['custom_model_config']['mlp']['dim'], 1)
-        # cache for value function output
-        self._value_out: Optional[Tensor] = None
-
-    def _build_mlp(self, model_config):
-        mlp_dim: int = model_config['custom_model_config']['mlp']['dim']
-        mlp_layers: int = model_config['custom_model_config']['mlp']['num_layers']
-        mlp_modules: List[nn.Module] = [nn.Linear(model_config['custom_model_config']['gnn']['out_dim'], mlp_dim)]
-        for _ in range(mlp_layers - 1):
-            mlp_modules.append(nn.Linear(mlp_dim, mlp_dim))
-            mlp_modules.append(nn.ReLU())
-        mlp = nn.Sequential(*mlp_modules)
-        return mlp
+        # Create a Box space for the GNN output to pass to FCN
+        gnn_output_space = Box(
+            low=-float('inf'),
+            high=float('inf'),
+            shape=(model_config['custom_model_config']['gnn']['out_dim'],),
+            dtype=np.float32
+        )
+        self.mlp = FullyConnectedNetwork(
+            obs_space=gnn_output_space,
+            action_space=action_space,
+            num_outputs=num_outputs,
+            model_config=model_config,
+            name=name + "_fully_connected_network",
+        )
 
     def forward(self, input_dict: Dict[str, TensorType], state: List[TensorType], seq_lens: TensorType) -> Tuple[TensorType, List[TensorType]]:
         node_features_batch = input_dict["obs"][NODES]  # [B, N, node_in_dim]
@@ -301,15 +298,14 @@ class RLlibGNNModel(TorchModelV2, nn.Module):
         offsets = (torch.arange(B, device=device) * N).repeat_interleave(valid_edges.sum(1))
         edge_index_batch += offsets.unsqueeze(0)
 
-        # GNN to produce graph-level representation [B, mlp_dim]
+        # GNN to produce graph-level representation [B, gnn_out_dim]
         gnn_out: Tensor = self.gnn(x=x, batch=batch, edge_index=edge_index_batch.to(dtype=torch.long))
-        mlp_out: Tensor = self.mlp_policy(gnn_out)
-        logits: Tensor = self.policy_logits(mlp_out)
-        # store value for value_function()
-        self._value_out = self.value_head(mlp_out).squeeze(-1)
+
+        # Pass GNN output through FCN (which expects input_dict format)
+        mlp_input_dict = {"obs": gnn_out}
+        logits, _ = self.mlp(mlp_input_dict, state, seq_lens)
         return logits, []
 
     def value_function(self) -> Tensor:
         # RLlib expects shape [B]
-        assert self._value_out is not None, "value_function called before forward"
-        return self._value_out
+        return self.mlp.value_function()
