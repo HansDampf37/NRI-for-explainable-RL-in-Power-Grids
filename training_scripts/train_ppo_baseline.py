@@ -169,6 +169,10 @@ if __name__ == "__main__":
 
     if args.file_path:
         _ppo_config, _custom_config = setup_config(args.workdir, args.file_path, seed=args.seed, opponent=args.opponent, model_type=args.model_type)
+
+        # Add workdir to setup config for storage path
+        _custom_config["setup"]["workdir"] = args.workdir
+
         _result_grid = run_training(_ppo_config, _custom_config["setup"], args.job_id)
     else:
         parser.print_help()

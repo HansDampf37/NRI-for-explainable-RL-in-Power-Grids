@@ -2,31 +2,31 @@
 Utilities in the grid2op experiments.
 """
 
+import json
 import logging
 import os
-from typing import Any, Dict, List, OrderedDict, Union
-from tabulate import tabulate
-import json
-import numpy as np
 from datetime import datetime
 from time import time
+from typing import Any, Dict, List, OrderedDict, Union
 
-from grid2op.Environment import BaseEnv
+import numpy as np
 import ray
+from grid2op.Environment import BaseEnv
 from ray import air, tune
 from ray.air.integrations.wandb import WandbLoggerCallback
+from ray.tune.experiment import Trial
 from ray.tune.result_grid import ResultGrid
+from ray.tune.stopper.stopper import Stopper
+from tabulate import tabulate
 
 from src.rl4pnc.algorithms.custom_ppo import CustomPPO
 from src.rl4pnc.algorithms.optuna_search import MyOptunaSearch
 from src.rl4pnc.experiments.callback import Style, TuneCallback
-from ray.tune.stopper.stopper import Stopper
-from ray.tune.experiment import Trial
 
 REPORT_END = True
 
 
-def calculate_action_space_asymmetry(env: BaseEnv, add_dn:bool = False) -> tuple[int, int, dict[int, int]]:
+def calculate_action_space_asymmetry(env: BaseEnv, add_dn: bool = False) -> tuple[int, int, dict[int, int]]:
     """
     Function prints and returns the number of legal actions and topologies without symmetries.
     """
@@ -45,7 +45,7 @@ def calculate_action_space_asymmetry(env: BaseEnv, add_dn:bool = False) -> tuple
             if row[1] != -1 or row[2] != -1
         )
 
-        alpha = 2 ** (nr_elements - 1) - (2**nr_non_lines - 1)
+        alpha = 2 ** (nr_elements - 1) - (2 ** nr_non_lines - 1)
         action_space += alpha if alpha > 1 else 0
         # if alpha > 1:  # without do nothings for single substations
         if (add_dn and alpha > 0) or (alpha > 1):
@@ -77,7 +77,7 @@ def calculate_action_space_medha(env: BaseEnv, add_dn: bool = False) -> tuple[in
         )
         alpha = 2 ** (nr_elements - 1)
         beta = nr_elements - (1 if nr_elements == 2 else 0)
-        gamma = 2**nr_non_lines - 1 - nr_non_lines
+        gamma = 2 ** nr_non_lines - 1 - nr_non_lines
         combined = alpha - beta - gamma
         action_space += combined if combined > 1 else 0
         # if combined > 1:  # without do nothings for single substations
@@ -111,25 +111,25 @@ def calculate_action_space_tennet(env: BaseEnv, add_dn=False) -> tuple[int, int,
         nr_lines = nr_elements - nr_non_lines
 
         combined = (
-            (
-                2**nr_non_lines - 2
-            )  # configuratations of non-lines except when all lines are same colour
-            * (
-                2**nr_lines  # configurations of lines
-                - 2 * nr_lines  # minus lines that there is exactly one line at a busbar
-                - 2  # minus case where all lines have the same colour
-                + (2 if nr_lines == 1 else 0)  # due to doubles with 1 line
-                + (2 if nr_lines == 2 else 0)  # due to doubles with 2 lines
-            )
-            + 2  # configurations where non-lines all have the same colour
-            * (
-                2**nr_lines  # configurations of lines
-                - 2 * nr_lines  # minus lines that there is exactly one line at a busbar
-                - 1  # if all non-lines have the same colour, then if all lines are also this colour, it's allowed
-                + (2 if nr_lines == 2 else 0)  # due to doubles with 2 lines
-                + (1 if nr_lines == 1 else 0)  # due to doubles with 1 line
-            )
-        ) / 2  # remove symmetries
+                           (
+                                   2 ** nr_non_lines - 2
+                           )  # configuratations of non-lines except when all lines are same colour
+                           * (
+                                   2 ** nr_lines  # configurations of lines
+                                   - 2 * nr_lines  # minus lines that there is exactly one line at a busbar
+                                   - 2  # minus case where all lines have the same colour
+                                   + (2 if nr_lines == 1 else 0)  # due to doubles with 1 line
+                                   + (2 if nr_lines == 2 else 0)  # due to doubles with 2 lines
+                           )
+                           + 2  # configurations where non-lines all have the same colour
+                           * (
+                                   2 ** nr_lines  # configurations of lines
+                                   - 2 * nr_lines  # minus lines that there is exactly one line at a busbar
+                                   - 1  # if all non-lines have the same colour, then if all lines are also this colour, it's allowed
+                                   + (2 if nr_lines == 2 else 0)  # due to doubles with 2 lines
+                                   + (1 if nr_lines == 1 else 0)  # due to doubles with 1 line
+                           )
+                   ) / 2  # remove symmetries
 
         action_space += int(combined) if combined > 1 else 0
         if (add_dn and combined > 0) or (combined > 1):  # combined > 1: without do nothings for single substations
@@ -143,9 +143,9 @@ def calculate_action_space_tennet(env: BaseEnv, add_dn=False) -> tuple[int, int,
 
 
 def get_capa_substation_id(
-    line_info: dict[int, list[int]],
-    obs_batch: Union[List[Dict[str, Any]], Dict[str, Any]],
-    controllable_substations: dict[int, int],
+        line_info: dict[int, list[int]],
+        obs_batch: Union[List[Dict[str, Any]], Dict[str, Any]],
+        controllable_substations: dict[int, int],
 ) -> list[int]:
     """
     Returns the substation id of the substation to act on according to CAPA.
@@ -206,7 +206,7 @@ def find_list_of_agents(env: BaseEnv, action_space: str) -> dict[int, int]:
 
 
 def find_substation_per_lines(
-    env: BaseEnv, list_of_agents: list[int]
+        env: BaseEnv, list_of_agents: list[int]
 ) -> dict[int, list[int]]:
     """
     Returns a dictionary connecting line ids to substations.
@@ -359,19 +359,23 @@ def run_training(config: dict[str, Any], setup: dict[str, Any], job_id: str) -> 
         #     hard_stop=False,
         # )
     dur = get_duration(setup)
+
+    storage_path = os.path.abspath(os.path.join(setup.get("workdir", "."), "results", "experiments"))
+    os.makedirs(storage_path, exist_ok=True)
+    print(f"Results will be saved to: {storage_path}/{setup['experiment_name']}")
+
     # Create tuner
     tuner = tune.Tuner(
         trainable=CustomPPO,
         param_space=config,
         run_config=air.RunConfig(
-            name=setup["folder_name"],
-            # storage_path=os.path.join(workdir, os.path.join(setup["storage_path"], configs["env_config"]["env_name"])),
-            stop={"time_total_s": dur} if dur else {"timesteps_total": setup["nb_timesteps"]}, # MaxCustomMetricStopper("total_agent_interact", setup["nb_timesteps"]), #
+            name=setup["experiment_name"],
+            storage_path=storage_path,
+            stop={"time_total_s": dur} if dur else {"timesteps_total": setup["nb_timesteps"]},
+            # MaxCustomMetricStopper("total_agent_interact", setup["nb_timesteps"]), #
             # "custom_metrics/grid2op_end_mean": setup["max_ep_len"]},
             callbacks=[
-                WandbLoggerCallback(
-                    project=setup["experiment_name"],
-                                    ),
+                WandbLoggerCallback(project=setup["experiment_name"]),
                 TuneCallback(
                     setup["my_log_level"],
                     "evaluation/custom_metrics/grid2op_end_mean",
@@ -396,7 +400,7 @@ def run_training(config: dict[str, Any], setup: dict[str, Any], job_id: str) -> 
         ) if setup["optimize"] else
         tune.TuneConfig(
             trial_name_creator=lambda t: trial_str_creator(t, job_id),
-            trial_dirname_creator=lambda t: trial_dir_name(t),)
+            trial_dirname_creator=lambda t: trial_dir_name(t), )
         ,
     )
 
@@ -433,7 +437,7 @@ def run_training(config: dict[str, Any], setup: dict[str, Any], job_id: str) -> 
                 print(f"--- Environment Configuration  ---- \n"
                       f"{tabulate([result.config['env_config']], headers='keys', tablefmt='rounded_grid')}")
                 # print other params:
-                params_ppo = ['gamma', 'lr', 'exploration_config',  'vf_loss_coeff', 'entropy_coeff', 'clip_param',
+                params_ppo = ['gamma', 'lr', 'exploration_config', 'vf_loss_coeff', 'entropy_coeff', 'clip_param',
                               'lambda', 'vf_clip_param', 'num_sgd_iter', 'sgd_minibatch_size', 'train_batch_size']
                 values = [result.config[par] for par in params_ppo]
                 print(f"--- PPO Configuration  ---- \n"
