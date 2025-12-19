@@ -105,7 +105,7 @@ environment:
     curriculum_thresholds: [20_000,46_667] # used if curriculum_training is True
 
 evaluation:
-  evaluation_interval: 10
+  evaluation_interval: 5
   evaluation_duration: 50 # as many as there are validation episodes -> len(os.listdir("/Users/ericavandersar/data_grid2op/rte_case14_realistic_val/chronics"))
   evaluation_duration_unit: episodes
   always_attach_evaluation_results: True
@@ -132,4 +132,4 @@ resources:
   num_learner_workers: 1
 
 rollouts:
-  num_rollout_workers: 10
+  num_rollout_workers: 20
