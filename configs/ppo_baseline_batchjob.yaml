@@ -6,8 +6,8 @@ setup:
   verbose: 0
   my_log_level: 1
   storage_path: ./runs
-  folder_name: "Case14_SurveyPaperRainbow" # "Case14_Opponent"
-  experiment_name: "Case14_SurveyPaperRainbow"
+  folder_name: "Relations_Aware_PPO" # "Case14_Opponent"
+  experiment_name: "Relations_Aware_PPO"
   optimize: False
   num_samples: 32
   score_metric: evaluation/custom_metrics/grid2op_end_mean
