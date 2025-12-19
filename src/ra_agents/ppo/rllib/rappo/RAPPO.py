@@ -1,4 +1,4 @@
-from typing import Type, Union, List
+from typing import Type, Union, List, Dict
 
 import torch
 from ray.rllib import SampleBatch
@@ -64,5 +64,29 @@ class RAPPOTorchPolicy(PPOTorchPolicy):
 
         model.tower_stats["kl_loss"] = kl_loss
         model.tower_stats["total_loss"] = total_loss
+        model.tower_stats["mean_prior"] = torch.mean(prior_tensor, dim=0) # mean over batch dimension -> [E, K]
+        model.tower_stats["mean_posterior"] = torch.mean(posteriors, dim=0) # mean over batch dimension -> [E, K]
 
         return total_loss
+
+    @override(PPOTorchPolicy)
+    def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
+        """Returns a dictionary of stats for TensorBoard."""
+        # Get existing stats from PPOTorchPolicy (like policy_loss, vf_loss, etc.)
+        stats = super().stats_fn(train_batch)
+
+        # Access the tower_stats we populated in the loss function
+        # Note: RLlib averages tower_stats across GPUs automatically
+        stats.update({
+            "relation_awareness/kl_loss": torch.mean(
+                torch.stack([t.tower_stats["kl_loss"].detach() for t in self.model_gpu_towers])
+            ).item(),
+            "relation_awareness/prior_existence_probs": torch.mean(
+                torch.stack([t.tower_stats["mean_prior"][:, 0].detach() for t in self.model_gpu_towers]), dim=0
+            ).cpu().numpy().flatten().tolist(),
+            "relation_awareness/posterior_existence_probs": torch.mean(
+                torch.stack([t.tower_stats["mean_posterior"][:, 0].detach() for t in self.model_gpu_towers]), dim=0
+            ).cpu().numpy().flatten().tolist(),
+        })
+
+        return stats
