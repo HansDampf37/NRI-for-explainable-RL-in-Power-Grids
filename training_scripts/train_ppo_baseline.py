@@ -119,6 +119,10 @@ def setup_config(workdir_path: str, input_path: str, seed: int = None, opponent=
     ppo_config.update({"trial_info": "trial_id"})
     ppo_config.update({"my_log_level": custom_config["setup"]["my_log_level"]})
 
+    # Pass encoder_pretrain config for RAGNN models
+    if model_type == "RAGNN" and "encoder_pretrain" in custom_config["training"]:
+        ppo_config["encoder_pretrain"] = custom_config["training"]["encoder_pretrain"]
+
     return ppo_config, custom_config
 
 

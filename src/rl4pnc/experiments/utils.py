@@ -324,7 +324,7 @@ def run_training(config: dict[str, Any], setup: dict[str, Any], job_id: str) -> 
     os.environ["WANDB_SILENT"] = "true"
     tmp_dir = ray._private.utils.get_ray_temp_dir()
     print(f"Ray's temporary directory: {tmp_dir}")
-    ray.init()
+    ray.init(local_mode=True)
     print("Ray initialization succeeded.")
 
     # Get the hostname and port

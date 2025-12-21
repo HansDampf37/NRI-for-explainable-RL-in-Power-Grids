@@ -41,6 +41,12 @@ training:
     prior_prob_for_graph_edge: 0.9
     beta: 1.0
     temperature: 0.2
+  encoder_pretrain: # this section is only used if model_type == "RAGNN" and callbacks include EncoderPretrainCallback
+    enabled: true  # Set to true to enable encoder pretraining
+    ds_size: 1000
+    batch_size: 32
+    num_epochs: 40
+    learning_rate: 0.005
   model:
 #    custom_model : linfcn
     fcnet_hiddens: [256,256,256] # !choice [[256,256,256], [128,128,128]] #
@@ -64,7 +70,9 @@ explore:
     type: StochasticSampling
 
 callbacks:
-  callbacks: !CustomMetricsCallback
+  callbacks: !CombinedCallbacks
+    - !CustomMetricsCallback
+    - !EncoderPretrainCallback
 
 framework:
   framework: torch
@@ -105,7 +113,7 @@ evaluation:
   evaluation_duration_unit: episodes
   always_attach_evaluation_results: True
 #  evaluation_parallel_to_training: True #Currently not working
-  evaluation_num_workers: 4
+  evaluation_num_workers: 0
   evaluation_config:
     explore: False,
     env_config:
@@ -121,4 +129,4 @@ resources:
   num_learner_workers: 1
 
 rollouts:
-  num_rollout_workers: 1
+  num_rollout_workers: 0

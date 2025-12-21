@@ -2,12 +2,19 @@
 Implements callbacks.
 """
 
-from typing import Any, Dict, Optional, List, Union, Tuple
-from functools import partial
-from tabulate import tabulate
-import numpy as np
 import time
+from typing import Any, Dict, Optional, List
 
+import numpy as np
+from ray._private.dict import unflattened_lookup
+from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.env import BaseEnv
+from ray.rllib.evaluation.episode_v2 import EpisodeV2
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
+from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.typing import PolicyID
+from ray.tune.experiment import Trial
 # from grid2op.Environment import BaseEnv
 from ray.tune.experimental.output import (
     TuneReporterBase,
@@ -15,29 +22,24 @@ from ray.tune.experimental.output import (
     _get_time_str,
     _current_best_trial,
 )
-from ray._private.dict import unflattened_lookup
-from ray.tune.experiment import Trial
-from ray.rllib.algorithms.algorithm import Algorithm
+from tabulate import tabulate
 
-from ray.rllib.env import BaseEnv
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.evaluation.episode_v2 import EpisodeV2
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import SampleBatch
+from src.common.env import G2OpGymEnv
+from src.nri.utils import prior_from_env
+from src.ra_agents.pretrain_encoder import train, create_dataset
 
 
 class Style:
-   PURPLE = '\033[95m'
-   CYAN = '\033[96m'
-   DARKCYAN = '\033[36m'
-   BLUE = '\033[94m'
-   GREEN = '\033[92m'
-   YELLOW = '\033[93m'
-   RED = '\033[91m'
-   BOLD = '\033[1m'
-   UNDERLINE = '\033[4m'
-   END = '\033[0m'
+    PURPLE = '\033[95m'
+    CYAN = '\033[96m'
+    DARKCYAN = '\033[36m'
+    BLUE = '\033[94m'
+    GREEN = '\033[92m'
+    YELLOW = '\033[93m'
+    RED = '\033[91m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+    END = '\033[0m'
 
 
 class CustomMetricsCallback(DefaultCallbacks):
@@ -46,27 +48,26 @@ class CustomMetricsCallback(DefaultCallbacks):
     #     self.log_level = log_level
 
     def on_algorithm_init(
-        self,
-        *,
-        algorithm: Algorithm,
-        **kwargs,
+            self,
+            *,
+            algorithm: Algorithm,
+            **kwargs,
     ) -> None:
-        print("Algorithm initialized. Setup Callbacks...")
+        print("Algorithm initialized. Setup Custom Metrics Callbacks")
         self.log_level = algorithm.my_log_level
         self.curr_level = 0
         if algorithm.curriculum_training:
             print(f"Start with curriculum level {self.curr_level}")
 
-
     def on_episode_end(
-        self,
-        *,
-        episode: EpisodeV2,
-        worker: Optional[RolloutWorker] = None,
-        base_env: Optional[BaseEnv] = None,
-        policies: Optional[Policy] = None,
-        env_index: Optional[int] = None,
-        **kwargs: Dict[str, Any],
+            self,
+            *,
+            episode: EpisodeV2,
+            worker: Optional[RolloutWorker] = None,
+            base_env: Optional[BaseEnv] = None,
+            policies: Optional[Policy] = None,
+            env_index: Optional[int] = None,
+            **kwargs: Dict[str, Any],
     ) -> None:
         """
         Collect extra metrics such as:
@@ -131,7 +132,7 @@ class CustomMetricsCallback(DefaultCallbacks):
         #               results["custom_metrics"]["grid2op_end_min"], rw_mean]]
         #     print(tabulate(table, headers, tablefmt="rounded_grid", floatfmt=".3f"))
         if self.log_level > 1:
-            head_len = self.log_level # only show the first #head_len chronics
+            head_len = self.log_level  # only show the first #head_len chronics
             print(f" Showing results for the first {head_len} evaluated chronics:")
             overview = {
                 "chronic_id": data["episode_media"]["chronic_id"][:head_len],
@@ -151,11 +152,11 @@ class CustomMetricsCallback(DefaultCallbacks):
         del data["custom_metrics"]["reset_count"]
 
     def on_train_result(
-        self,
-        *,
-        algorithm: "Algorithm",
-        result: dict,
-        **kwargs,
+            self,
+            *,
+            algorithm: "Algorithm",
+            result: dict,
+            **kwargs,
     ) -> None:
         # print(f'ALL METRICS {result}')
         mean_grid2op_end = int(np.mean(result["custom_metrics"]["grid2op_end"]))
@@ -164,7 +165,7 @@ class CustomMetricsCallback(DefaultCallbacks):
         result["custom_metrics"]["grid2op_end_mean"] = mean_grid2op_end
         result["custom_metrics"]["grid2op_end_std"] = std_grid2op_end
         result["custom_metrics"]["corrected_ep_len_mean"] = mean_episode_duration
-        
+
         # Extra metrics:
         result["custom_metrics"]["mean_interact_count"] = np.mean(result["custom_metrics"]["interact_count"])
         result["custom_metrics"]["mean_active_dn_count"] = np.mean(result["custom_metrics"]["active_dn_count"])
@@ -202,6 +203,74 @@ class CustomMetricsCallback(DefaultCallbacks):
                     )
                 )
                 print(f"Curriculum level increased to {self.curr_level}")
+
+
+class EncoderPretrainCallback(DefaultCallbacks):
+    """Callback that pretrains the encoder before RL training starts."""
+
+    def on_create_policy(self, *, policy_id: PolicyID, policy: Policy) -> None:
+        super().on_create_policy(policy_id=policy_id, policy=policy)
+        if policy_id != "reinforcement_learning_policy":
+            return
+
+        # Check if we have an encoder
+        if not hasattr(policy, 'model') or not hasattr(policy.model, 'ragnn') or not hasattr(policy.model.ragnn, "encoder"):
+            print("Not using RAGNN model, skipping encoder pretraining")
+            return
+
+        # Get config
+        pretrain_config = policy.config.get("encoder_pretrain", {})
+        ra_config = policy.config.get("relation_awareness", {})
+        env_config = policy.config["env_config"]
+
+        if not pretrain_config.get("enabled", False):
+            print("Encoder pretraining disabled in config")
+            return
+
+        print("=" * 60)
+        print("Starting encoder pretraining...")
+        print("=" * 60)
+
+        # Create environment for data collection
+        env = G2OpGymEnv(
+            env_name = env_config["env_name"],
+            obs_space_creation=lambda _: policy.observation_space,
+            rule_config = {},
+        )
+
+        # Create prior
+        prior = prior_from_env(
+            prob_graph_edge_exists=ra_config.get("prior_for_graph_edges_existing", 0.9),
+            env=env,
+            temperature=ra_config.get("temperature", 0.2),
+            verbose=True
+        )
+
+        # Create datasets
+        train_ds = create_dataset(
+            env=env,
+            prior=prior,
+            ds_size=pretrain_config.get("ds_size", 1000),
+            verbose=True
+        )
+
+        # Pretrain encoder
+        encoder = policy.model.ragnn.encoder
+        device = next(encoder.parameters()).device
+
+        print(f"Starting encoder pretraining on device: {device}")
+        train(
+            encoder=encoder,
+            ds=train_ds,
+            batch_size=pretrain_config.get("batch_size", 32),
+            num_epochs=pretrain_config.get("num_epochs", 40),
+            lr=pretrain_config.get("learning_rate", 0.005),
+            verbose=True
+        )
+
+        print("=" * 60)
+        print("Encoder pretraining completed!")
+        print("=" * 60)
 
 
 class TuneCallback(TuneReporterBase):
@@ -250,12 +319,12 @@ class TuneCallback(TuneReporterBase):
             print(line)
 
     def on_trial_result(
-        self,
-        iteration: int,
-        trials: List[Trial],
-        trial: Trial,
-        result: Dict,
-        **info,
+            self,
+            iteration: int,
+            trials: List[Trial],
+            trial: Trial,
+            result: Dict,
+            **info,
     ):
         if self.log_level:
             # start printing after first evaluation

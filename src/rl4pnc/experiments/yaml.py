@@ -1,31 +1,26 @@
 """
 Implements yaml configs loading.
 """
-import os
-from typing import Any, Callable, Union, Type
+from typing import Any, Callable, Union
 
 import yaml
 from grid2op.Action import BaseAction, PowerlineSetAction
 from grid2op.Opponent import (
     BaseActionBudget,
     BaseOpponent,
-    OpponentSpace,
     RandomLineOpponent,
 )
+from grid2op.Reward import L2RPNReward, LinesCapacityReward
 from gymnasium.spaces import Discrete
 from ray import tune
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.evaluation.episode_v2 import EpisodeV2
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.policy.policy import PolicySpec
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
-
 from yaml.loader import FullLoader, Loader, UnsafeLoader
 from yaml.nodes import MappingNode, ScalarNode, SequenceNode
 
-from src.rl4pnc.experiments.callback import CustomMetricsCallback
+from src.rl4pnc.experiments.callback import CustomMetricsCallback, EncoderPretrainCallback
 from src.rl4pnc.experiments.rewards import (
     LossReward,
     ScaledL2RPNReward,
@@ -33,8 +28,8 @@ from src.rl4pnc.experiments.rewards import (
     RewardRho,
     ConstantReward,
 )
-from grid2op.Reward import L2RPNReward,LinesCapacityReward
 from src.rl4pnc.multi_agent.policy import policy_mapping_fn
+
 
 # Observation space tag constructors
 
@@ -130,6 +125,35 @@ def custom_metrics_callback_constructor(
 ) -> DefaultCallbacks:
     """Custom constructor for CustomMetricsCallback"""
     return CustomMetricsCallback
+
+
+def encoder_pretrain_callback_constructor(
+    loader: Union[Loader, FullLoader, UnsafeLoader], node: MappingNode
+) -> DefaultCallbacks:
+    """Custom constructor for EncoderPretrainCallback"""
+    return EncoderPretrainCallback
+
+
+def combined_callbacks_constructor(
+    loader: Union[Loader, FullLoader, UnsafeLoader], node: SequenceNode
+) -> DefaultCallbacks:
+    """Custom constructor for combining multiple callbacks"""
+    callback_classes = []
+
+    # Construct each callback object from the sequence
+    for item in node.value:
+        callback_class = loader.construct_object(item)
+        if callback_class and callback_class != DefaultCallbacks:
+            callback_classes.append(callback_class)
+
+    # Create a combined callback class that inherits from all specified callbacks
+    if len(callback_classes) == 0:
+        return DefaultCallbacks
+    elif len(callback_classes) == 1:
+        return callback_classes[0]
+    else:
+        # Create a new class that inherits from all callback classes
+        return type('CombinedCallbacks', tuple(callback_classes[::-1]), {})
 
 
 def float_to_integer(float_value: float) -> Union[int, float]:
@@ -248,6 +272,8 @@ def add_constructors() -> None:
     yaml.FullLoader.add_constructor("!ConstantReward", constant_reward_constructor)
     yaml.FullLoader.add_constructor("!policy_mapping_fn", policy_mapping_fn_constructor)
     yaml.FullLoader.add_constructor("!CustomMetricsCallback", custom_metrics_callback_constructor)
+    yaml.FullLoader.add_constructor("!EncoderPretrainCallback", encoder_pretrain_callback_constructor)
+    yaml.FullLoader.add_constructor("!CombinedCallbacks", combined_callbacks_constructor)
     yaml.FullLoader.add_constructor("!Discrete", discrete_constructor)
     yaml.FullLoader.add_constructor("!AlgorithmConfig", algorithm_config_constructor)
     yaml.FullLoader.add_constructor("!quniform", tune_search_quniform_constructor)
