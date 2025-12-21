@@ -7,7 +7,7 @@ setup:
   my_log_level: 1
   storage_path: ./runs
   folder_name: "Relations_Aware_PPO" # "Case14_Opponent"
-  experiment_name: "Relations_Aware_PPO"
+  experiment_name: "compare_ppo_methods_rl_lib"
   optimize: False
   num_samples: 32
   score_metric: evaluation/custom_metrics/grid2op_end_mean
@@ -119,7 +119,7 @@ evaluation:
   always_attach_evaluation_results: True
   evaluation_sample_timeout_s: 720
 #  evaluation_parallel_to_training: True #Currently not working
-  evaluation_num_workers: 15
+  evaluation_num_workers: 30
   evaluation_config:
     explore: True,
     env_config:
@@ -136,8 +136,8 @@ scaling_config:
   num_workers: 1
 
 resources:
-  num_gpus: 1
+  #num_gpus: 1
   num_learner_workers: 1
 
 rollouts:
-  num_rollout_workers: 20
+  num_rollout_workers: 80
