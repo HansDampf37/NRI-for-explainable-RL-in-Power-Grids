@@ -13,7 +13,6 @@ from ray.rllib.env import BaseEnv
 from ray.rllib.evaluation.episode_v2 import EpisodeV2
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.policy.policy import Policy
-from ray.rllib.utils.typing import PolicyID
 from ray.tune.experiment import Trial
 # from grid2op.Environment import BaseEnv
 from ray.tune.experimental.output import (
@@ -208,9 +207,18 @@ class CustomMetricsCallback(DefaultCallbacks):
 class EncoderPretrainCallback(DefaultCallbacks):
     """Callback that pretrains the encoder before RL training starts."""
 
-    def on_create_policy(self, *, policy_id: PolicyID, policy: Policy) -> None:
-        super().on_create_policy(policy_id=policy_id, policy=policy)
-        if policy_id != "reinforcement_learning_policy":
+    def on_algorithm_init(self, *, algorithm: Algorithm, **kwargs) -> None:
+        """Pretrain encoder only once in the driver, then sync weights to all workers."""
+        super().on_algorithm_init(algorithm=algorithm, **kwargs)
+
+        print("=" * 60)
+        print("Checking if encoder pretraining is needed...")
+        print("=" * 60)
+
+        # Get policy
+        policy = algorithm.get_policy("reinforcement_learning_policy")
+        if policy is None:
+            print("reinforcement_learning_policy not found, skipping encoder pretraining")
             return
 
         # Check if we have an encoder
@@ -228,7 +236,7 @@ class EncoderPretrainCallback(DefaultCallbacks):
             return
 
         print("=" * 60)
-        print("Starting encoder pretraining...")
+        print("Starting encoder pretraining on driver...")
         print("=" * 60)
 
         # Create environment for data collection
@@ -270,7 +278,13 @@ class EncoderPretrainCallback(DefaultCallbacks):
 
         print("=" * 60)
         print("Encoder pretraining completed!")
+        print("Synchronizing encoder weights to all workers...")
         print("=" * 60)
+
+        # Synchronize weights to all workers
+        algorithm.workers.sync_weights()
+
+        print("Encoder weights successfully synchronized to all workers!")
 
 
 class TuneCallback(TuneReporterBase):
