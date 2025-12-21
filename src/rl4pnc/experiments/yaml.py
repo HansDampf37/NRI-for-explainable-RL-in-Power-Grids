@@ -153,7 +153,15 @@ def combined_callbacks_constructor(
         return callback_classes[0]
     else:
         # Create a new class that inherits from all callback classes
-        return type('CombinedCallbacks', tuple(callback_classes[::-1]), {})
+        # and explicitly calls all parent on_algorithm_init methods
+        class CombinedCallbacks(*callback_classes[::-1]):
+            def on_algorithm_init(self, *, algorithm, **kwargs):
+                """Call on_algorithm_init for all parent classes"""
+                for base_class in callback_classes:
+                    if hasattr(base_class, 'on_algorithm_init'):
+                        base_class.on_algorithm_init(self, algorithm=algorithm, **kwargs)
+
+        return CombinedCallbacks
 
 
 def float_to_integer(float_value: float) -> Union[int, float]:
