@@ -335,10 +335,11 @@ def run_training(config: dict[str, Any], setup: dict[str, Any], job_id: str) -> 
 
     # Use Optuna search algorithm to find good working parameters
     if setup['optimize']:
+        points_to_eval = setup.get('points_to_evaluate', None)
         algo = MyOptunaSearch(
             metric=setup["score_metric"],
             mode="max",
-            points_to_evaluate=[setup.get('points_to_evaluate', None)],
+            points_to_evaluate=[points_to_eval] if points_to_eval is not None else None,
         )
         if 'result_dir' in setup.keys():
             print("Retrieving results old experiment from : ", setup['result_dir'])
