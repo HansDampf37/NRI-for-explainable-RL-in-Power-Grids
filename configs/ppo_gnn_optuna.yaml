@@ -1,6 +1,6 @@
 setup:
   max_ep_len: 8064
-  duration: 0 # HH:MM or minutes of training before stopping, used if value > 0
+  duration: "23:00"  # 23 hours in HH:MM format - leave 1 hour buffer before SLURM kills at 24h
   nb_timesteps: 50_000  # Shorter training per trial for hyperparameter search
   checkpoint_freq: 5
   verbose: 0

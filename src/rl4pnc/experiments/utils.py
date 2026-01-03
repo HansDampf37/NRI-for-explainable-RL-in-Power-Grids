@@ -361,6 +361,15 @@ def run_training(config: dict[str, Any], setup: dict[str, Any], job_id: str) -> 
         # )
     dur = get_duration(setup)
 
+    # Get time budget for entire optimization (different from per-trial duration)
+    time_budget = setup.get("time_budget_s", None)
+    if time_budget is None and setup.get("optimize", False):
+        # For optimization, calculate time budget from duration if specified
+        if dur:
+            # Leave some buffer time (10%) for cleanup before SLURM kills the job
+            time_budget = int(dur * 0.9)
+            print(f"Setting time budget for optimization to {time_budget}s ({time_budget/3600:.2f} hours) with 10% buffer for cleanup")
+
     storage_path = os.path.abspath(os.path.join(setup.get("workdir", "."), "results", "experiments"))
     os.makedirs(storage_path, exist_ok=True)
     print(f"Results will be saved to: {storage_path}/{setup['experiment_name']}")
@@ -372,7 +381,7 @@ def run_training(config: dict[str, Any], setup: dict[str, Any], job_id: str) -> 
         run_config=air.RunConfig(
             name=setup["experiment_name"],
             storage_path=storage_path,
-            stop={"time_total_s": dur} if dur else {"timesteps_total": setup["nb_timesteps"]},
+            stop={"timesteps_total": setup["nb_timesteps"]},  # Stop condition for individual trials
             # MaxCustomMetricStopper("total_agent_interact", setup["nb_timesteps"]), #
             # "custom_metrics/grid2op_end_mean": setup["max_ep_len"]},
             callbacks=[
@@ -397,6 +406,7 @@ def run_training(config: dict[str, Any], setup: dict[str, Any], job_id: str) -> 
             trial_dirname_creator=lambda t: trial_dir_name(t),
             search_alg=algo,
             num_samples=setup["num_samples"],
+            time_budget_s=time_budget,  # Time budget for entire optimization
             # scheduler=scheduler,
         ) if setup["optimize"] else
         tune.TuneConfig(
