@@ -1,15 +1,15 @@
-experiment_name=compare_ppo_methods_rl_lib
+experiment_name=christmas_ppo_rllib
 cd ..
 
 sbatch << EOF
 #!/bin/bash
 
-#SBATCH --job-name=ray_ppo_mlp_baseline                                           # Name of the job
+#SBATCH --job-name=ra_ray_ppo_baseline                                           # Name of the job
 #SBATCH --output=results/experiments/${experiment_name}/out/ragnn_ppo.%j.log            # Output file
 #SBATCH --error=results/experiments/${experiment_name}/out/error_ragnn_ppo.%j.log       # Error file
 #SBATCH --ntasks=1                                                            # Number of tasks
 #SBATCH --cpus-per-task=111                                                    # Number of CPU cores per task
-#SBATCH --time=20:00:00                                                       # Max wall time (HH:MM:SS)
+#SBATCH --time=03:00:00                                                       # Max wall time (HH:MM:SS)
 #SBATCH --mem=100G                                                            # Memory requirement
 #SBATCH --partition=cpu,cpu_il                          # Specify the GPU partition gpu_mi300
 
@@ -22,12 +22,12 @@ EOF
 sbatch << EOF
 #!/bin/bash
 
-#SBATCH --job-name=ray_ppo_mlp_baseline                                           # Name of the job
+#SBATCH --job-name=gnn_ray_ppo_baseline                                           # Name of the job
 #SBATCH --output=results/experiments/${experiment_name}/out/gnn_ppo.%j.log            # Output file
 #SBATCH --error=results/experiments/${experiment_name}/out/error_gnn_ppo.%j.log       # Error file
 #SBATCH --ntasks=1                                                            # Number of tasks
 #SBATCH --cpus-per-task=111                                                    # Number of CPU cores per task
-#SBATCH --time=20:00:00                                                       # Max wall time (HH:MM:SS)
+#SBATCH --time=03:00:00                                                       # Max wall time (HH:MM:SS)
 #SBATCH --mem=100G                                                            # Memory requirement
 #SBATCH --partition=cpu,cpu_il                          # Specify the GPU partition gpu_mi300
 
@@ -40,12 +40,12 @@ EOF
 sbatch << EOF
 #!/bin/bash
 
-#SBATCH --job-name=ray_ppo_mlp_baseline                                           # Name of the job
+#SBATCH --job-name=mlp_ray_ppo_baseline                                           # Name of the job
 #SBATCH --output=results/experiments/${experiment_name}/out/mlp_ppo.%j.log            # Output file
 #SBATCH --error=results/experiments/${experiment_name}/out/error_mlp_ppo.%j.log       # Error file
 #SBATCH --ntasks=1                                                            # Number of tasks
 #SBATCH --cpus-per-task=111                                                    # Number of CPU cores per task
-#SBATCH --time=20:00:00                                                       # Max wall time (HH:MM:SS)
+#SBATCH --time=03:00:00                                                       # Max wall time (HH:MM:SS)
 #SBATCH --mem=100G                                                            # Memory requirement
 #SBATCH --partition=cpu,cpu_il                          # Specify the GPU partition gpu_mi300
 
