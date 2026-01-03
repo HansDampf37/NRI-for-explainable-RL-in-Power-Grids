@@ -25,7 +25,7 @@ from .graphormer.GraphormerEncoder import GraphormerNRIEncoder
 
 class RAFeatureExtractor(nn.Module):
     """
-    Combines an NRI encoder with a relation-aware GGN (RA-GNN).
+    Combines an NRI encoder with a relation-aware GNN (RA-GNN).
 
     The encoder predicts edge-type logits for each edge. These logits are used both
     to compute soft edge-type probabilities (for monitoring) and to sample discrete
@@ -327,7 +327,7 @@ class RLlibRAGNNModel(TorchModelV2, nn.Module):
             x_out_dim=model_config['custom_model_config']['gnn']['out_dim'],
             num_layers=model_config['custom_model_config']['gnn']['num_layers'],
             dropout_prob=model_config['custom_model_config']['gnn'].get('dropout_prob', 0.0),
-            num_edge_types=model_config['custom_model_config']['gnn'].get('num_edge_types', 2),
+            num_edge_types=model_config['custom_model_config']['encoder'].get('num_edge_types', 2),
             max_degree=model_config['custom_model_config']['encoder']['max_degree'],
             max_path_distance=model_config['custom_model_config']['encoder']['max_path_distance'],
         )
