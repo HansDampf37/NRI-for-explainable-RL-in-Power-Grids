@@ -294,11 +294,15 @@ def get_duration(setup):
 
 
 def trial_str_creator(trial: Trial, job_id=""):
-    trial.trial_id = trial.trial_id.split("_")[0]
+    # Don't modify trial.trial_id as it breaks Optuna's internal tracking!
+    # Just create a custom display name
+    base_id = trial.trial_id.split("_")[0]
     if job_id:
-        trial.trial_id = "{}_{}".format(job_id, trial.trial_id)
-    print('Creating trial with ID: ', trial.trial_id)
-    return "{}_{}".format(trial.trainable_name, trial.trial_id)
+        custom_id = "{}_{}".format(job_id, base_id)
+    else:
+        custom_id = base_id
+    print('Creating trial with ID: ', custom_id)
+    return "{}_{}".format(trial.trainable_name, custom_id)
 
 
 def trial_dir_name(trial: Trial):
