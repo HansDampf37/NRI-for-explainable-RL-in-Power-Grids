@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# This script runs an Optuna hyperparameter optimization for GNN models.
+# After completion, it will:
+#   1. Display a summary table of all trials and their metrics in the terminal
+#   2. Save detailed results as CSV to: results/optuna_results/gnn_hyperparameter_optimization_<timestamp>.csv
+
 experiment_name=gnn_optuna
 cd ..
 
@@ -12,7 +17,7 @@ sbatch << EOF
 #SBATCH --ntasks=1                                                      # Number of tasks
 #SBATCH --cpus-per-task=111
 #SBATCH --time=24:00:00                                                 # Max wall time (HH:MM:SS)
-#SBATCH --mem=100G                                                      # Memory requirement
+#SBATCH --mem=160G                                                      # Memory requirement
 #SBATCH --partition=cpu,cpu_il                                          # Specify the GPU partition
 
 module load devel/miniforge

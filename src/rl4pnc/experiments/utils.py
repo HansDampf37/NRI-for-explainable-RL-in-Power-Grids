@@ -10,6 +10,7 @@ from time import time
 from typing import Any, Dict, List, OrderedDict, Union
 
 import numpy as np
+import pandas as pd
 import ray
 from grid2op.Environment import BaseEnv
 from ray import air, tune
@@ -464,3 +465,117 @@ def run_training(config: dict[str, Any], setup: dict[str, Any], job_id: str) -> 
         else:
             print(f"Trial failed with error {result.error}.")
     return result_grid
+
+
+def save_optuna_results_summary(result_grid: ResultGrid, setup: dict[str, Any], workdir: str) -> None:
+    """
+    Save Optuna optimization results to CSV and display summary in terminal.
+
+    Args:
+        result_grid: The ResultGrid from Ray Tune containing all trial results
+        setup: Setup configuration dictionary
+        workdir: Working directory for saving results
+    """
+    # Prepare data for CSV
+    results_data = []
+
+    for i, result in enumerate(result_grid):
+        trial_data = {
+            'trial_id': i,
+            'trial_name': result.path.split('/')[-1] if hasattr(result, 'path') else f"trial_{i}",
+            'status': 'SUCCESS' if not result.error else 'FAILED',
+        }
+
+        if not result.error and result.metrics:
+            # Extract hyperparameters that were optimized
+            if 'model' in result.config and 'custom_model_config' in result.config['model']:
+                gnn_config = result.config['model']['custom_model_config'].get('gnn', {})
+                trial_data['hidden_dim'] = gnn_config.get('hidden_dim', 'N/A')
+                trial_data['out_dim'] = gnn_config.get('out_dim', 'N/A')
+                trial_data['num_layers'] = gnn_config.get('num_layers', 'N/A')
+                trial_data['residual'] = gnn_config.get('residual', 'N/A')
+
+            # Extract key metrics
+            if 'evaluation' in result.metrics and 'custom_metrics' in result.metrics['evaluation']:
+                custom_metrics = result.metrics['evaluation']['custom_metrics']
+                trial_data['grid2op_end_mean'] = custom_metrics.get('grid2op_end_mean', 'N/A')
+                trial_data['corrected_ep_len_mean'] = custom_metrics.get('corrected_ep_len_mean', 'N/A')
+                trial_data['episode_reward_mean'] = custom_metrics.get('episode_reward_mean', 'N/A')
+
+            # Extract training metrics
+            trial_data['timesteps_total'] = result.metrics.get('timesteps_total', 'N/A')
+            trial_data['training_iteration'] = result.metrics.get('training_iteration', 'N/A')
+
+        else:
+            trial_data['error'] = str(result.error) if result.error else 'Unknown'
+
+        results_data.append(trial_data)
+
+    # Create DataFrame
+    df = pd.DataFrame(results_data)
+
+    # Save to CSV
+    csv_dir = os.path.join(workdir, "results", "optuna_results")
+    os.makedirs(csv_dir, exist_ok=True)
+
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    csv_filename = f"{setup['experiment_name']}_{timestamp}.csv"
+    csv_path = os.path.join(csv_dir, csv_filename)
+
+    df.to_csv(csv_path, index=False)
+    print(f"\n{Style.BOLD}{'='*80}{Style.END}")
+    print(f"{Style.BOLD}Optuna results saved to: {csv_path}{Style.END}")
+    print(f"{Style.BOLD}{'='*80}{Style.END}\n")
+
+    # Display summary in terminal
+    print(f"\n{Style.BOLD}=== OPTUNA OPTIMIZATION SUMMARY ==={Style.END}\n")
+    print(f"Total trials: {len(results_data)}")
+    successful_trials = sum(1 for r in results_data if r['status'] == 'SUCCESS')
+    print(f"Successful trials: {successful_trials}")
+    print(f"Failed trials: {len(results_data) - successful_trials}\n")
+
+    # Display top 5 trials by target metric
+    if successful_trials > 0:
+        metric_col = setup.get("score_metric", "grid2op_end_mean").split('/')[-1]  # Get last part of metric path
+
+        # Only display if the metric column exists
+        if metric_col in df.columns:
+            # Convert to numeric, handling 'N/A' values
+            df[metric_col] = pd.to_numeric(df[metric_col], errors='coerce')
+            top_trials = df[df['status'] == 'SUCCESS'].nlargest(5, metric_col)
+
+            print(f"{Style.BOLD}Top 5 Trials (by {metric_col}):{Style.END}")
+            print(tabulate(top_trials, headers='keys', tablefmt='rounded_grid', showindex=False))
+            print()
+
+        # Display all trials summary
+        print(f"\n{Style.BOLD}All Trials Summary:{Style.END}")
+        display_cols = [col for col in df.columns if col not in ['error', 'trial_name']]
+        print(tabulate(df[display_cols], headers='keys', tablefmt='rounded_grid', showindex=False))
+        print()
+
+        # Display best hyperparameters
+        if metric_col in df.columns:
+            metric_series = df[metric_col]
+            has_valid_data = bool(not metric_series.isna().all())
+            if has_valid_data:
+                best_idx = df[df['status'] == 'SUCCESS'][metric_col].idxmax()
+                best_trial = df.loc[best_idx]
+
+                print(f"\n{Style.BOLD}Best Trial (Trial {int(best_trial['trial_id'])}):{Style.END}")
+                print(f"  {metric_col}: {best_trial[metric_col]}")
+                try:
+                    if pd.notna(best_trial.get('hidden_dim')):
+                        print(f"  Hyperparameters:")
+                        print(f"    - hidden_dim: {best_trial['hidden_dim']}")
+                        print(f"    - out_dim: {best_trial['out_dim']}")
+                        print(f"    - num_layers: {best_trial['num_layers']}")
+                        print(f"    - residual: {best_trial['residual']}")
+                except (KeyError, AttributeError):
+                    pass
+                print()
+
+    print(f"{Style.BOLD}{'='*80}{Style.END}")
+    print(f"{Style.BOLD}Full results available at: {csv_path}{Style.END}")
+    print(f"{Style.BOLD}{'='*80}{Style.END}\n")
+

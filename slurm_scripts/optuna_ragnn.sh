@@ -12,7 +12,7 @@ sbatch << EOF
 #SBATCH --ntasks=1                                                      # Number of tasks
 #SBATCH --cpus-per-task=111
 #SBATCH --time=24:00:00                                                 # Max wall time (HH:MM:SS)
-#SBATCH --mem=100G                                                      # Memory requirement
+#SBATCH --mem=160G                                                      # Memory requirement
 #SBATCH --partition=cpu,cpu_il                                          # Specify the CPU partition
 
 module load devel/miniforge

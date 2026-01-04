@@ -195,6 +195,11 @@ if __name__ == "__main__":
         _custom_config["setup"]["workdir"] = args.workdir
 
         _result_grid = run_training(_ppo_config, _custom_config["setup"], args.job_id)
+
+        # If Optuna optimization was enabled, save results summary
+        if _custom_config["setup"].get("optimize", False):
+            from src.rl4pnc.experiments.utils import save_optuna_results_summary
+            save_optuna_results_summary(_result_grid, _custom_config["setup"], args.workdir)
     else:
         parser.print_help()
         logging.error("\nError: --file_path is required to specify configs location.")
