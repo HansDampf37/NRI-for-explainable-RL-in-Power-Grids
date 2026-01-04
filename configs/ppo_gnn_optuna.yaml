@@ -1,7 +1,7 @@
 setup:
   max_ep_len: 8064
   duration: "23:00"  # 23 hours in HH:MM format - leave 1 hour buffer before SLURM kills at 24h
-  nb_timesteps: 50_000  # Shorter training per trial for hyperparameter search
+  nb_timesteps: 100_000  # Shorter training per trial for hyperparameter search
   checkpoint_freq: 5
   verbose: 0
   my_log_level: 1
@@ -91,7 +91,7 @@ evaluation:
   evaluation_duration: 50  # Reduced for faster trials
   evaluation_duration_unit: episodes
   always_attach_evaluation_results: True
-  evaluation_num_workers: 0
+  evaluation_num_workers: 30
   evaluation_config:
     explore: False
     env_config:
@@ -107,5 +107,5 @@ resources:
   num_learner_workers: 1
 
 rollouts:
-  num_rollout_workers: 0
+  num_rollout_workers: 80
 

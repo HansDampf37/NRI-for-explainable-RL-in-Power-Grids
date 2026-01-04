@@ -10,13 +10,13 @@ sbatch << EOF
 #SBATCH --output=results/logs/ragnn_optuna.%j.log                      # Output file
 #SBATCH --error=results/logs/ragnn_optuna_error.%j.log                 # Error file
 #SBATCH --ntasks=1                                                      # Number of tasks
-#SBATCH --gres=gpu:1                                                    # Request 1 GPU
+#SBATCH --cpus-per-task=111
 #SBATCH --time=24:00:00                                                 # Max wall time (HH:MM:SS)
-#SBATCH --mem=20G                                                       # Memory requirement
-#SBATCH --partition=gpu_h100,gpu_a100_il,gpu_h100_il                   # Specify the GPU partition
+#SBATCH --mem=100G                                                      # Memory requirement
+#SBATCH --partition=cpu,cpu_il                                          # Specify the CPU partition
 
 module load devel/miniforge
-conda activate RL
+conda activate L2RPN
 
 PYTHONPATH=\$(pwd) python training_scripts/train_ppo.py \\
     --file_path configs/ppo_ragnn_optuna.yaml \\
