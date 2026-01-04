@@ -173,6 +173,15 @@ def float_to_integer(float_value: float) -> Union[int, float]:
     return float_value
 
 
+def tune_search_uniform_constructor(
+    loader: Union[Loader, FullLoader, UnsafeLoader], node: SequenceNode
+) -> Any:
+    """
+    Constructor for tune continuous uniform sampling [lower, upper]
+    """
+    vals = loader.construct_sequence(node)
+    return tune.uniform(vals[0], vals[1])
+
 def tune_search_quniform_constructor(
     loader: Union[Loader, FullLoader, UnsafeLoader], node: SequenceNode
 ) -> Any:
@@ -284,6 +293,7 @@ def add_constructors() -> None:
     yaml.FullLoader.add_constructor("!CombinedCallbacks", combined_callbacks_constructor)
     yaml.FullLoader.add_constructor("!Discrete", discrete_constructor)
     yaml.FullLoader.add_constructor("!AlgorithmConfig", algorithm_config_constructor)
+    yaml.FullLoader.add_constructor("!uniform", tune_search_uniform_constructor)
     yaml.FullLoader.add_constructor("!quniform", tune_search_quniform_constructor)
     yaml.FullLoader.add_constructor("!qloguniform", tune_search_qloguniform_constructor)
     yaml.FullLoader.add_constructor("!grid_search", tune_search_grid_search_constructor)
