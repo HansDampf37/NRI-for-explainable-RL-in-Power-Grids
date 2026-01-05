@@ -207,23 +207,36 @@ class CustomMetricsCallback(DefaultCallbacks):
 class EncoderPretrainCallback(DefaultCallbacks):
     """Callback that pretrains the encoder before RL training starts."""
 
+    # Class variable to track if pretraining has been done
+    _pretrain_done = False
+
     def on_algorithm_init(self, *, algorithm: Algorithm, **kwargs) -> None:
         """Pretrain encoder only once in the driver, then sync weights to all workers."""
         super().on_algorithm_init(algorithm=algorithm, **kwargs)
 
         print("=" * 60)
-        print("Checking if encoder pretraining is needed...")
+        print("EncoderPretrainCallback.on_algorithm_init called")
+        print(f"Pretrain already done: {EncoderPretrainCallback._pretrain_done}")
         print("=" * 60)
+
+        # Skip if already pretrained
+        if EncoderPretrainCallback._pretrain_done:
+            print("Encoder already pretrained, skipping...")
+            return
+
+        print("Checking if encoder pretraining is needed...")
 
         # Get policy
         policy = algorithm.get_policy("reinforcement_learning_policy")
         if policy is None:
             print("reinforcement_learning_policy not found, skipping encoder pretraining")
+            EncoderPretrainCallback._pretrain_done = True
             return
 
         # Check if we have an encoder
         if not hasattr(policy, 'model') or not hasattr(policy.model, 'ragnn') or not hasattr(policy.model.ragnn, "encoder"):
             print("Not using RAGNN model, skipping encoder pretraining")
+            EncoderPretrainCallback._pretrain_done = True
             return
 
         # Get config
@@ -233,6 +246,7 @@ class EncoderPretrainCallback(DefaultCallbacks):
 
         if not pretrain_config.get("enabled", False):
             print("Encoder pretraining disabled in config")
+            EncoderPretrainCallback._pretrain_done = True
             return
 
         print("=" * 60)
@@ -240,6 +254,7 @@ class EncoderPretrainCallback(DefaultCallbacks):
         print("=" * 60)
 
         # Create environment for data collection
+        print("Creating environment for data collection...")
         env = G2OpGymEnv(
             env_name = env_config["env_name"],
             obs_space_creation=lambda _: policy.observation_space,
@@ -247,6 +262,7 @@ class EncoderPretrainCallback(DefaultCallbacks):
         )
 
         # Create prior
+        print("Creating prior...")
         prior = prior_from_env(
             prob_graph_edge_exists=ra_config.get("prior_for_graph_edges_existing", 0.9),
             env=env,
@@ -255,6 +271,7 @@ class EncoderPretrainCallback(DefaultCallbacks):
         )
 
         # Create datasets
+        print(f"Creating dataset with size {pretrain_config.get('ds_size', 1000)}...")
         train_ds = create_dataset(
             env=env,
             prior=prior,
@@ -285,6 +302,10 @@ class EncoderPretrainCallback(DefaultCallbacks):
         algorithm.workers.sync_weights()
 
         print("Encoder weights successfully synchronized to all workers!")
+
+        # Mark pretraining as done
+        EncoderPretrainCallback._pretrain_done = True
+        print("Marked pretraining as completed globally")
 
 
 class TuneCallback(TuneReporterBase):

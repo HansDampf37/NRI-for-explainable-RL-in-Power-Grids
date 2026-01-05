@@ -391,7 +391,6 @@ def run_training(config: dict[str, Any], setup: dict[str, Any], job_id: str) -> 
             # MaxCustomMetricStopper("total_agent_interact", setup["nb_timesteps"]), #
             # "custom_metrics/grid2op_end_mean": setup["max_ep_len"]},
             callbacks=[
-                WandbLoggerCallback(project=setup["experiment_name"]),
                 TuneCallback(
                     setup["my_log_level"],
                     "evaluation/custom_metrics/grid2op_end_mean",

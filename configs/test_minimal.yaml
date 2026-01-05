@@ -101,11 +101,11 @@ environment:
     curriculum_thresholds: [150,300]
 
 evaluation:
-  evaluation_interval: null  # Disable evaluation during minimal test
-  evaluation_duration: 10  # Very short if it runs
+  evaluation_interval: 1
+  evaluation_duration: 10
   evaluation_duration_unit: episodes
   always_attach_evaluation_results: False
-  evaluation_num_workers: 0
+  evaluation_num_workers: 1
   evaluation_config:
     explore: False,
     env_config:
@@ -118,8 +118,8 @@ reporting:
   keep_per_episode_custom_metrics: True
 
 resources:
-  num_learner_workers: 0  # No additional learner workers
+  num_learner_workers: 1  # No additional learner workers
 
 rollouts:
-  num_rollout_workers: 0  # No parallel rollout workers
+  num_rollout_workers: 10  # No parallel rollout workers
 
