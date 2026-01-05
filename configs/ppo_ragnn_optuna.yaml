@@ -56,7 +56,7 @@ training:
         num_layers: 2  # Use optimal value from GNN optimization
         residual: false  # Use optimal value from GNN optimization
       encoder: # RAGNN encoder settings
-        num_edge_types: !quniform [2, 6, 1]  # Number of edge types (2-6) - OPTIMIZING THIS
+        num_edge_types: !uniform [2, 6, 1]  # Number of edge types (2-6)
         max_degree: 7
         max_path_distance: 9
   _enable_learner_api: False

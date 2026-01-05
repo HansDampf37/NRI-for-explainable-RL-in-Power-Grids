@@ -52,7 +52,7 @@ class CustomMetricsCallback(DefaultCallbacks):
             algorithm: Algorithm,
             **kwargs,
     ) -> None:
-        print("Algorithm initialized. Setup Custom Metrics Callbacks")
+        print("Setup Custom Metrics Callbacks")
         self.log_level = algorithm.my_log_level
         self.curr_level = 0
         if algorithm.curriculum_training:

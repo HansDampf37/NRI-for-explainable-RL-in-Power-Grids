@@ -1,0 +1,124 @@
+setup:
+  max_ep_len: 8064
+  duration: 0 # HH:MM or minutes of training before stopping, used if value > 0
+  nb_timesteps: 500  # Ultra minimal - just 500 timesteps
+  checkpoint_freq: 100  # Don't checkpoint during this short run
+  verbose: 0
+  my_log_level: 1
+  storage_path: ./runs
+  folder_name: "test_ultra_minimal"
+  experiment_name: "test_ultra_minimal"
+  optimize: False  # DISABLED - No hyperparameter optimization
+  num_samples: 1  # Single trial only
+  score_metric: evaluation/custom_metrics/grid2op_end_mean
+  grace_period: 50
+
+debugging:
+  seed: &seed 42
+
+training:
+  checkpoint_trainable_policies_only: True
+  gamma: 0.99  # Fixed value, no choice
+  lr: 0.0001
+  vf_loss_coeff: 0.5
+  entropy_coeff: 0.05
+  clip_param: 0.3
+  lambda: 0.95
+  vf_clip_param: 100
+  use_kl_loss: False
+  num_sgd_iter: 1  # Minimal SGD iterations
+  sgd_minibatch_size: 32
+  train_batch_size: 128
+  batch_mode: complete_episodes
+  relation_awareness:
+    prior_prob_for_graph_edge: 0.9
+    beta: 1.0
+    temperature: 0.2
+  encoder_pretrain:
+    enabled: false  # DISABLED - Skip encoder pretraining for ultra fast test
+    ds_size: 10  # If enabled, use only 10 samples
+    batch_size: 10
+    num_epochs: 1
+    learning_rate: 0.005
+  model:
+    fcnet_hiddens: [64, 64]  # Even smaller network
+    fcnet_activation: relu
+    post_fcnet_hiddens: [64]
+    custom_model_config:
+      gnn:
+        hidden_dim: 16  # Very reduced dimensions
+        out_dim: 16
+        num_layers: 1  # Single layer
+      encoder:
+        num_edge_types: 2
+        max_degree: 7
+        max_path_distance: 9
+  _enable_learner_api: False
+
+rl_module:
+  _enable_rl_module_api: False
+
+explore:
+  exploration_config:
+    type: StochasticSampling
+
+callbacks:
+  callbacks: !CombinedCallbacks
+    - !CustomMetricsCallback
+
+framework:
+  framework: torch
+
+multi_agent:
+  policy_mapping_fn: !policy_mapping_fn
+  policies_to_train: ["reinforcement_learning_policy"]
+  count_steps_by: agent_steps
+
+environment:
+  env_config: &env_config_train
+    env_name: l2rpn_case14_sandbox_train
+    action_space: medha
+    mask: 5
+    lib_dir: !workdir
+    grid2op_kwargs:
+      # general kwargs
+      reward_class: !RewardRho
+    seed: *seed
+    rho_threshold: 0.4
+    n_history: 1
+    g2op_input: ["r", "t"]
+    custom_input: ["d"]
+    danger: 0.9
+    prio: False
+    use_ffw: True
+    reset_topo: 0.9
+    line_reco: True
+    line_disc: False
+    penalty_game_over: 0
+    reward_finish: 0
+    curriculum_training: False
+    curriculum_thresholds: [150,300]
+
+evaluation:
+  evaluation_interval: null  # DISABLED - No evaluation during test
+  evaluation_duration: 5  # Very short if it somehow runs
+  evaluation_duration_unit: episodes
+  always_attach_evaluation_results: False
+  evaluation_num_workers: 0
+  evaluation_config:
+    explore: False,
+    env_config:
+      <<: *env_config_train
+      env_name: l2rpn_case14_sandbox_val
+      shuffle_scenarios: False
+      prio: False
+
+reporting:
+  keep_per_episode_custom_metrics: True
+
+resources:
+  num_learner_workers: 0  # No additional learner workers
+
+rollouts:
+  num_rollout_workers: 0  # No parallel rollout workers - single worker only
+

@@ -468,13 +468,13 @@ def run_training(config: dict[str, Any], setup: dict[str, Any], job_id: str) -> 
 
     # If Optuna optimization was enabled, save results summary
     if setup.get("optimize", False):
-        save_optuna_results_summary(result_grid, setup, setup.get("workdir", "."))
+        optuna_path = os.path.join(storage_path, setup['experiment_name'], "optuna_results")
+        save_optuna_results_summary(result_grid, setup, optuna_path)
 
         # Save the Optuna study to a SQLite database for dashboard access
         if algo is not None:
             try:
-                optuna_db_dir = os.path.join(setup.get("workdir", "."), "results", "optuna_studies")
-                db_path = algo.save_study(optuna_db_dir, setup['experiment_name'])
+                db_path = algo.save_study(optuna_path, setup['experiment_name'])
                 print(f"\n{Style.BOLD}{'='*80}{Style.END}")
                 print(f"{Style.BOLD}Optuna study saved to: {db_path}{Style.END}")
                 print(f"{Style.BOLD}To view in Optuna Dashboard, run:{Style.END}")
@@ -486,14 +486,14 @@ def run_training(config: dict[str, Any], setup: dict[str, Any], job_id: str) -> 
     return result_grid
 
 
-def save_optuna_results_summary(result_grid: ResultGrid, setup: dict[str, Any], workdir: str) -> None:
+def save_optuna_results_summary(result_grid: ResultGrid, setup: dict[str, Any], save_directory: str) -> None:
     """
     Save Optuna optimization results to CSV and display summary in terminal.
 
     Args:
         result_grid: The ResultGrid from Ray Tune containing all trial results
         setup: Setup configuration dictionary
-        workdir: Working directory for saving results
+        save_directory: Directory for saving results
     """
     # Prepare data for CSV
     results_data = []
@@ -534,12 +534,11 @@ def save_optuna_results_summary(result_grid: ResultGrid, setup: dict[str, Any], 
     df = pd.DataFrame(results_data)
 
     # Save to CSV
-    csv_dir = os.path.join(workdir, "results", "optuna_results")
-    os.makedirs(csv_dir, exist_ok=True)
+    os.makedirs(save_directory, exist_ok=True)
 
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     csv_filename = f"{setup['experiment_name']}_{timestamp}.csv"
-    csv_path = os.path.join(csv_dir, csv_filename)
+    csv_path = os.path.join(save_directory, csv_filename)
 
     df.to_csv(csv_path, index=False)
     print(f"\n{Style.BOLD}{'='*80}{Style.END}")
