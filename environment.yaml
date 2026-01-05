@@ -6,7 +6,7 @@ dependencies:
   - _libgcc_mutex=0.1=conda_forge
   - _openmp_mutex=4.5=2_gnu
   - bzip2=1.0.8=hda65f42_8
-  - ca-certificates=2025.11.12=hbd8a1cb_0
+  - ca-certificates=2026.1.4=hbd8a1cb_0
   - icu=75.1=he02047a_0
   - ld_impl_linux-64=2.45=default_hbd61a6d_104
   - libexpat=2.7.3=hecca717_0

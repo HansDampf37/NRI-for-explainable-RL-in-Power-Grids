@@ -464,6 +464,11 @@ def run_training(config: dict[str, Any], setup: dict[str, Any], job_id: str) -> 
                       f"{tabulate([values], headers=params_model, tablefmt='rounded_grid')}")
         else:
             print(f"Trial failed with error {result.error}.")
+
+    # If Optuna optimization was enabled, save results summary
+    if setup.get("optimize", False):
+        save_optuna_results_summary(result_grid, setup, setup.get("workdir", "."))
+
     return result_grid
 
 
