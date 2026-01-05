@@ -1,5 +1,9 @@
 experiment_name=new_years_ppo_rllib
+export experiment_name
 cd ..
+
+# Create output directories
+mkdir -p results/experiments/${experiment_name}/out
 
 sbatch << EOF
 #!/bin/bash
