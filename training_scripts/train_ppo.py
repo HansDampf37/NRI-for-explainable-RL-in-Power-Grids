@@ -29,7 +29,7 @@ ModelCatalog.register_custom_model("ragnn_model", RLlibRAGNNModel)
 ModelCatalog.register_custom_model("rappo", RAPPOTorchPolicy)
 
 
-def setup_config(workdir_path: str, input_path: str, seed: int = None, opponent=False, model_type: str="MLP") -> Tuple[Dict[str, Any], Dict[str, Any]]:
+def setup_config(workdir_path: str, input_path: str, seed: int = None, opponent=False, model_type: str="MLP", experiment_name: str="") -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """
     Loads the JSON as configs and sets it up for training.
     """
@@ -40,10 +40,17 @@ def setup_config(workdir_path: str, input_path: str, seed: int = None, opponent=
     ppo_config = ppo.PPOConfig().to_dict()
     ppo_config["_disable_preprocessor_api"] = True
     custom_config = load_config(config_path)
+    custom_config["setup"]["workdir"] = args.workdir
     if seed:
         print(f"Running experiment with seed {seed}.")
         custom_config["debugging"]["seed"] = seed
         custom_config["environment"]["env_config"]["seed"] = seed
+
+    # Set experiment name
+    if experiment_name:
+        print(f"Using experiment name: {experiment_name}")
+        custom_config["setup"]["experiment_name"] = experiment_name
+        custom_config["setup"]["folder_name"] = experiment_name
 
     # Set observation space based on model_type
     print(f"Using model type: {model_type}")
@@ -184,16 +191,19 @@ if __name__ == "__main__":
         default="MLP",
         help="Model type to use for RL policy. (MLP, GNN, or RAGNN)",
     )
+    parser.add_argument(
+        "-n",
+        "--experiment-name",
+        type=str,
+        default="",
+        help="Name of the experiment",
+    )
 
     # Parse the command-line arguments
     args = parser.parse_args()
 
     if args.file_path:
-        _ppo_config, _custom_config = setup_config(args.workdir, args.file_path, seed=args.seed, opponent=args.opponent, model_type=args.model_type)
-
-        # Add workdir to setup config for storage path
-        _custom_config["setup"]["workdir"] = args.workdir
-
+        _ppo_config, _custom_config = setup_config(args.workdir, args.file_path, seed=args.seed, opponent=args.opponent, model_type=args.model_type, experiment_name=args.experiment_name)
         _result_grid = run_training(_ppo_config, _custom_config["setup"], args.job_id)
     else:
         parser.print_help()

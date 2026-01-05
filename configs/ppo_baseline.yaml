@@ -1,7 +1,7 @@
 setup:
   max_ep_len: 8064
   duration: 0 # HH:MM or minutes of training before stopping, used if value > 0
-  nb_timesteps: 100_000
+  nb_timesteps: 10_000
   checkpoint_freq: 2
   verbose: 0
   my_log_level: 1
@@ -12,19 +12,12 @@ setup:
   num_samples: 3
   score_metric: evaluation/custom_metrics/grid2op_end_mean
   grace_period: 500
-#  points_to_evaluate:
-#    num_sgd_iter: 16
-#    sgd_minibatch_size: 64
-#    train_batch_size: 512
-#  result_dir: /Users/ericavandersar/ray_results/Test14 #"" #
 
 debugging:
   seed: &seed 9
 
 training:
   checkpoint_trainable_policies_only: True
-  # Model selection: "MLP" or "GNN"
-  # tunable parameters
   gamma: 0.99 #!quniform [0.95, 0.99, 0.01] #
   lr: 0.0001 #!qloguniform [0.0005, 0.005, 0.0001] #
   vf_loss_coeff: 0.5

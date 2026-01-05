@@ -339,6 +339,7 @@ def run_training(config: dict[str, Any], setup: dict[str, Any], job_id: str) -> 
     print("Port:", port)
 
     # Use Optuna search algorithm to find good working parameters
+    algo = None
     if setup['optimize']:
         points_to_eval = setup.get('points_to_evaluate', None)
         algo = MyOptunaSearch(
@@ -468,6 +469,19 @@ def run_training(config: dict[str, Any], setup: dict[str, Any], job_id: str) -> 
     # If Optuna optimization was enabled, save results summary
     if setup.get("optimize", False):
         save_optuna_results_summary(result_grid, setup, setup.get("workdir", "."))
+
+        # Save the Optuna study to a SQLite database for dashboard access
+        if algo is not None:
+            try:
+                optuna_db_dir = os.path.join(setup.get("workdir", "."), "results", "optuna_studies")
+                db_path = algo.save_study(optuna_db_dir, setup['experiment_name'])
+                print(f"\n{Style.BOLD}{'='*80}{Style.END}")
+                print(f"{Style.BOLD}Optuna study saved to: {db_path}{Style.END}")
+                print(f"{Style.BOLD}To view in Optuna Dashboard, run:{Style.END}")
+                print(f"  optuna-dashboard sqlite:///{db_path}")
+                print(f"{Style.BOLD}{'='*80}{Style.END}\n")
+            except Exception as e:
+                print(f"Warning: Failed to save Optuna study: {e}")
 
     return result_grid
 

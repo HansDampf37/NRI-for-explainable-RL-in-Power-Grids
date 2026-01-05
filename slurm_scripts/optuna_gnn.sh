@@ -27,6 +27,7 @@ PYTHONPATH=\$(pwd) python training_scripts/train_ppo.py \\
     --file_path configs/ppo_gnn_optuna.yaml \\
     --workdir \$(pwd) \\
     --model-type GNN \\
-    --job_id \${SLURM_JOB_ID}
+    --job_id \${SLURM_JOB_ID} \\
+    --experiment-name \${experiment_name}
 EOF
 

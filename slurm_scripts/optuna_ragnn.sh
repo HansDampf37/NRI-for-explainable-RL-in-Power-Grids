@@ -22,6 +22,7 @@ PYTHONPATH=\$(pwd) python training_scripts/train_ppo.py \\
     --file_path configs/ppo_ragnn_optuna.yaml \\
     --workdir \$(pwd) \\
     --model-type RAGNN \\
-    --job_id \${SLURM_JOB_ID}
+    --job_id \${SLURM_JOB_ID} \\
+    --experiment-name \${experiment_name}
 EOF
 

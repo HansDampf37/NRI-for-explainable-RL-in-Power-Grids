@@ -2,6 +2,38 @@
 
 This directory contains CSV files with detailed results from Optuna hyperparameter optimization runs.
 
+## Optuna Study Database
+
+Starting from the latest version, Optuna studies are also saved as SQLite databases in the `../optuna_studies/` directory. This allows you to use the **Optuna Dashboard** for interactive visualization and analysis.
+
+### Using Optuna Dashboard
+
+1. **Install optuna-dashboard** (if not already installed):
+   ```bash
+   pip install optuna-dashboard
+   ```
+
+2. **Launch the dashboard**:
+   ```bash
+   optuna-dashboard sqlite:///path/to/your/study.db
+   ```
+   
+   For example:
+   ```bash
+   optuna-dashboard sqlite:///results/optuna_studies/gnn_hyperparameter_optimization.db
+   ```
+
+3. **Open in browser**: The dashboard will be available at `http://localhost:8080`
+
+### Dashboard Features
+
+The Optuna Dashboard provides:
+- **Interactive plots**: Optimization history, parameter importance, parallel coordinates
+- **Trial comparison**: Compare hyperparameters across trials
+- **Real-time monitoring**: Watch optimization progress in real-time
+- **Best trials**: Easily identify top-performing configurations
+- **Parameter relationships**: Visualize correlations between hyperparameters and metrics
+
 ## File Naming Convention
 
 Files are named as: `{experiment_name}_{timestamp}.csv`

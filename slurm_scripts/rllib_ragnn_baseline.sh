@@ -16,7 +16,7 @@ sbatch << EOF
 module load devel/miniforge
 conda activate L2RPN
 
-PYTHONPATH=$(pwd) python training_scripts/train_ppo.py -f configs/ppo_baseline_batchjob.yaml -wd . -s 0 -j 0 --model-type RAGNN
+PYTHONPATH=$(pwd) python training_scripts/train_ppo.py -f configs/ppo_baseline_batchjob.yaml -wd . -s 0 -j 0 --model-type RAGNN --experiment-name ${experiment_name}
 EOF
 
 sbatch << EOF
@@ -34,7 +34,7 @@ sbatch << EOF
 module load devel/miniforge
 conda activate L2RPN
 
-PYTHONPATH=$(pwd) python training_scripts/train_ppo.py -f configs/ppo_baseline_batchjob.yaml -wd . -s 0 -j 0 --model-type GNN
+PYTHONPATH=$(pwd) python training_scripts/train_ppo.py -f configs/ppo_baseline_batchjob.yaml -wd . -s 0 -j 0 --model-type GNN --experiment-name ${experiment_name}
 EOF
 
 sbatch << EOF
@@ -52,5 +52,5 @@ sbatch << EOF
 module load devel/miniforge
 conda activate L2RPN
 
-PYTHONPATH=$(pwd) python training_scripts/train_ppo.py -f configs/ppo_baseline_batchjob.yaml -wd . -s 0 -j 0 --model-type MLP
+PYTHONPATH=$(pwd) python training_scripts/train_ppo.py -f configs/ppo_baseline_batchjob.yaml -wd . -s 0 -j 0 --model-type MLP --experiment-name ${experiment_name}
 EOF
