@@ -16,7 +16,7 @@ sbatch << EOF
 #SBATCH --error=results/logs/gnn_optuna_error.%j.log                   # Error file
 #SBATCH --ntasks=1                                                      # Number of tasks
 #SBATCH --cpus-per-task=111
-#SBATCH --time=24:00:00                                                 # Max wall time (HH:MM:SS)
+#SBATCH --time=72:00:00                                                 # Max wall time (HH:MM:SS)
 #SBATCH --mem=160G                                                      # Memory requirement
 #SBATCH --partition=cpu,cpu_il                                          # Specify the GPU partition
 

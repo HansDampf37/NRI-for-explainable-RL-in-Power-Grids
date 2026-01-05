@@ -1,7 +1,7 @@
 setup:
   max_ep_len: 8064
-  duration: "23:00"  # 23 hours in HH:MM format - leave 1 hour buffer before SLURM kills at 24h
-  nb_timesteps: 50_000  # Shorter training per trial for hyperparameter search
+  duration: "71:00"  # 71 hours in HH:MM format - leave 1 hour buffer before SLURM kills at 24h
+  nb_timesteps: 100_000  # Shorter training per trial for hyperparameter search
   checkpoint_freq: 5
   verbose: 0
   my_log_level: 1
@@ -9,7 +9,7 @@ setup:
   folder_name: "RAGNN_Optuna"
   experiment_name: "ragnn_hyperparameter_optimization"
   optimize: True  # Enable Optuna optimization
-  num_samples: 30  # Number of trials to run
+  num_samples: 24  # Number of trials to run
   score_metric: evaluation/custom_metrics/grid2op_end_mean
   grace_period: 500
 
@@ -22,14 +22,15 @@ training:
   gamma: 0.99
   lr: 0.0001
   vf_loss_coeff: 0.5
-  entropy_coeff: 0.05
+  entropy_coeff: 0.00
+  kl_coeff: 0.2
   clip_param: 0.3
   lambda: 0.95
   vf_clip_param: 100
   use_kl_loss: False
-  num_sgd_iter: 4
-  sgd_minibatch_size: 32
-  train_batch_size: 128
+  num_sgd_iter: 5
+  sgd_minibatch_size: 256
+  train_batch_size: 1024
   batch_mode: complete_episodes
 
   relation_awareness: # RAGNN-specific settings - OPTIMIZING THESE PARAMETERS
@@ -45,9 +46,9 @@ training:
     learning_rate: 0.005
 
   model:
-    fcnet_hiddens: [256, 256]  # Downstream MLP after GNN
+    fcnet_hiddens: [256, 256, 256]  # Downstream MLP after GNN
     fcnet_activation: relu
-    post_fcnet_hiddens: [128]
+    post_fcnet_hiddens: [256, 128]
     custom_model_config:
       gnn: # GNN-specific hyperparameters - WILL BE COPIED FROM OPTIMAL GNN CONFIG LATER
         hidden_dim: 64  # Use optimal value from GNN optimization
@@ -87,9 +88,9 @@ environment:
     mask: 5
     lib_dir: !workdir
     grid2op_kwargs:
-      reward_class: !RewardRho
+      reward_class: !AlphaZeroRW
     seed: *seed
-    rho_threshold: 0.90
+    rho_threshold: 0.95
     n_history: 1
     g2op_input: ["r", "t"]
     custom_input: ["d"]
@@ -98,7 +99,7 @@ environment:
     use_ffw: True
     reset_topo: 0.9
     line_reco: True
-    line_disc: True
+    line_disc: False
     penalty_game_over: 0
     reward_finish: 0
     curriculum_training: False
@@ -126,4 +127,3 @@ resources:
 
 rollouts:
   num_rollout_workers: 80
-
