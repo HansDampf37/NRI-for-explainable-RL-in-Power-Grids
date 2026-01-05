@@ -98,7 +98,7 @@ class TestGetPriors(unittest.TestCase):
         prior_graph = torch.tensor([0.7, 0.3], dtype=torch.float32)
         prior_non_graph = torch.tensor([0.4, 0.6], dtype=torch.float32)
 
-        prior = get_prior_tensor(graph_edges, all_edges, prior_graph, prior_non_graph)
+        prior = get_prior_tensor(graph_edges, all_edges, prior_graph, prior_non_graph, 2)
 
         # Result shape should be [num_edges, edge_types]
         self.assertEqual(prior.shape, (3, 2))
@@ -109,6 +109,19 @@ class TestGetPriors(unittest.TestCase):
 
         # Last edge (2->3) not listed → non-graph
         self.assertTrue(torch.allclose(prior[2], prior_non_graph))
+
+        # Test with 3 edge types
+        prior = get_prior_tensor(graph_edges, all_edges, prior_graph, prior_non_graph, 3)
+
+        # Result shape should be [num_edges, edge_types]
+        self.assertEqual(prior.shape, (3, 3))
+
+        # First two edges (0->1 and 1->2) are graph edges
+        self.assertTrue(torch.allclose(prior[0], torch.tensor([prior_graph[0] / 2, prior_graph[0] / 2, prior_graph[1]])))
+        self.assertTrue(torch.allclose(prior[1], torch.tensor([prior_graph[0] / 2, prior_graph[0] / 2, prior_graph[1]])))
+
+        # Last edge (2->3) not listed → non-graph
+        self.assertTrue(torch.allclose(prior[2], torch.tensor([prior_non_graph[0] / 2, prior_non_graph[0] / 2, prior_non_graph[1]])))
 
     def test_vis_prior(self):
         # Define two edges in graph

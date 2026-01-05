@@ -34,7 +34,7 @@ class RAPPOTorchPolicy(PPOTorchPolicy):
 
         # build dynamic prior tensor
         # iterate over batches to build respective prior tensors depending on edges
-        all_graph_edges = train_batch["obs"][EDGE_INDEX] # TODO only zeros
+        all_graph_edges = train_batch["obs"][EDGE_INDEX]
         batched_priors = []
         for batch_index in range(all_graph_edges.shape[0]):
             graph_edges_batch = all_graph_edges[batch_index, :, train_batch["obs"][EDGE_MASK][batch_index]]
@@ -50,7 +50,8 @@ class RAPPOTorchPolicy(PPOTorchPolicy):
                 graph_edges=graph_edges_batch,
                 all_edges=all_edges,
                 prior_for_graph_edges=prior_for_graph_edges,
-                prior_for_non_graph_edges=prior_for_non_graph_edges
+                prior_for_non_graph_edges=prior_for_non_graph_edges,
+                num_edge_types=self.config["model"]["custom_model_config"]["encoder"]["num_edge_types"]
             )
             batched_priors.append(prior_tensor.to(device=self.device, dtype=torch.float32))
 

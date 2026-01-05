@@ -103,7 +103,7 @@ def get_priors(prob_graph_edges_exist: float, num_graph_edges: int, num_non_grap
     return Tensor(p1), Tensor(p2)
 
 
-def prior_from_env(prob_graph_edge_exists: float, env: G2OpGymEnv, temperature: float = 0.2, verbose=True) -> Tensor:
+def prior_from_env(prob_graph_edge_exists: float, env: G2OpGymEnv, temperature: float = 0.2, num_edge_types: int = 2, verbose=True) -> Tensor:
     """
     Create prior distributions given the environment and existence probability for graph edges.
     These priors are used to condition the relation aware agents in their edge type predictions.
@@ -111,6 +111,7 @@ def prior_from_env(prob_graph_edge_exists: float, env: G2OpGymEnv, temperature: 
     :param prob_graph_edge_exists: the probability of latent dependencies on graph edges.
     :param env: The environment
     :param temperature: The amount of predicted edges according to the prior will be (1 + temperature) * num_graph_edges.
+    :param num_edge_types: Number of edge types. Defaults to 2 (edge exists or doesn't exist).
     :param verbose: print extra explanatory or diagnostic information
     :return: prior distributions
     """
@@ -124,20 +125,22 @@ def prior_from_env(prob_graph_edge_exists: float, env: G2OpGymEnv, temperature: 
                     f"Prior for non graph edges: {prior_for_non_graph_edges}")
     powergrid_edge_index = torch.from_numpy(env.reset()[0][EDGE_INDEX])  # [2, E]
     all_edges = fully_connected_edge_index(N)  # [2, E']
-    prior = get_prior_tensor(powergrid_edge_index, all_edges, prior_for_graph_edges, prior_for_non_graph_edges)
+    prior = get_prior_tensor(powergrid_edge_index, all_edges, prior_for_graph_edges, prior_for_non_graph_edges, num_edge_types=num_edge_types)
     return prior
 
 
 def get_prior_tensor(graph_edges: Tensor, all_edges: Tensor, prior_for_graph_edges: Tensor,
-                     prior_for_non_graph_edges: Tensor) -> Tensor:
+                     prior_for_non_graph_edges: Tensor, num_edge_types: int = 2) -> Tensor:
     """
     Given edge indices for graph edges [2, E] and all considered edges [2, E'] return a tensor of shape [E', K] containing
     prior distribution for each considered edge in E'. If the edge exists as part of the graph it receives the distribution
-    `prior_for_graph_edges`. Otherwise, its distribution is set to `prior_for_non_graph_edges`.
+    `prior_for_graph_edges`. Otherwise, its distribution is set to `prior_for_non_graph_edges`. For both cases the graph edge
+    probability is distributed among the first K-1 classes
     @param graph_edges: Edge index for graph edges [2, E]
+    @param num_edge_types: Number of edge types K
     @param all_edges: Edge index for all considered edges [2, E'] (typically fully connected)
-    @param prior_for_graph_edges: prior distribution for graph edges [E, K]
-    @param prior_for_non_graph_edges: prior distribution for non-graph edges [E, K]
+    @param prior_for_graph_edges: prior distribution for graph edges [2,]
+    @param prior_for_non_graph_edges: prior distribution for non-graph edges [2,]
     @return: prior distribution for all considered edges in E'
     """
     assert prior_for_graph_edges.shape == prior_for_non_graph_edges.shape
@@ -149,10 +152,11 @@ def get_prior_tensor(graph_edges: Tensor, all_edges: Tensor, prior_for_graph_edg
         mask = torch.logical_or(torch.all(all_edges == graph_edges[:, e].unsqueeze(0), dim=1), mask)
         mask = torch.logical_or(torch.all(all_edges == reversed_graph_edges[:, e].unsqueeze(0), dim=1), mask)
 
-    num_edge_types = prior_for_graph_edges.shape[0]
     prior = torch.zeros((E, num_edge_types), dtype=torch.float32)
-    prior[mask] = prior_for_graph_edges
-    prior[torch.logical_not(mask)] = prior_for_non_graph_edges
+    prior[mask, :num_edge_types - 1] = prior_for_graph_edges[0] / (num_edge_types - 1)
+    prior[mask, -1] = prior_for_graph_edges[1]
+    prior[torch.logical_not(mask), :num_edge_types - 1] = prior_for_non_graph_edges[0] / (num_edge_types - 1)
+    prior[torch.logical_not(mask), -1] = prior_for_non_graph_edges[1]
     return prior
 
 
