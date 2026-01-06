@@ -1,15 +1,15 @@
 setup:
   max_ep_len: 8064
-  duration: "71:00"  # 71 hours in HH:MM format - leave 1 hour buffer before SLURM kills at 24h
-  nb_timesteps: 100_000  # Shorter training per trial for hyperparameter search
+  duration: "22:00"  # 22 hours
+  nb_timesteps: 100_000
   checkpoint_freq: 5
   verbose: 0
   my_log_level: 1
   storage_path: ./runs
-  folder_name: "RAGNN_Optuna"
-  experiment_name: "ragnn_hyperparameter_optimization"
+  folder_name: "0501_ragnn_hyperparameter_optimization"
+  experiment_name: "0501_ragnn_hyperparameter_optimization"
   optimize: True  # Enable Optuna optimization
-  num_samples: 24  # Number of trials to run
+  num_samples: 16  # Number of trials to run
   score_metric: evaluation/custom_metrics/grid2op_end_mean
   grace_period: 500
 
@@ -56,7 +56,7 @@ training:
         num_layers: 2  # Use optimal value from GNN optimization
         residual: false  # Use optimal value from GNN optimization
       encoder: # RAGNN encoder settings
-        num_edge_types: !uniform [2, 6, 1]  # Number of edge types (2-6)
+        num_edge_types: !choice [2, 3, 4, 5, 6, 1]  # Number of edge types (2-6)
         max_degree: 7
         max_path_distance: 9
   _enable_learner_api: False

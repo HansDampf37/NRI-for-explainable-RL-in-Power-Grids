@@ -1,15 +1,15 @@
 setup:
   max_ep_len: 8064
-  duration: "71:00"  # 71 hours in HH:MM format - leave 1 hour buffer before SLURM kills at 24h
-  nb_timesteps: 100_000  # Shorter training per trial for hyperparameter search
+  duration: "22:00"  # 22 hours
+  nb_timesteps: 100_000
   checkpoint_freq: 2
   verbose: 0
   my_log_level: 1
   storage_path: ./runs
-  folder_name: "GNN_Optuna"
-  experiment_name: "gnn_hyperparameter_optimization"
+  folder_name: "0501_gnn_hyperparameter_optimization"
+  experiment_name: "0501_gnn_hyperparameter_optimization"
   optimize: True  # Enable Optuna optimization
-  num_samples: 24  # Number of trials to run
+  num_samples: 16  # Number of trials to run
   score_metric: evaluation/custom_metrics/grid2op_end_mean
   grace_period: 500
 

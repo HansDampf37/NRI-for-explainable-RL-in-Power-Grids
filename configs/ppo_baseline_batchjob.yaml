@@ -1,13 +1,13 @@
 setup:
   max_ep_len: 8064
-  duration: 02:45 # HH:MM or minutes of training before stopping, overwrites nb_timesteps limit if value > 0
+  duration: 0 # HH:MM or minutes of training before stopping, overwrites nb_timesteps limit if value > 0
   nb_timesteps: 100_000 # 500.000 with opponent
   checkpoint_freq: 10
   verbose: 0
   my_log_level: 1
   storage_path: ./runs
-  folder_name: "christmas_ppo_rllib" # "Case14_Opponent"
-  experiment_name: "christmas_ppo_rllib"
+  folder_name: "0501_compare_gnn_ragnn_mlp"
+  experiment_name: "0501_compare_gnn_ragnn_mlp"
   optimize: False
   num_samples: 32
   score_metric: evaluation/custom_metrics/grid2op_end_mean
