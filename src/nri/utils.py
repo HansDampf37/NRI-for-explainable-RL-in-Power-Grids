@@ -84,21 +84,34 @@ def get_priors(prob_graph_edges_exist: float, num_graph_edges: int, num_non_grap
     @param prob_graph_edges_exist: Probability that a graph edge exists.
     @param num_graph_edges: Number of graph edges.
     @param num_non_graph_edges: Number of non-graph edges.
-    @param temperature: ranges from 0 to 1 and indicates how many non graph edges should be predicted next to graph edges on average.
+    @param temperature: ranges from 0 to num_non_graph_edges / num_graph_edges and indicates how many non graph edges should be predicted next to graph edges on average.
     @return: prior distribution for graph edges, prior distribution for non-graph edges
     """
-    assert temperature >= 0
+
+    assert num_non_graph_edges > 0
+    assert num_graph_edges >= 0
+    assert 0 <= temperature < num_non_graph_edges / (num_graph_edges + 1)
+    assert 0.0 <= prob_graph_edges_exist <= 1.0
+
     num_total_edges = num_graph_edges + num_non_graph_edges
     # Prior for true graph edges
-    p1 = np.array([prob_graph_edges_exist, 1 - prob_graph_edges_exist], dtype=np.float32)
+    p1 = np.array([prob_graph_edges_exist, 1 - prob_graph_edges_exist], dtype=np.float64)
     # Average prior over all edges
     average_existence_prob = (1 + temperature) * num_graph_edges / num_total_edges
-    p_hat = np.array([average_existence_prob, 1 - average_existence_prob], dtype=np.float32)
+    p_hat = np.array([average_existence_prob, 1 - average_existence_prob], dtype=np.float64)
     # Solve for prior for non-graph edges
     p2 = (num_total_edges * p_hat - num_graph_edges * p1) / num_non_graph_edges
 
-    assert np.all(0 <= p1) and np.all(p1 <= 1) and np.isclose(np.sum(p1),1), f"Prior for graph edges is not a probability distribution. {p1}, p_hat: {p_hat}, p2: {p2}, num_graph_edges: {num_graph_edges}, num_non_graph_edges: {num_non_graph_edges}, total: {num_total_edges}"
-    assert np.all(0 <= p2) and np.all(p2 <= 1) and np.isclose(np.sum(p2), 1), f"Prior for non graph edges is not a probability distribution. {p2}, p_hat: {p_hat}, p1: {p1}, num_graph_edges: {num_graph_edges}, num_non_graph_edges: {num_non_graph_edges}, total: {num_total_edges}"
+    p1 = np.clip(p1, 0, 1)
+    p1 = p1 / np.sum(p1)
+    p1 = p1.astype(np.float32)
+    p2 = np.clip(p2, 0, 1)
+    p2 = p2 / np.sum(p2)
+    p2 = p2.astype(np.float32)
+
+    epsilon = 1e-6
+    assert np.all(-epsilon <= p1) and np.all(p1 <= 1 + epsilon) and np.isclose(np.sum(p1), 1.0, rtol=0.0, atol=1e-6), f"Prior for graph edges is not a probability distribution. {p1}, p_hat: {p_hat}, p2: {p2}, num_graph_edges: {num_graph_edges}, num_non_graph_edges: {num_non_graph_edges}, total: {num_total_edges}"
+    assert np.all(-epsilon <= p2) and np.all(p2 <= 1 + epsilon) and np.isclose(np.sum(p2), 1.0, rtol=0.0, atol=1e-6), f"Prior for non graph edges is not a probability distribution. {p2}, p_hat: {p_hat}, p1: {p1}, num_graph_edges: {num_graph_edges}, num_non_graph_edges: {num_non_graph_edges}, total: {num_total_edges}"
 
     return Tensor(p1), Tensor(p2)
 
