@@ -11,9 +11,6 @@ from src.common.observation_space import EDGE_INDEX, EDGE_MASK
 from src.nri.utils import get_priors, fully_connected_edge_index, get_prior_tensor
 from src.ra_agents.RAFeatureExtractor import RLlibRAGNNModel
 from ray.rllib.algorithms.registry import POLICIES
-from src.ra_agents.ppo.rllib.rappo.RAPPO import RAPPOTorchPolicy
-
-POLICIES["rappo_torch_policy"] = RAPPOTorchPolicy
 
 
 class RAPPOTorchPolicy(PPOTorchPolicy):
@@ -95,3 +92,6 @@ class RAPPOTorchPolicy(PPOTorchPolicy):
         })
 
         return stats
+
+
+POLICIES["rappo_torch_policy"] = RAPPOTorchPolicy

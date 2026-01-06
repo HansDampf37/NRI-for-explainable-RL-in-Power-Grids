@@ -31,6 +31,7 @@ class GraphormerNRIEncoder(nn.Module):
         :param max_path_distance: max pairwise distance between two nodes
         """
         super().__init__()
+        assert num_layers >= 2, "GraphormerNRIEncoder needs at least 2 layers"
 
         self.x_dim = x_dim
         self.hidden_dim = hidden_dim

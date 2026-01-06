@@ -66,6 +66,9 @@ training:
         num_edge_types: 2  # Number of edge types (defaults to 2: edge exists or doesn't exist)
         max_degree: 7 # todo change if bigger envs are considered
         max_path_distance: 9 # todo change if bigger envs are considered
+        use_graphormer: True
+        hidden_dim: 64
+        num_layers: 2
   _enable_learner_api: False
 
 rl_module:

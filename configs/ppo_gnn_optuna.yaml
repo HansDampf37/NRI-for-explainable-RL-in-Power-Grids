@@ -42,7 +42,6 @@ training:
         hidden_dim: !choice [32, 64, 128, 256]  # Hidden dimension for GNN layers
         out_dim: !choice [32, 64, 128]  # Output dimension of GNN
         num_layers: !quniform [1, 4, 1]  # Number of GNN layers (1-4)
-        residual: !choice [true, false]  # Whether to use residual connections
   _enable_learner_api: False
 
 rl_module:

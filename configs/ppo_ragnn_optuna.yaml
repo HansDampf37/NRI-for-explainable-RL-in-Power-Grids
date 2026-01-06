@@ -1,7 +1,7 @@
 setup:
   max_ep_len: 8064
   duration: "22:00"  # 22 hours
-  nb_timesteps: 100_000
+  nb_timesteps: 50_000
   checkpoint_freq: 5
   verbose: 0
   my_log_level: 1
@@ -36,13 +36,13 @@ training:
   relation_awareness: # RAGNN-specific settings - OPTIMIZING THESE PARAMETERS
     prior_prob_for_graph_edge: !uniform [0.0, 1.0]  # Prior probability for graph edge
     beta: !uniform [0.5, 2.0]  # Beta parameter for relation awareness
-    temperature: !uniform [0.1, 1.0]  # the amount of additional edges inferred by the encoder
+    temperature: !uniform [0.0, 1.0]  # the amount of additional edges inferred by the encoder
 
   encoder_pretrain: # Encoder pretraining for RAGNN
     enabled: true
     ds_size: 1000
     batch_size: 32
-    num_epochs: 40
+    num_epochs: 30
     learning_rate: 0.005
 
   model:
@@ -54,11 +54,13 @@ training:
         hidden_dim: 64  # Use optimal value from GNN optimization
         out_dim: 64  # Use optimal value from GNN optimization
         num_layers: 2  # Use optimal value from GNN optimization
-        residual: false  # Use optimal value from GNN optimization
       encoder: # RAGNN encoder settings
-        num_edge_types: !choice [2, 3, 4, 5, 6, 1]  # Number of edge types (2-6)
+        num_edge_types: !choice [2, 3, 4]  # Number of edge types (2-6)
         max_degree: 7
         max_path_distance: 9
+        use_graphormer: True
+        hidden_dim: !choice [32, 64, 128, 256]
+        num_layers: !choice [2, 3, 4]
   _enable_learner_api: False
 
 rl_module:

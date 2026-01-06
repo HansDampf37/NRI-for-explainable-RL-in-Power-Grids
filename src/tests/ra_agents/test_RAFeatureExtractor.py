@@ -17,11 +17,13 @@ class TestRAFeatureExtractor(unittest.TestCase):
 
         self.model = RAFeatureExtractor(
             x_dim=self.x_dim,
-            hidden_dim=self.hidden_dim,
+            hidden_dim_enc=self.hidden_dim,
+            hidden_dim_gnn=self.hidden_dim,
             x_out_dim=self.x_out_dim,
             num_edge_types=self.num_edge_types,
-            num_layers=3,
-            dropout_prob=self.dropout_prob
+            num_layers_gnn=3,
+            num_layers_enc=2,
+            dropout_prob=self.dropout_prob,
         )
 
         # Dummy data for testing

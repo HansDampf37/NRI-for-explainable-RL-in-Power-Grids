@@ -1,6 +1,6 @@
 """
-This script contains the relations aware FeatureExtractor (RAFeatureExtractor) and a relations unaware BaselineFeatureExtractor
-with sb3 compatible APIs.
+This script contains the relations aware FeatureExtractor (RAFeatureExtractor) and Wrappers that integrate the normal
+GNN model and RA-GNN model into RLlib's model catalog.
 """
 from pprint import pprint
 from typing import Optional, Tuple, Dict, List
@@ -27,12 +27,12 @@ from .graphormer.GraphormerEncoder import GraphormerNRIEncoder
 
 class RAFeatureExtractor(nn.Module):
     """
-    Combines an NRI encoder with a relation-aware GNN (RA-GNN).
+    Combines an encoder with a relation-aware GNN (RA-GNN).
 
     The encoder predicts edge-type logits for each edge. These logits are used both
     to compute soft edge-type probabilities (for monitoring) and to sample discrete
     edge-type assignments via the Gumbel–Softmax trick. The sampled edge types are
-    then used by the NRIInformedGNN to perform conditioned message passing.
+    then used by the RAGNN to perform conditioned message passing.
 
     Pipeline:
         1. Encode graph structure to edge-type logits.
@@ -40,39 +40,59 @@ class RAFeatureExtractor(nn.Module):
         3. Sample edge-type assignments using Gumbel–Softmax.
         4. Pass node features and sampled edges into the GNN.
 
-    Args:
     :param x_dim (int): Input node feature dimension.
     :param hidden_dim (int): Hidden dimension shared by encoder and GNN.
-    :param x_out_dim (int): Output node feature dimension.
     :param num_edge_types (int): Number of edge types (K).
+    :param num_gnn_layers (int): Number of layers in both encoder and GNN.
+    :param x_out_dim (int): Output node feature dimension.
     :param dropout_prob (float): Dropout probability used in both encoder and GNN.
+    :param use_graphormer (bool): Whether to use Graphormer-based encoder. If False, uses NRI-based encoder.
+    :param max_degree (Optional[int]): Maximum node degree for Graphormer encoder.
+    :param max_path_distance (Optional[int]): Maximum path distance for Graphormer encoder.
     """
 
     def __init__(
         self,
         x_dim: int,
-        hidden_dim: int,
-        x_out_dim: int,
-        num_layers: int,
+        hidden_dim_enc: int,
+        num_layers_enc: int,
         num_edge_types: int,
+        hidden_dim_gnn: int,
+        num_layers_gnn: int,
+        x_out_dim: int,
         dropout_prob: float,
+        residual: bool = False,
+        use_graphormer: bool = False,
+        max_degree: Optional[int] = None,
+        max_path_distance: Optional[int] = None,
     ):
         super().__init__()
-        self.encoder: Encoder = Encoder(
-            x_dim=x_dim,
-            hidden_dim=hidden_dim,
-            num_edge_types=num_edge_types,
-            dropout_prob=dropout_prob,
-        )
+        if use_graphormer:
+            assert max_degree is not None and max_path_distance is not None
+            self.encoder = GraphormerNRIEncoder(
+                x_dim=x_dim,
+                hidden_dim=hidden_dim_enc,
+                num_edge_types=num_edge_types,
+                num_layers=num_layers_enc,
+                max_degree=max_degree,
+                max_path_distance=max_path_distance,
+            )
+        else:
+            self.encoder: Encoder = Encoder(
+                x_dim=x_dim,
+                hidden_dim=hidden_dim_enc,
+                num_edge_types=num_edge_types,
+                dropout_prob=dropout_prob,
+            )
         self.gumbel_softmax = GumbelSoftmax()
         self.gnn: RAGNN = RAGNN(
             x_dim=x_dim,
-            hidden_dim=hidden_dim,
+            hidden_dim=hidden_dim_gnn,
             x_out_dim=x_out_dim,
-            num_layers=num_layers,
+            num_layers=num_layers_gnn,
             num_edge_types=num_edge_types,
             dropout_prob=dropout_prob,
-            residual=True,
+            residual=residual,
             skip_last=True,
         )
         self.x_out_dim = x_out_dim
@@ -112,30 +132,6 @@ class RAFeatureExtractor(nn.Module):
         return predictions, batched_p_z_given_x
 
 
-class RAGraphormerFeatureExtractor(RAFeatureExtractor):
-    def __init__(
-            self,
-            x_dim: int,
-            hidden_dim: int,
-            x_out_dim: int,
-            num_layers: int,
-            num_edge_types: int,
-            dropout_prob: float,
-            max_degree: int,
-            max_path_distance: int,
-    ):
-        super().__init__(x_dim=x_dim, hidden_dim=hidden_dim, x_out_dim=x_out_dim, num_layers=num_layers,
-                         num_edge_types=num_edge_types, dropout_prob=dropout_prob)
-        self.encoder = GraphormerNRIEncoder(
-            x_dim=x_dim,
-            hidden_dim=hidden_dim,
-            num_edge_types=num_edge_types,
-            num_layers=num_layers,
-            max_degree=max_degree,
-            max_path_distance=max_path_distance
-        )
-
-
 class RAFeatureExtractorSB3(BaseFeaturesExtractor):
     """
     Wraps the RAFeatureExtractor to be compatible with the sb3 API.
@@ -154,27 +150,19 @@ class RAFeatureExtractorSB3(BaseFeaturesExtractor):
             max_path_distance: Optional[int] = None,
     ):
         BaseFeaturesExtractor.__init__(self, observation_space, features_dim=out_dim)
-        if use_graphormer:
-            assert max_degree is not None and max_path_distance is not None
-            self.gnn_feature_extractor = RAGraphormerFeatureExtractor(
-                x_dim=observation_space.x_dim,
-                hidden_dim=hidden_dim,
-                x_out_dim=out_dim,
-                num_layers=num_layers,
-                num_edge_types=num_edge_types,
-                dropout_prob=dropout_prob,
-                max_degree=max_degree,
-                max_path_distance=max_path_distance
-            )
-        else:
-            self.gnn_feature_extractor = RAFeatureExtractor(
-                x_dim=observation_space.x_dim,
-                hidden_dim=hidden_dim,
-                x_out_dim=out_dim,
-                num_layers=num_layers,
-                num_edge_types=num_edge_types,
-                dropout_prob=dropout_prob,
-            )
+        self.gnn_feature_extractor = RAFeatureExtractor(
+            x_dim=observation_space.x_dim,
+            hidden_dim_gnn=hidden_dim,
+            hidden_dim_enc=hidden_dim,
+            x_out_dim=out_dim,
+            num_layers_gnn=num_layers,
+            num_layers_enc=num_layers,
+            num_edge_types=num_edge_types,
+            dropout_prob=dropout_prob,
+            max_degree=max_degree,
+            max_path_distance=max_path_distance,
+            use_graphormer=use_graphormer,
+        )
 
     def forward(self, observations: dict[str, torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor]:
         node_features_batch = observations[NODES]  # [B, N, node_in_dim]
@@ -329,15 +317,19 @@ class RLlibRAGNNModel(TorchModelV2, nn.Module):
         print("Instantiate RAGNN Model")
         pprint(model_config)
         pprint(kwargs)
-        self.ragnn: RAFeatureExtractor = RAGraphormerFeatureExtractor(
+        self.ragnn: RAFeatureExtractor = RAFeatureExtractor(
             x_dim=obs_space.x_dim,
-            hidden_dim=model_config['custom_model_config']['gnn']['hidden_dim'],
-            x_out_dim=model_config['custom_model_config']['gnn']['out_dim'],
-            num_layers=model_config['custom_model_config']['gnn']['num_layers'],
-            dropout_prob=model_config['custom_model_config']['gnn'].get('dropout_prob', 0.0),
+            use_graphormer=model_config['custom_model_config']['encoder'].get('use_graphormer', False),
+            hidden_dim_enc=model_config['custom_model_config']['encoder']['hidden_dim'],
+            num_layers_enc=model_config['custom_model_config']['encoder']['num_layers'],
             num_edge_types=model_config['custom_model_config']['encoder'].get('num_edge_types', 2),
-            max_degree=model_config['custom_model_config']['encoder']['max_degree'],
-            max_path_distance=model_config['custom_model_config']['encoder']['max_path_distance'],
+            max_degree=model_config['custom_model_config']['encoder'].get('max_degree', None),
+            max_path_distance=model_config['custom_model_config']['encoder'].get('max_path_distance', None),
+            hidden_dim_gnn=model_config['custom_model_config']['gnn']['hidden_dim'],
+            x_out_dim=model_config['custom_model_config']['gnn']['out_dim'],
+            num_layers_gnn=model_config['custom_model_config']['gnn']['num_layers'],
+            dropout_prob=model_config['custom_model_config']['gnn'].get('dropout_prob', 0.0),
+            residual=model_config['custom_model_config']['gnn'].get('residual', True),
         )
         # Build downstream MLP head(s)
         # Create a Box space for the GNN output to pass to FCN
