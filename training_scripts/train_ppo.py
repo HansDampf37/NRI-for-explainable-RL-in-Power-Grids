@@ -10,10 +10,8 @@ from typing import Any, Dict, Tuple
 import grid2op
 from ray.rllib.algorithms import ppo  # import the type of agents
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.policy import PolicySpec
 
-from src.ra_agents.RAFeatureExtractor import RLlibGNNModel, RLlibRAGNNModel
 from src.ra_agents.ppo.rllib.rappo.RAPPO import RAPPOTorchPolicy
 from src.rl4pnc.experiments.utils import run_training
 from src.rl4pnc.experiments.yaml import load_config
@@ -24,9 +22,6 @@ from src.rl4pnc.multi_agent.policy import (
 )
 
 REPORT_END = False
-ModelCatalog.register_custom_model("gnn_model", RLlibGNNModel)
-ModelCatalog.register_custom_model("ragnn_model", RLlibRAGNNModel)
-ModelCatalog.register_custom_model("rappo", RAPPOTorchPolicy)
 
 
 def setup_config(workdir_path: str, input_path: str, seed: int = None, opponent=False, model_type: str="MLP", experiment_name: str="") -> Tuple[Dict[str, Any], Dict[str, Any]]:

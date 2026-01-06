@@ -9,6 +9,7 @@ import numpy as np
 import torch
 import torch.nn.functional as f
 from gymnasium.spaces import Discrete, Box
+from ray.rllib.models import ModelCatalog
 from ray.rllib.models.torch.fcnet import FullyConnectedNetwork
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.utils.typing import TensorType, ModelConfigDict
@@ -397,3 +398,7 @@ class RLlibRAGNNModel(TorchModelV2, nn.Module):
     def value_function(self) -> Tensor:
         # RLlib expects shape [B]
         return self.mlp.value_function()
+
+
+ModelCatalog.register_custom_model("gnn_model", RLlibGNNModel)
+ModelCatalog.register_custom_model("ragnn_model", RLlibRAGNNModel)
