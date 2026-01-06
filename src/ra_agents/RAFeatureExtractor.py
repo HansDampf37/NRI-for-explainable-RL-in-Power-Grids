@@ -2,6 +2,7 @@
 This script contains the relations aware FeatureExtractor (RAFeatureExtractor) and a relations unaware BaselineFeatureExtractor
 with sb3 compatible APIs.
 """
+from pprint import pprint
 from typing import Optional, Tuple, Dict, List
 
 import numpy as np
@@ -250,10 +251,13 @@ class RLlibGNNModel(TorchModelV2, nn.Module):
                  action_space: Discrete,
                  num_outputs: int,
                  model_config: ModelConfigDict,
-                 name: str):
+                 name: str,
+                 **kwargs):
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs, model_config, name)
         nn.Module.__init__(self)
         print("Instantiate GNN Model")
+        pprint(model_config)
+        pprint(kwargs)
         self.gnn: BaselineGNN = BaselineGNN(
             x_dim=obs_space.x_dim,
             hidden_dim=model_config['custom_model_config']['gnn']['hidden_dim'],
@@ -317,10 +321,13 @@ class RLlibRAGNNModel(TorchModelV2, nn.Module):
                  action_space: Discrete,
                  num_outputs: int,
                  model_config: ModelConfigDict,
-                 name: str):
+                 name: str,
+                 **kwargs):
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs, model_config, name)
         nn.Module.__init__(self)
         print("Instantiate RAGNN Model")
+        pprint(model_config)
+        pprint(kwargs)
         self.ragnn: RAFeatureExtractor = RAGraphormerFeatureExtractor(
             x_dim=obs_space.x_dim,
             hidden_dim=model_config['custom_model_config']['gnn']['hidden_dim'],

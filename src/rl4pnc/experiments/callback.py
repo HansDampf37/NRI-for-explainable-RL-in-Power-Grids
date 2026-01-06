@@ -267,7 +267,8 @@ class EncoderPretrainCallback(DefaultCallbacks):
             prob_graph_edge_exists=ra_config.get("prior_for_graph_edges_existing", 0.9),
             env=env,
             temperature=ra_config.get("temperature", 0.2),
-            verbose=True
+            verbose=True,
+            num_edge_types=algorithm.config["model"]["custom_model_config"]["encoder"]["num_edge_types"]
         )
 
         # Create datasets

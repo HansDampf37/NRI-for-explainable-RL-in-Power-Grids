@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Set experiment name and export variable for SLURM
-experiment_name="ragnn_optuna"
+experiment_name="0501_ragnn_hyperparameter_optimization"
 export experiment_name
 cd ..
 
@@ -30,6 +30,6 @@ PYTHONPATH=$(pwd) python training_scripts/train_ppo.py \
     --file_path configs/ppo_ragnn_optuna.yaml \
     --workdir $(pwd) \
     --model-type RAGNN \
-    --job_id ${SLURM_JOB_ID} \
+    --job_id \${SLURM_JOB_ID} \
     --experiment-name ${experiment_name}
 EOF

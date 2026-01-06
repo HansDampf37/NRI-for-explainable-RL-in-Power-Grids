@@ -1,4 +1,4 @@
-experiment_name=new_years_ppo_rllib
+experiment_name=0501_compare_gnn_ragnn_mlp
 export experiment_name
 cd ..
 
@@ -14,7 +14,7 @@ sbatch << EOF
 #SBATCH --ntasks=1                                                            # Number of tasks
 #SBATCH --cpus-per-task=111                                                    # Number of CPU cores per task
 #SBATCH --time=08:00:00                                                       # Max wall time (HH:MM:SS)
-#SBATCH --mem=100G                                                            # Memory requirement
+#SBATCH --mem=200G                                                            # Memory requirement
 #SBATCH --partition=cpu,cpu_il                          # Specify the GPU partition gpu_mi300
 
 module load devel/miniforge

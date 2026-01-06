@@ -1,12 +1,7 @@
 #!/bin/bash
 
-# This script runs an Optuna hyperparameter optimization for GNN models.
-# After completion, it will:
-#   1. Display a summary table of all trials and their metrics in the terminal
-#   2. Save detailed results as CSV to: results/optuna_results/gnn_hyperparameter_optimization_<timestamp>.csv
-
 # Set experiment name and export variable for SLURM
-experiment_name="gnn_optuna"
+experiment_name="0501_gnn_hyperparameter_optimization"
 export experiment_name
 cd ..
 
@@ -35,6 +30,6 @@ PYTHONPATH=$(pwd) python training_scripts/train_ppo.py \
     --file_path configs/ppo_gnn_optuna.yaml \
     --workdir $(pwd) \
     --model-type GNN \
-    --job_id ${SLURM_JOB_ID} \
+    --job_id \${SLURM_JOB_ID} \
     --experiment-name ${experiment_name}
 EOF
