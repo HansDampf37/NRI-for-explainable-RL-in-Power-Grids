@@ -2,7 +2,6 @@
 Utilities in the grid2op experiments.
 """
 
-import json
 import logging
 import os
 from datetime import datetime
@@ -10,11 +9,9 @@ from time import time
 from typing import Any, Dict, List, OrderedDict, Union
 
 import numpy as np
-import pandas as pd
 import ray
 from grid2op.Environment import BaseEnv
 from ray import air, tune
-from ray.air.integrations.wandb import WandbLoggerCallback
 from ray.tune.experiment import Trial
 from ray.tune.result_grid import ResultGrid
 from ray.tune.stopper.stopper import Stopper
@@ -311,7 +308,7 @@ def trial_dir_name(trial: Trial):
     return "{}_{}".format(trial.custom_trial_name, datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
 
 
-def run_training(config: dict[str, Any], setup: dict[str, Any], job_id: str) -> ResultGrid:
+def run_training(custom_model_config: dict[str, Any], setup: dict[str, Any], job_id: str) -> ResultGrid:
     """
     Function that runs the training script.
     """
@@ -352,19 +349,10 @@ def run_training(config: dict[str, Any], setup: dict[str, Any], job_id: str) -> 
             algo.restore_from_dir(setup['result_dir'])
             for key in algo._space.keys():
                 if '/' in key:
-                    delete_nested_key(config, key)
+                    delete_nested_key(custom_model_config, key)
                 else:
-                    del config[key]
-        # # Scheduler determines if we should prematurely stop a certain experiment - NOTE: DOES NOT WORK AS EXPECTED!!!
-        # scheduler = MedianStoppingRule(
-        #     time_attr="timesteps_total", #Default = "time_total_s"
-        #     metric=setup["score_metric"],
-        #     mode="max",
-        #     grace_period=setup["grace_period"], # First exploration before stopping
-        #     min_samples_required=5, # Default = 3
-        #     min_time_slice=10_000,
-        #     hard_stop=False,
-        # )
+                    del custom_model_config[key]
+
     dur = get_duration(setup)
 
     # Get time budget for entire optimization (different from per-trial duration)
@@ -383,18 +371,16 @@ def run_training(config: dict[str, Any], setup: dict[str, Any], job_id: str) -> 
     # Create tuner
     tuner = tune.Tuner(
         trainable=CustomPPO,
-        param_space=config,
+        param_space=custom_model_config,
         run_config=air.RunConfig(
             name=setup["experiment_name"],
             storage_path=storage_path,
             stop={"timesteps_total": setup["nb_timesteps"]},  # Stop condition for individual trials
-            # MaxCustomMetricStopper("total_agent_interact", setup["nb_timesteps"]), #
-            # "custom_metrics/grid2op_end_mean": setup["max_ep_len"]},
             callbacks=[
                 TuneCallback(
                     setup["my_log_level"],
                     "evaluation/custom_metrics/grid2op_end_mean",
-                    eval_freq=config["evaluation_interval"],
+                    eval_freq=custom_model_config["evaluation_interval"],
                     heartbeat_freq=60,
                 ),
             ],
@@ -412,7 +398,6 @@ def run_training(config: dict[str, Any], setup: dict[str, Any], job_id: str) -> 
             search_alg=algo,
             num_samples=setup["num_samples"],
             time_budget_s=time_budget,  # Time budget for entire optimization
-            # scheduler=scheduler,
         ) if setup["optimize"] else
         tune.TuneConfig(
             trial_name_creator=lambda t: trial_str_creator(t, job_id),
@@ -427,53 +412,25 @@ def run_training(config: dict[str, Any], setup: dict[str, Any], job_id: str) -> 
         # Close ray instance
         ray.shutdown()
 
-    for i in range(len(result_grid)):
-        result = result_grid[i]
-        if not result.error:
-            # Print and save available checkpoints
-            checkpoints_tojson = {
-                os.path.basename(checkpoint.path): metrics['evaluation']['custom_metrics'] for
-                checkpoint, metrics in result.best_checkpoints
-            }
-            with open(os.path.join(result.path, "checkpoint_results.json"), "w") as outfile:
-                json.dump(checkpoints_tojson, outfile)
-
-            print(Style.BOLD + f" *---- Trial {i} finished successfully with evaluation results ---*\n" + Style.END +
-                  tabulate(
-                      [[k] + list(v.values()) for k, v in checkpoints_tojson.items()],
-                      headers=['checkpoint'] + list(result.metrics['evaluation']['custom_metrics'].keys()),
-                      tablefmt='rounded_grid')
-                  )
-
-            # print("ALL RESULT METRICS: ", result.metrics)
-            # print("ENV CONFIG: ", result.configs['env_config'])
-            # print("RESULT CONFIG: ", result.configs['env_config'])
-            # Print table with environment configs.
-            if REPORT_END:
-                print(f"--- Environment Configuration  ---- \n"
-                      f"{tabulate([result.config['env_config']], headers='keys', tablefmt='rounded_grid')}")
-                # print other params:
-                params_ppo = ['gamma', 'lr', 'exploration_config', 'vf_loss_coeff', 'entropy_coeff', 'clip_param',
-                              'lambda', 'vf_clip_param', 'num_sgd_iter', 'sgd_minibatch_size', 'train_batch_size']
-                values = [result.config[par] for par in params_ppo]
-                print(f"--- PPO Configuration  ---- \n"
-                      f"{tabulate([values], headers=params_ppo, tablefmt='rounded_grid')}")
-                params_model = ['fcnet_hiddens', 'fcnet_activation', 'post_fcnet_hiddens', 'post_fcnet_activation']
-                values = [result.config['model'][par] for par in params_model]
-                print(f"--- Model Configuration  ---- \n"
-                      f"{tabulate([values], headers=params_model, tablefmt='rounded_grid')}")
-        else:
-            print(f"Trial failed with error {result.error}.")
-
     # If Optuna optimization was enabled, save results summary
     if setup.get("optimize", False):
-        optuna_path = os.path.join(storage_path, setup['experiment_name'], "optuna_results")
-        save_optuna_results_summary(result_grid, setup, optuna_path)
+        best_result = result_grid.get_best_result(metric=setup["score_metric"], mode="max")
+        custom_model_config = best_result.config["model"]["custom_model_config"]
+        rows = [
+            [f"{module}.{param}", value]
+            for module, params in custom_model_config.items()
+            for param, value in params.items()
+        ]
+        table = tabulate(rows, headers=["Parameter", "Value"], tablefmt="rounded_grid", floatfmt=".3f", )
+        print(f"\n{Style.BOLD}{'='*80}{Style.END}")
+        print(f"{Style.BOLD}Best hyperparameters found:{Style.END}")
+        print(table)
 
         # Save the Optuna study to a SQLite database for dashboard access
         if algo is not None:
             try:
-                db_path = algo.save_study(optuna_path, setup['experiment_name'])
+                optuna_path = os.path.join(storage_path, setup['experiment_name'], f"optuna_results_{job_id}")
+                db_path = algo.save_study(optuna_path, f"{setup['experiment_name']}_{job_id}")
                 print(f"\n{Style.BOLD}{'='*80}{Style.END}")
                 print(f"{Style.BOLD}Optuna study saved to: {db_path}{Style.END}")
                 print(f"{Style.BOLD}To view in Optuna Dashboard, run:{Style.END}")
@@ -483,116 +440,3 @@ def run_training(config: dict[str, Any], setup: dict[str, Any], job_id: str) -> 
                 print(f"Warning: Failed to save Optuna study: {e}")
 
     return result_grid
-
-
-def save_optuna_results_summary(result_grid: ResultGrid, setup: dict[str, Any], save_directory: str) -> None:
-    """
-    Save Optuna optimization results to CSV and display summary in terminal.
-
-    Args:
-        result_grid: The ResultGrid from Ray Tune containing all trial results
-        setup: Setup configuration dictionary
-        save_directory: Directory for saving results
-    """
-    # Prepare data for CSV
-    results_data = []
-
-    for i, result in enumerate(result_grid):
-        trial_data = {
-            'trial_id': i,
-            'trial_name': result.path.split('/')[-1] if hasattr(result, 'path') else f"trial_{i}",
-            'status': 'SUCCESS' if not result.error else 'FAILED',
-        }
-
-        if not result.error and result.metrics:
-            # Extract hyperparameters that were optimized
-            if 'model' in result.config and 'custom_model_config' in result.config['model']:
-                gnn_config = result.config['model']['custom_model_config'].get('gnn', {})
-                trial_data['hidden_dim'] = gnn_config.get('hidden_dim', 'N/A')
-                trial_data['out_dim'] = gnn_config.get('out_dim', 'N/A')
-                trial_data['num_layers'] = gnn_config.get('num_layers', 'N/A')
-                trial_data['residual'] = gnn_config.get('residual', 'N/A')
-
-            # Extract key metrics
-            if 'evaluation' in result.metrics and 'custom_metrics' in result.metrics['evaluation']:
-                custom_metrics = result.metrics['evaluation']['custom_metrics']
-                trial_data['grid2op_end_mean'] = custom_metrics.get('grid2op_end_mean', 'N/A')
-                trial_data['corrected_ep_len_mean'] = custom_metrics.get('corrected_ep_len_mean', 'N/A')
-                trial_data['episode_reward_mean'] = custom_metrics.get('episode_reward_mean', 'N/A')
-
-            # Extract training metrics
-            trial_data['timesteps_total'] = result.metrics.get('timesteps_total', 'N/A')
-            trial_data['training_iteration'] = result.metrics.get('training_iteration', 'N/A')
-
-        else:
-            trial_data['error'] = str(result.error) if result.error else 'Unknown'
-
-        results_data.append(trial_data)
-
-    # Create DataFrame
-    df = pd.DataFrame(results_data)
-
-    # Save to CSV
-    os.makedirs(save_directory, exist_ok=True)
-
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    csv_filename = f"{setup['experiment_name']}_{timestamp}.csv"
-    csv_path = os.path.join(save_directory, csv_filename)
-
-    df.to_csv(csv_path, index=False)
-    print(f"\n{Style.BOLD}{'='*80}{Style.END}")
-    print(f"{Style.BOLD}Optuna results saved to: {csv_path}{Style.END}")
-    print(f"{Style.BOLD}{'='*80}{Style.END}\n")
-
-    # Display summary in terminal
-    print(f"\n{Style.BOLD}=== OPTUNA OPTIMIZATION SUMMARY ==={Style.END}\n")
-    print(f"Total trials: {len(results_data)}")
-    successful_trials = sum(1 for r in results_data if r['status'] == 'SUCCESS')
-    print(f"Successful trials: {successful_trials}")
-    print(f"Failed trials: {len(results_data) - successful_trials}\n")
-
-    # Display top 5 trials by target metric
-    if successful_trials > 0:
-        metric_col = setup.get("score_metric", "grid2op_end_mean").split('/')[-1]  # Get last part of metric path
-
-        # Only display if the metric column exists
-        if metric_col in df.columns:
-            # Convert to numeric, handling 'N/A' values
-            df[metric_col] = pd.to_numeric(df[metric_col], errors='coerce')
-            top_trials = df[df['status'] == 'SUCCESS'].nlargest(5, metric_col)
-
-            print(f"{Style.BOLD}Top 5 Trials (by {metric_col}):{Style.END}")
-            print(tabulate(top_trials, headers='keys', tablefmt='rounded_grid', showindex=False))
-            print()
-
-        # Display all trials summary
-        print(f"\n{Style.BOLD}All Trials Summary:{Style.END}")
-        display_cols = [col for col in df.columns if col not in ['error', 'trial_name']]
-        print(tabulate(df[display_cols], headers='keys', tablefmt='rounded_grid', showindex=False))
-        print()
-
-        # Display best hyperparameters
-        if metric_col in df.columns:
-            metric_series = df[metric_col]
-            has_valid_data = bool(not metric_series.isna().all())
-            if has_valid_data:
-                best_idx = df[df['status'] == 'SUCCESS'][metric_col].idxmax()
-                best_trial = df.loc[best_idx]
-
-                print(f"\n{Style.BOLD}Best Trial (Trial {int(best_trial['trial_id'])}):{Style.END}")
-                print(f"  {metric_col}: {best_trial[metric_col]}")
-                try:
-                    if pd.notna(best_trial.get('hidden_dim')):
-                        print(f"  Hyperparameters:")
-                        print(f"    - hidden_dim: {best_trial['hidden_dim']}")
-                        print(f"    - out_dim: {best_trial['out_dim']}")
-                        print(f"    - num_layers: {best_trial['num_layers']}")
-                        print(f"    - residual: {best_trial['residual']}")
-                except (KeyError, AttributeError):
-                    pass
-                print()
-
-    print(f"{Style.BOLD}{'='*80}{Style.END}")
-    print(f"{Style.BOLD}Full results available at: {csv_path}{Style.END}")
-    print(f"{Style.BOLD}{'='*80}{Style.END}\n")
-

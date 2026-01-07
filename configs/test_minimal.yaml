@@ -120,8 +120,8 @@ reporting:
   keep_per_episode_custom_metrics: True
 
 resources:
-  num_learner_workers: 1  # No additional learner workers
+  num_learner_workers: 1
 
 rollouts:
-  num_rollout_workers: 10  # No parallel rollout workers
+  num_rollout_workers: 1
 
