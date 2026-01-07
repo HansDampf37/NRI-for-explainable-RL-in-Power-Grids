@@ -21,8 +21,6 @@ from src.rl4pnc.multi_agent.policy import (
     SelectAgentPolicy,
 )
 
-REPORT_END = False
-
 
 def setup_config(workdir_path: str, input_path: str, seed: int = None, opponent=False, model_type: str="MLP", experiment_name: str="") -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """
@@ -55,8 +53,9 @@ def setup_config(workdir_path: str, input_path: str, seed: int = None, opponent=
         custom_config["environment"]["env_config"]["observation_space"] = "BoxGymObsSpace"
 
     for key in custom_config.keys():
-        if key != "setup":
+        if key != "setup" and  key != "optimization":
             ppo_config.update(custom_config[key])
+
     if opponent:
         print("Train with opponent.")
         opponent_path = os.path.join(workdir_path, f"configs/{ppo_config['env_config']['env_name'].replace('_train', '')}/opponent.yaml")
@@ -65,6 +64,7 @@ def setup_config(workdir_path: str, input_path: str, seed: int = None, opponent=
         # Get kwargs for no opponent
         print("Train without opponent.")
         opponent_kwargs = grid2op.Opponent.get_kwargs_no_opponent()
+
     ppo_config["env_config"]["grid2op_kwargs"].update(opponent_kwargs)
     ppo_config["evaluation_config"]["env_config"]["grid2op_kwargs"].update(opponent_kwargs)
     # Set eval duration equal to N available validation episodes
@@ -75,7 +75,7 @@ def setup_config(workdir_path: str, input_path: str, seed: int = None, opponent=
             "chronics")
         ))
     change_workdir(workdir_path, ppo_config["env_config"]["env_name"])
-    # ppo_config["env_config"]["lib_dir"] = os.path.join(workdir_path, ppo_config["env_config"]["lib_dir"])
+
     if model_type == "GNN":
         policy_class = None
         model_name = "gnn_model"
@@ -96,9 +96,7 @@ def setup_config(workdir_path: str, input_path: str, seed: int = None, opponent=
                 .training(
                     model={
                         "custom_model_config": {
-                            "rho_threshold": custom_config["environment"]["env_config"][
-                                "rho_threshold"
-                            ]
+                            "rho_threshold": custom_config["environment"]["env_config"]["rho_threshold"]
                         }
                     },
                 )
@@ -120,10 +118,6 @@ def setup_config(workdir_path: str, input_path: str, seed: int = None, opponent=
     ppo_config.update({"env": CustomizedGrid2OpEnvironment})
     ppo_config.update({"trial_info": "trial_id"})
     ppo_config.update({"my_log_level": custom_config["setup"]["my_log_level"]})
-
-    # Pass encoder_pretrain config for RAGNN models
-    if model_type == "RAGNN" and "encoder_pretrain" in custom_config["training"]:
-        ppo_config["encoder_pretrain"] = custom_config["training"]["encoder_pretrain"]
 
     return ppo_config, custom_config
 

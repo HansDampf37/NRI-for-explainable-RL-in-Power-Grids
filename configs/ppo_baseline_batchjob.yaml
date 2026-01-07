@@ -1,31 +1,29 @@
 setup:
   max_ep_len: 8064
-  duration: 0 # HH:MM or minutes of training before stopping, overwrites nb_timesteps limit if value > 0
+  duration: ~ # HH:MM or minutes of training before stopping, overwrites nb_timesteps limit if value > 0
   nb_timesteps: 100_000 # 500.000 with opponent
   checkpoint_freq: 10
   verbose: 0
   my_log_level: 1
-  storage_path: ./runs
-  folder_name: "0501_compare_gnn_ragnn_mlp"
-  experiment_name: "0501_compare_gnn_ragnn_mlp"
-  optimize: False
-  num_samples: 32
-  score_metric: evaluation/custom_metrics/grid2op_end_mean
-#  grace_period: 10_000 # First 10_000 steps of training before stopping - CURRENTLY NOT USED!
-#  result_dir: "/home/evandersar/ray_results/Case14_FiFo"
-#  points_to_evaluate:
-#    gamma: 0.985
-#    lr: 0.001
-#    num_sgd_iter: 4
-#    sgd_minibatch_size: 64
-#    train_batch_size: 256
-#    model/fcnet_hiddens: [128,128,128]
-#    model/fcnet_activation: relu
-#    post_fcnet_hiddens: []
-
+  folder_name: 0501_compare_gnn_ragnn_mlp
+  experiment_name: 0501_compare_gnn_ragnn_mlp
+  optimization:
+    enable: False
+    score_metric: ~
+    mode: ~
+    n_trials: ~
+    points_to_evaluate: ~
+    load_from: ~  # load previous optimization results from this dir
 
 debugging:
   seed: &seed 14
+
+encoder_pretrain: # this section is only used if model_type == "RAGNN" and callbacks include EncoderPretrainCallback
+  enabled: true  # Set to true to enable encoder pretraining
+  ds_size: 1000
+  batch_size: 32
+  num_epochs: 40
+  learning_rate: 0.005
 
 training:
   checkpoint_trainable_policies_only: True
@@ -46,12 +44,6 @@ training:
     prior_prob_for_graph_edge: 0.9
     beta: 1.0
     temperature: 0.2
-  encoder_pretrain: # this section is only used if model_type == "RAGNN" and callbacks include EncoderPretrainCallback
-    enabled: true  # Set to true to enable encoder pretraining
-    ds_size: 1000
-    batch_size: 32
-    num_epochs: 40
-    learning_rate: 0.005
   model:
 #    custom_model : linfcn
     fcnet_hiddens: [256,256,256] # !choice [(128,128,128), (256,256,256), (256, 128, 256)]  # [128,128,128] #
@@ -118,7 +110,6 @@ environment:
 
 evaluation:
   evaluation_interval: 5
-  evaluation_duration: 50 # as many as there are validation episodes -> len(os.listdir("/Users/ericavandersar/data_grid2op/rte_case14_realistic_val/chronics"))
   evaluation_duration_unit: episodes
   always_attach_evaluation_results: True
   evaluation_sample_timeout_s: 720

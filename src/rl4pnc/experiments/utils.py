@@ -4,6 +4,7 @@ Utilities in the grid2op experiments.
 
 import logging
 import os
+import traceback
 from datetime import datetime
 from time import time
 from typing import Any, Dict, List, OrderedDict, Union
@@ -12,16 +13,24 @@ import numpy as np
 import ray
 from grid2op.Environment import BaseEnv
 from ray import air, tune
+from ray.rllib.algorithms.registry import POLICIES
+from ray.rllib.models import ModelCatalog
 from ray.tune.experiment import Trial
 from ray.tune.result_grid import ResultGrid
+from ray.tune.schedulers import ASHAScheduler
 from ray.tune.stopper.stopper import Stopper
 from tabulate import tabulate
 
+from src.ra_agents.RAFeatureExtractor import RLlibGNNModel, RLlibRAGNNModel
+from src.ra_agents.ppo.rllib.rappo.RAPPO import RAPPOTorchPolicy
 from src.rl4pnc.algorithms.custom_ppo import CustomPPO
 from src.rl4pnc.algorithms.optuna_search import MyOptunaSearch
 from src.rl4pnc.experiments.callback import Style, TuneCallback
 
-REPORT_END = True
+# register custom components
+POLICIES["rappo_torch_policy"] = RAPPOTorchPolicy
+ModelCatalog.register_custom_model("gnn_model", RLlibGNNModel)
+ModelCatalog.register_custom_model("ragnn_model", RLlibRAGNNModel)
 
 
 def calculate_action_space_asymmetry(env: BaseEnv, add_dn: bool = False) -> tuple[int, int, dict[int, int]]:
@@ -278,17 +287,17 @@ class TimeStopper(Stopper):
 
 
 def get_duration(setup):
-    deadline = setup.get("duration", 0)
-    # convert deadline to seconds
-    if deadline == 0:
+    duration = setup.get("duration", None)
+    # convert duration to seconds
+    if duration is None or duration == 0:
         print(f"Run until {setup['nb_timesteps']} agent time steps.")
-        return deadline
-    if isinstance(deadline, str):
-        deadline = int(deadline.split(":")[0]) * 3600 + int(deadline.split(":")[1]) * 60
+        return duration
+    if isinstance(duration, str):
+        duration = int(duration.split(":")[0]) * 3600 + int(duration.split(":")[1]) * 60
     else:
-        deadline = deadline * 60  # Stop all trials after deadline minutes
-    print("Run training for ", deadline, " seconds.")
-    return deadline
+        duration = duration * 60  # Stop all trials after duration minutes
+    print("Run training for ", duration, " seconds.")
+    return duration
 
 
 def trial_str_creator(trial: Trial, job_id=""):
@@ -308,45 +317,37 @@ def trial_dir_name(trial: Trial):
     return "{}_{}".format(trial.custom_trial_name, datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
 
 
+def print_details(custom_model_config: Dict[str, Any], setup: Dict[str, Any]):
+    print("Using reward function: ", custom_model_config["env_config"]["grid2op_kwargs"]["reward_class"].__class__.__name__)
+    print("Using action space: ", custom_model_config["env_config"]["action_space"])
+    print("Using observation space: ", custom_model_config["env_config"]["observation_space"])
+
 def run_training(custom_model_config: dict[str, Any], setup: dict[str, Any], job_id: str) -> ResultGrid:
     """
     Function that runs the training script.
     """
-    # runtime_env = {"env_vars": {"PYTHONWARNINGS": "ignore"}}
-    # ray.init(runtime_env= runtime_env, local_mode=False)
     # init ray
     # Set the environment variable
     os.environ["RAY_DEDUP_LOGS"] = "0"
-    # os.environ["TUNE_DISABLE_AUTO_CALLBACK_LOGGERS"] = "1"
     os.environ["TUNE_DISABLE_STRICT_METRIC_CHECKING"] = "1"
-    # os.environ["RAY_AIR_NEW_OUTPUT"] = "0"
-    # Run wandb offline and to sync when finished use following command in result directory:
-    # for d in $(ls -t -d */); do cd $d; wandb sync --sync-all; cd ..; done
-    os.environ["WANDB_MODE"] = "offline"
-    os.environ["WANDB_SILENT"] = "true"
-    tmp_dir = ray._private.utils.get_ray_temp_dir()
-    print(f"Ray's temporary directory: {tmp_dir}")
-    ray.init()
-    print("Ray initialization succeeded.")
+    ray.init(local_mode=setup.get("debugging", {}).get("ray_local_mode", False))
+    print(f"Ray initialized in {'local' if setup.get('debugging', {}).get('ray_local_mode', False) else 'cluster'} mode.")
 
-    # Get the hostname and port
-    address = ray.worker._real_worker._global_node.address
-    host_name, port = address.split(":")
-    print("Hostname:", host_name)
-    print("Port:", port)
+    # whether to perform hyperparameter optimization
+    do_optimization = setup['optimization']['enable']
 
     # Use Optuna search algorithm to find good working parameters
     algo = None
-    if setup['optimize']:
-        points_to_eval = setup.get('points_to_evaluate', None)
+    if do_optimization:
+        points_to_eval = setup['optimization'].get('points_to_evaluate', None)
         algo = MyOptunaSearch(
-            metric=setup["score_metric"],
-            mode="max",
+            metric=setup['optimization']["score_metric"],
+            mode=setup['optimization']["mode"],
             points_to_evaluate=[points_to_eval] if points_to_eval is not None else None,
         )
-        if 'result_dir' in setup.keys():
-            print("Retrieving results old experiment from : ", setup['result_dir'])
-            algo.restore_from_dir(setup['result_dir'])
+        if 'load_from' in setup['optimization'].keys():
+            print("Retrieving results old experiment from : ", setup['optimization']['load_from'])
+            algo.restore_from_dir(setup['optimization']['load_from'])
             for key in algo._space.keys():
                 if '/' in key:
                     delete_nested_key(custom_model_config, key)
@@ -356,8 +357,8 @@ def run_training(custom_model_config: dict[str, Any], setup: dict[str, Any], job
     dur = get_duration(setup)
 
     # Get time budget for entire optimization (different from per-trial duration)
-    time_budget = setup.get("time_budget_s", None)
-    if time_budget is None and setup.get("optimize", False):
+    time_budget = None
+    if do_optimization:
         # For optimization, calculate time budget from duration if specified
         if dur:
             # Leave some buffer time (10%) for cleanup before SLURM kills the job
@@ -366,7 +367,6 @@ def run_training(custom_model_config: dict[str, Any], setup: dict[str, Any], job
 
     storage_path = os.path.abspath(os.path.join(setup.get("workdir", "."), "results", "experiments"))
     os.makedirs(storage_path, exist_ok=True)
-    print(f"Results will be saved to: {storage_path}/{setup['experiment_name']}")
 
     # Create tuner
     tuner = tune.Tuner(
@@ -379,7 +379,7 @@ def run_training(custom_model_config: dict[str, Any], setup: dict[str, Any], job
             callbacks=[
                 TuneCallback(
                     setup["my_log_level"],
-                    "evaluation/custom_metrics/grid2op_end_mean",
+                    setup["optimization"]["score_metric"],
                     eval_freq=custom_model_config["evaluation_interval"],
                     heartbeat_freq=60,
                 ),
@@ -387,34 +387,45 @@ def run_training(custom_model_config: dict[str, Any], setup: dict[str, Any], job
             checkpoint_config=air.CheckpointConfig(
                 checkpoint_frequency=setup["checkpoint_freq"],
                 checkpoint_at_end=True,
-                checkpoint_score_attribute="custom_metrics/corrected_ep_len_mean",
+                checkpoint_score_attribute=setup["optimization"]["score_metric"],
                 num_to_keep=5,
             ),
             verbose=setup["verbose"],
         ),
         tune_config=tune.TuneConfig(
+            scheduler=ASHAScheduler(
+                metric=setup["optimization"]["score_metric"],
+                mode=setup["optimization"]["mode"],
+                grace_period=setup["optimization"].get("grace_period", 10000),
+            ),
             trial_name_creator=lambda t: trial_str_creator(t, job_id),
             trial_dirname_creator=lambda t: trial_dir_name(t),
             search_alg=algo,
-            num_samples=setup["num_samples"],
+            num_samples=setup['optimization']["num_samples"] or -1,
             time_budget_s=time_budget,  # Time budget for entire optimization
-        ) if setup["optimize"] else
+        ) if do_optimization else
         tune.TuneConfig(
             trial_name_creator=lambda t: trial_str_creator(t, job_id),
             trial_dirname_creator=lambda t: trial_dir_name(t), )
         ,
     )
 
+    print_details(custom_model_config, setup)
+
     # Launch tuning
     try:
         result_grid = tuner.fit()
+    except Exception as e:
+        print("Error during tuning:")
+        traceback.print_exc()
+        exit()
     finally:
         # Close ray instance
         ray.shutdown()
 
     # If Optuna optimization was enabled, save results summary
-    if setup.get("optimize", False):
-        best_result = result_grid.get_best_result(metric=setup["score_metric"], mode="max")
+    if do_optimization:
+        best_result = result_grid.get_best_result(metric=setup["optimization"]["score_metric"], mode="max")
         custom_model_config = best_result.config["model"]["custom_model_config"]
         rows = [
             [f"{module}.{param}", value]
@@ -425,18 +436,18 @@ def run_training(custom_model_config: dict[str, Any], setup: dict[str, Any], job
         print(f"\n{Style.BOLD}{'='*80}{Style.END}")
         print(f"{Style.BOLD}Best hyperparameters found:{Style.END}")
         print(table)
+        print("Corresponding checkpoint can be found under ", best_result.checkpoint.as_directory())
 
         # Save the Optuna study to a SQLite database for dashboard access
         if algo is not None:
-            try:
-                optuna_path = os.path.join(storage_path, setup['experiment_name'], f"optuna_results_{job_id}")
-                db_path = algo.save_study(optuna_path, f"{setup['experiment_name']}_{job_id}")
-                print(f"\n{Style.BOLD}{'='*80}{Style.END}")
-                print(f"{Style.BOLD}Optuna study saved to: {db_path}{Style.END}")
-                print(f"{Style.BOLD}To view in Optuna Dashboard, run:{Style.END}")
-                print(f"  optuna-dashboard sqlite:///{db_path}")
-                print(f"{Style.BOLD}{'='*80}{Style.END}\n")
-            except Exception as e:
-                print(f"Warning: Failed to save Optuna study: {e}")
+            optuna_path = os.path.join(storage_path, setup['experiment_name'], f"optuna_results_{job_id}")
+            db_path = algo.save_study(optuna_path, f"{setup['experiment_name']}_{job_id}")
+            tune_path = os.path.join(storage_path, setup['experiment_name'], f"tune_results")
+            algo.save_to_dir(tune_path, f"tune_checkpoint_{job_id}")
+            print(f"\n{Style.BOLD}{'='*80}{Style.END}")
+            print(f"{Style.BOLD}Optuna study saved to: {db_path}{Style.END}")
+            print(f"{Style.BOLD}To view in Optuna Dashboard, run:{Style.END}")
+            print(f"  optuna-dashboard sqlite:///{db_path}")
+            print(f"{Style.BOLD}{'='*80}{Style.END}\n")
 
     return result_grid

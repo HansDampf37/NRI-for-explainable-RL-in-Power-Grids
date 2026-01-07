@@ -66,17 +66,14 @@ class CustomizedGrid2OpEnvironment(MultiAgentEnv):
         # 1. create the grid2op environment
         self.env_g2op = make_g2op_env(env_config)
         if "env_name" not in env_config:
-            raise RuntimeError(
-                "The configuration for RLLIB should provide the env name"
-            )
+            raise RuntimeError("The configuration for RLLIB should provide the env name")
+
         lib_dir = env_config["lib_dir"]
         # 1.a. Setting up custom action space
         if env_config["action_space"] == "masked":
             mask = env_config.get("mask", 3)
             subs = [i for i, big_enough in enumerate(self.env_g2op.action_space.sub_info > mask) if big_enough]
-            self.possible_substation_actions = get_possible_topologies(
-                self.env_g2op, subs
-            )
+            self.possible_substation_actions = get_possible_topologies(self.env_g2op, subs)
             # print('subs to act: ', subs)
         else:
             path = os.path.join(
@@ -84,8 +81,6 @@ class CustomizedGrid2OpEnvironment(MultiAgentEnv):
                 f"data/action_spaces/{self.env_g2op.env_name}/{env_config['action_space']}.json",
             )
             self.possible_substation_actions = load_actions(path, self.env_g2op)
-        print('action_space is ', env_config.get("action_space"))
-        print('number possible sub actions: ', len(self.possible_substation_actions))
 
         # add the do-nothing action at index 0
         do_nothing_action = self.env_g2op.action_space({})
@@ -110,7 +105,6 @@ class CustomizedGrid2OpEnvironment(MultiAgentEnv):
         # 5. customize observation space
         self.observation_converter = self.setup_obs_converter(self.env_gym, env_config)
         self.observation_space = self.observation_converter.observation_space
-        print("Observation space: ", self.observation_space)
         self.cur_gym_obs = None
         self.cur_g2op_obs = None
 

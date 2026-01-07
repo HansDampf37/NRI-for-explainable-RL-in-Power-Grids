@@ -52,7 +52,6 @@ class CustomMetricsCallback(DefaultCallbacks):
             algorithm: Algorithm,
             **kwargs,
     ) -> None:
-        print("Setup Custom Metrics Callbacks")
         self.log_level = algorithm.my_log_level
         self.curr_level = 0
         if algorithm.curriculum_training:
@@ -118,18 +117,6 @@ class CustomMetricsCallback(DefaultCallbacks):
         data["custom_metrics"]["mean_disconnect_count"] = np.mean(data["custom_metrics"]["disconnect_count"])
         data["custom_metrics"]["mean_reset_count"] = np.mean(data["custom_metrics"]["reset_count"])
 
-        # results["custom_metrics"]["mean_agent_interact"] = np.mean(results["custom_metrics"]["agent_interactions"])
-        # # Print specified logging level
-        # if self.log_level:
-        #     print(Style.BOLD + " ----- EVALUATION METRICS -------- " + Style.END)
-        #     # print(evaluation_metrics)
-        #     trial_id = "_".join(os.path.basename(algorithm._logdir).split('_')[:-3])
-        #     rw_mean = results["episode_reward_mean"]
-        #     # print table
-        #     headers = ["trial_id", "grid2op_end_mean", "grid2op_end_max", "grid2op_end_min", "reward"]
-        #     table = [[trial_id, results["custom_metrics"]["grid2op_end_mean"], results["custom_metrics"]["grid2op_end_max"],
-        #               results["custom_metrics"]["grid2op_end_min"], rw_mean]]
-        #     print(tabulate(table, headers, tablefmt="rounded_grid", floatfmt=".3f"))
         if self.log_level > 1:
             head_len = self.log_level  # only show the first #head_len chronics
             print(f" Showing results for the first {head_len} evaluated chronics:")
@@ -172,14 +159,6 @@ class CustomMetricsCallback(DefaultCallbacks):
         result["custom_metrics"]["mean_disconnect_count"] = np.mean(result["custom_metrics"]["disconnect_count"])
         result["custom_metrics"]["mean_reset_count"] = np.mean(result["custom_metrics"]["reset_count"])
 
-        # print(f"mean interact_count: "
-        #       f"{result['custom_metrics']['mean_interact_count']}, "
-        #       f"mean active_dn_count: {result['custom_metrics']['mean_active_dn_count']}, "
-        #       f"mean reconnect_count: {result['custom_metrics']['mean_reconnect_count']}, "
-        #       f"mean disconnect_count: {result['custom_metrics']['mean_disconnect_count']}, "
-        #       f"mean reset_count: {result['custom_metrics']['mean_reset_count']}"
-        #       )
-
         # Delete irrelevant results
         del result["custom_metrics"]["grid2op_end"]
         del result["custom_metrics"]["corrected_ep_len"]
@@ -214,29 +193,22 @@ class EncoderPretrainCallback(DefaultCallbacks):
         """Pretrain encoder only once in the driver, then sync weights to all workers."""
         super().on_algorithm_init(algorithm=algorithm, **kwargs)
 
-        print("=" * 60)
-        print("EncoderPretrainCallback.on_algorithm_init called")
-        print(f"Pretrain already done: {EncoderPretrainCallback._pretrain_done}")
-        print("=" * 60)
-
         # Skip if already pretrained
         if EncoderPretrainCallback._pretrain_done:
-            print("Encoder already pretrained, skipping...")
             return
 
-        print("Checking if encoder pretraining is needed...")
+        # Mark pretraining as done
+        EncoderPretrainCallback._pretrain_done = True
 
         # Get policy
         policy = algorithm.get_policy("reinforcement_learning_policy")
         if policy is None:
             print("reinforcement_learning_policy not found, skipping encoder pretraining")
-            EncoderPretrainCallback._pretrain_done = True
             return
 
         # Check if we have an encoder
         if not hasattr(policy, 'model') or not hasattr(policy.model, 'ragnn') or not hasattr(policy.model.ragnn, "encoder"):
             print("Not using RAGNN model, skipping encoder pretraining")
-            EncoderPretrainCallback._pretrain_done = True
             return
 
         # Get config
@@ -246,15 +218,9 @@ class EncoderPretrainCallback(DefaultCallbacks):
 
         if not pretrain_config.get("enabled", False):
             print("Encoder pretraining disabled in config")
-            EncoderPretrainCallback._pretrain_done = True
             return
 
-        print("=" * 60)
-        print("Starting encoder pretraining on driver...")
-        print("=" * 60)
-
         # Create environment for data collection
-        print("Creating environment for data collection...")
         env = G2OpGymEnv(
             env_name = env_config["env_name"],
             obs_space_creation=lambda _: policy.observation_space,
@@ -262,7 +228,6 @@ class EncoderPretrainCallback(DefaultCallbacks):
         )
 
         # Create prior
-        print("Creating prior...")
         prior = prior_from_env(
             prob_graph_edge_exists=ra_config.get("prior_for_graph_edges_existing", 0.9),
             env=env,
@@ -272,7 +237,6 @@ class EncoderPretrainCallback(DefaultCallbacks):
         )
 
         # Create datasets
-        print(f"Creating dataset with size {pretrain_config.get('ds_size', 1000)}...")
         train_ds = create_dataset(
             env=env,
             prior=prior,
@@ -282,31 +246,18 @@ class EncoderPretrainCallback(DefaultCallbacks):
 
         # Pretrain encoder
         encoder = policy.model.ragnn.encoder
-        device = next(encoder.parameters()).device
 
-        print(f"Starting encoder pretraining on device: {device}")
         train(
             encoder=encoder,
             ds=train_ds,
             batch_size=pretrain_config.get("batch_size", 32),
             num_epochs=pretrain_config.get("num_epochs", 40),
             lr=pretrain_config.get("learning_rate", 0.005),
-            verbose=True
+            verbose=True,
         )
-
-        print("=" * 60)
-        print("Encoder pretraining completed!")
-        print("Synchronizing encoder weights to all workers...")
-        print("=" * 60)
 
         # Synchronize weights to all workers
         algorithm.workers.sync_weights()
-
-        print("Encoder weights successfully synchronized to all workers!")
-
-        # Mark pretraining as done
-        EncoderPretrainCallback._pretrain_done = True
-        print("Marked pretraining as completed globally")
 
 
 class TuneCallback(TuneReporterBase):
@@ -346,10 +297,10 @@ class TuneCallback(TuneReporterBase):
             trials, self._metric, self._mode
         )
         if current_best_trial:
-            best_trial_str = f" *** Current BEST TRIAL: {current_best_trial.trial_id}  ***  |" \
-                             f" with SCORE: " \
+            best_trial_str = f"Current BEST TRIAL: {current_best_trial.trial_id} | " \
+                             f"with SCORE: " \
                              f"{unflattened_lookup(self._metric, current_best_trial.last_result)} " \
-                             f" at TIMESTEP: {current_best_trial.last_result['timesteps_total']} "
+                             f"at TIMESTEP: {current_best_trial.last_result['timesteps_total']} "
             result.append(best_trial_str)
         for line in result:
             print(line)
@@ -389,7 +340,7 @@ class TuneCallback(TuneReporterBase):
                    "iter",
                    "total time",
                    "ts",
-                   # "agent_interactions",
+                   "agent_interactions",
                    "EVAL g2op_end",
                    "EVAL reward",
                    "TRAIN g2op_end",
@@ -400,7 +351,7 @@ class TuneCallback(TuneReporterBase):
                   result['training_iteration'],
                   _get_time_str(self._start_time, time.time())[1],
                   result["timesteps_total"],
-                  # result["custom_metrics"]["total_agent_interact"],
+                  result["custom_metrics"]["total_agent_interact"],
                   eval_res["custom_metrics"]["grid2op_end_mean"],
                   eval_res["episode_reward_mean"],
                   train_res["grid2op_end_mean"],

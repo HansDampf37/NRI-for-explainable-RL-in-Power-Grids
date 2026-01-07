@@ -1,20 +1,34 @@
 setup:
   max_ep_len: 8064
-  duration: 0 # HH:MM or minutes of training before stopping, used if value > 0
+  duration: ~ # HH:MM or minutes of training before stopping, used if value > 0
   nb_timesteps: 500  # Minimal timesteps for quick testing
   checkpoint_freq: 100  # Less frequent checkpointing
   verbose: 0
   my_log_level: 1
-  storage_path: ./runs
-  folder_name: "test_minimal"
-  experiment_name: "test_minimal"
-  optimize: True  # Disabled for quick testing
-  num_samples: 2  # Single trial for testing
-  score_metric: evaluation/custom_metrics/grid2op_end_mean
-  grace_period: 50  # Reduced grace period
+  folder_name: test_minimal
+  experiment_name: test_minimal
+  optimization:
+    enable: False
+    score_metric: evaluation/custom_metrics/grid2op_end_mean
+    mode: max
+    n_trials: 16
+    load_from: ~  # load previous optimization results from this dir
+    points_to_evaluate:
+      hidden_dim: 64
+      out_dim: 64
+      num_layers: 2
+      residual: True
 
 debugging:
   seed: &seed 42
+  ray_local_mode: true  # Enable local mode for easier debugging
+
+encoder_pretrain:
+  enabled: true
+  ds_size: 10  # Reduced if enabled
+  batch_size: 10
+  num_epochs: 1
+  learning_rate: 0.0001
 
 training:
   checkpoint_trainable_policies_only: True
@@ -33,13 +47,7 @@ training:
   relation_awareness:
     prior_prob_for_graph_edge: 0.9
     beta: 1.0
-    temperature: 0.2
-  encoder_pretrain:
-    enabled: true
-    ds_size: 10  # Reduced if enabled
-    batch_size: 10
-    num_epochs: 1
-    learning_rate: !uniform [0.005, 0.01, 0.005]
+    temperature: !choice [0.2, 0.3]
   model:
     fcnet_hiddens: [128, 128]  # Smaller network
     fcnet_activation: relu
@@ -104,7 +112,6 @@ environment:
 
 evaluation:
   evaluation_interval: 1
-  evaluation_duration: 10
   evaluation_duration_unit: episodes
   always_attach_evaluation_results: False
   evaluation_num_workers: 1

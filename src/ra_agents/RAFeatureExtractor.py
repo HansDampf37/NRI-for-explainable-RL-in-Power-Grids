@@ -241,26 +241,23 @@ class RLlibGNNModel(TorchModelV2, nn.Module):
                  num_outputs: int,
                  model_config: ModelConfigDict,
                  name: str,
-                 **kwargs):
+                 gnn: Dict):
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs, model_config, name)
         nn.Module.__init__(self)
-        print("Instantiate GNN Model")
-        pprint(model_config)
-        pprint(kwargs)
         self.gnn: BaselineGNN = BaselineGNN(
             x_dim=obs_space.x_dim,
-            hidden_dim=model_config['custom_model_config']['gnn']['hidden_dim'],
-            x_out_dim=model_config['custom_model_config']['gnn']['out_dim'],
-            num_layers=model_config['custom_model_config']['gnn']['num_layers'],
-            dropout_prob=model_config['custom_model_config']['gnn'].get('dropout_prob', 0.0),
-            residual=model_config['custom_model_config']['gnn'].get('residual', True),
+            hidden_dim=gnn['hidden_dim'],
+            x_out_dim=gnn['out_dim'],
+            num_layers=gnn['num_layers'],
+            dropout_prob=gnn.get('dropout_prob', 0.0),
+            residual=gnn.get('residual', True),
         )
         # Build downstream MLP head(s)
         # Create a Box space for the GNN output to pass to FCN
         gnn_output_space = Box(
             low=-float('inf'),
             high=float('inf'),
-            shape=(model_config['custom_model_config']['gnn']['out_dim'],),
+            shape=(gnn['out_dim'],),
             dtype=np.float32
         )
         self.mlp = FullyConnectedNetwork(
@@ -311,32 +308,30 @@ class RLlibRAGNNModel(TorchModelV2, nn.Module):
                  num_outputs: int,
                  model_config: ModelConfigDict,
                  name: str,
-                 **kwargs):
+                 encoder: Dict,
+                 gnn: Dict):
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs, model_config, name)
         nn.Module.__init__(self)
-        print("Instantiate RAGNN Model")
-        pprint(model_config)
-        pprint(kwargs)
         self.ragnn: RAFeatureExtractor = RAFeatureExtractor(
             x_dim=obs_space.x_dim,
-            use_graphormer=model_config['custom_model_config']['encoder'].get('use_graphormer', False),
-            hidden_dim_enc=model_config['custom_model_config']['encoder']['hidden_dim'],
-            num_layers_enc=model_config['custom_model_config']['encoder']['num_layers'],
-            num_edge_types=model_config['custom_model_config']['encoder'].get('num_edge_types', 2),
-            max_degree=model_config['custom_model_config']['encoder'].get('max_degree', None),
-            max_path_distance=model_config['custom_model_config']['encoder'].get('max_path_distance', None),
-            hidden_dim_gnn=model_config['custom_model_config']['gnn']['hidden_dim'],
-            x_out_dim=model_config['custom_model_config']['gnn']['out_dim'],
-            num_layers_gnn=model_config['custom_model_config']['gnn']['num_layers'],
-            dropout_prob=model_config['custom_model_config']['gnn'].get('dropout_prob', 0.0),
-            residual=model_config['custom_model_config']['gnn'].get('residual', True),
+            use_graphormer=encoder.get('use_graphormer', False),
+            hidden_dim_enc=encoder['hidden_dim'],
+            num_layers_enc=encoder['num_layers'],
+            num_edge_types=encoder.get('num_edge_types', 2),
+            max_degree=encoder.get('max_degree', None),
+            max_path_distance=encoder.get('max_path_distance', None),
+            hidden_dim_gnn=gnn['hidden_dim'],
+            x_out_dim=gnn['out_dim'],
+            num_layers_gnn=gnn['num_layers'],
+            dropout_prob=gnn.get('dropout_prob', 0.0),
+            residual=gnn.get('residual', True),
         )
         # Build downstream MLP head(s)
         # Create a Box space for the GNN output to pass to FCN
         gnn_output_space = Box(
             low=-float('inf'),
             high=float('inf'),
-            shape=(model_config['custom_model_config']['gnn']['out_dim'],),
+            shape=(gnn['out_dim'],),
             dtype=np.float32
         )
         self.mlp = FullyConnectedNetwork(

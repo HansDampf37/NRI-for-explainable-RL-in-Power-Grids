@@ -3,24 +3,20 @@ Implement PPO in Rllib with an accurate batch size.
 """
 
 import logging
-from typing import List, Optional, Union
-import numpy as np
-import os
+from typing import List, Optional, Union, Callable
 
-from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.util.debug import log_once
-from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.utils.annotations import override
+import numpy as np
 from ray.rllib.algorithms.ppo import PPO
 from ray.rllib.algorithms.ppo.ppo import LEARNER_RESULTS_KL_KEY
+from ray.rllib.evaluation.worker_set import WorkerSet
+from ray.rllib.execution.rollout_ops import (
+    standardize_fields,
+)
 from ray.rllib.execution.train_ops import (
     train_one_step,
     multi_gpu_train_one_step,
 )
-from ray.rllib.execution.rollout_ops import (
-    standardize_fields,
-)
-from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
+from ray.rllib.policy.sample_batch import concat_samples, MultiAgentBatch
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
@@ -28,11 +24,10 @@ from ray.rllib.utils.metrics import (
     SAMPLE_TIMER,
     ALL_MODULES,
 )
-from ray.rllib.utils.checkpoints import get_checkpoint_info
+from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import ResultDict
-
-from ray.rllib.policy.sample_batch import concat_samples, MultiAgentBatch
 from ray.rllib.utils.typing import SampleBatchType
+from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +56,6 @@ class CustomPPO(PPO):
             logger_creator: Optional["Callable[[], Logger]"] = None,
             **kwargs,
     ):
-        print("my_log_level: ", config["my_log_level"])
         self.my_log_level = config["my_log_level"]
         self.curriculum_training = config.get("env_config", {}).get("curriculum_training", False)
         self.curriculum_threshold = config.get("env_config", {}).get("curriculum_thresholds", [])
@@ -352,32 +346,3 @@ class CustomPPO(PPO):
             #    full_batch = full_batch.slice(0, last_complete_ep_idx)
             return full_batch
         return all_sample_batches
-
-    @override(Algorithm)
-    def load_checkpoint(self, checkpoint_dir: str) -> None:
-        # Checkpoint is provided as a local directory.
-        # Restore from the checkpoint file or dir.
-
-        checkpoint_info = get_checkpoint_info(checkpoint_dir)
-        #EVDS: BugFix: When you use checkpoint trainable policies only you need to specify policy_ids to be only
-        # the checkpointed policies.
-        checkpoint_data = Algorithm._checkpoint_info_to_algorithm_state(checkpoint_info,
-                                                                        policy_ids=checkpoint_info['policy_ids'])
-        self.__setstate__(checkpoint_data)
-        if self.config._enable_new_api_stack:
-            learner_state_dir = os.path.join(checkpoint_dir, "learner")
-            self.learner_group.load_state(learner_state_dir)
-
-        # Call the `on_checkpoint_loaded` callback.
-        self.callbacks.on_checkpoint_loaded(algorithm=self)
-
-    # def postprocess_trajectory(self, sample_batch, other_agent_batches, agent_id, **kwargs):
-    #     # Filter out samples that are not from the trainable policy
-    #     print('PRE Post Process SAMPLE BATCH: ', sample_batch)
-    #     policies_to_train = self.workers.local_worker().get_policies_to_train()
-    #     sample_batch = sample_batch[sample_batch["policy_id"] in policies_to_train]
-    #
-    #     print('POST Post Process SAMPLE BATCH: ', sample_batch)
-    #
-    #     # Continue with the rest of the postprocessing logic
-    #     return super().postprocess_trajectory(sample_batch, other_agent_batches, agent_id, **kwargs)

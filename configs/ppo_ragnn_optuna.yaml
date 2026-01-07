@@ -1,20 +1,33 @@
 setup:
   max_ep_len: 8064
-  duration: "22:00"  # 22 hours
+  duration: 22:00  # 22 hours
   nb_timesteps: 50_000
   checkpoint_freq: 5
   verbose: 0
   my_log_level: 1
-  storage_path: ./runs
-  folder_name: "0501_ragnn_hyperparameter_optimization"
-  experiment_name: "0501_ragnn_hyperparameter_optimization"
-  optimize: True  # Enable Optuna optimization
-  num_samples: 16  # Number of trials to run
-  score_metric: evaluation/custom_metrics/grid2op_end_mean
-  grace_period: 500
+  folder_name: 0501_ragnn_hyperparameter_optimization
+  experiment_name: 0501_ragnn_hyperparameter_optimization
+  optimization:
+    enable: True
+    score_metric: evaluation/custom_metrics/grid2op_end_mean
+    mode: max
+    n_trials: ~ # if n_trials is None, will run until duration is reached
+    load_from: ~  # load previous optimization results from this dir
+    points_to_evaluate:
+      hidden_dim: 64
+      out_dim: 64
+      num_layers: 2
+      residual: True
 
 debugging:
   seed: &seed 42
+
+encoder_pretrain: # Encoder pretraining for RAGNN
+  enabled: true
+  ds_size: 1000
+  batch_size: 32
+  num_epochs: 30
+  learning_rate: 0.005
 
 training:
   checkpoint_trainable_policies_only: True
@@ -32,19 +45,10 @@ training:
   sgd_minibatch_size: 256
   train_batch_size: 1024
   batch_mode: complete_episodes
-
   relation_awareness: # RAGNN-specific settings - OPTIMIZING THESE PARAMETERS
     prior_prob_for_graph_edge: !uniform [0.0, 1.0]  # Prior probability for graph edge
     beta: !uniform [0.5, 2.0]  # Beta parameter for relation awareness
     temperature: !uniform [0.0, 1.0]  # the amount of additional edges inferred by the encoder
-
-  encoder_pretrain: # Encoder pretraining for RAGNN
-    enabled: true
-    ds_size: 1000
-    batch_size: 32
-    num_epochs: 30
-    learning_rate: 0.005
-
   model:
     fcnet_hiddens: [256, 256, 256]  # Downstream MLP after GNN
     fcnet_activation: relu
@@ -109,7 +113,6 @@ environment:
 
 evaluation:
   evaluation_interval: 5  # Evaluate every 5 iterations to save time
-  evaluation_duration: 50  # Reduced for faster trials
   evaluation_duration_unit: episodes
   always_attach_evaluation_results: True
   evaluation_num_workers: 30
