@@ -4,31 +4,18 @@ Describes classes of agents that can be evaluated.
 
 import os
 import random
-from collections import Counter, OrderedDict, defaultdict
+from collections import defaultdict
 from typing import Any, Optional
-import pickle
-from datetime import date, datetime
 
-import grid2op
 import numpy as np
 from grid2op.Action import ActionSpace, BaseAction
-from grid2op.Agent import BaseAgent, GreedyAgent
-from grid2op.dtypes import dt_float
+from grid2op.Agent import BaseAgent
 from grid2op.Environment import BaseEnv
-from grid2op.gym_compat import GymEnv
 from grid2op.Observation import BaseObservation
 from grid2op.Reward import BaseReward
-from ray.rllib.algorithms import Algorithm
+from grid2op.dtypes import dt_float
+from grid2op.gym_compat import GymEnv
 from ray.rllib.policy.policy import Policy
-
-from src.rl4pnc.experiments.utils import (
-    calculate_action_space_asymmetry,
-    calculate_action_space_medha,
-    calculate_action_space_tennet,
-    find_list_of_agents,
-    find_substation_per_lines,
-    get_capa_substation_id,
-)
 
 
 class HeuristicsAgent(BaseAgent):
@@ -187,22 +174,6 @@ class HeuristicsAgent(BaseAgent):
         return action
 
 
-class RenameUnpickler(pickle.Unpickler):
-    # Make old agents compatable with evaluation function.
-    # Rename module mahrl to rl4pnc
-    def find_class(self, module, name):
-        renamed_module = module
-        # print(f"module: {module}")
-        # print(f"name: {name}")
-        if "mahrl" in module:
-            renamed_module = "rl4pnc." + module.split(".",1)[1]
-        return super(RenameUnpickler, self).find_class(renamed_module, name)
-
-
-def renamed_load(file_obj):
-    return RenameUnpickler(file_obj).load()
-
-
 class RllibAgent(HeuristicsAgent):
     """
     Class that runs a RLlib model in the Grid2Op environment.
@@ -222,23 +193,9 @@ class RllibAgent(HeuristicsAgent):
 
         # load neural network of (eg) PPO agent.
         checkpoint_path = os.path.join(file_path, checkpoint_name, "policies", policy_name)
-        date_executed = datetime.strptime(file_path.rsplit("_", 2)[1], '%Y-%m-%d').date()
-        if date_executed < date(2024, 11, 4):
-            # update pickle file when old module was used
-            pklfile = os.path.join(checkpoint_path, "policy_state.pkl")
-            with open(pklfile, 'rb') as f:
-                data = renamed_load(f)
-            with open(pklfile, 'wb') as f:  # open a text file
-                pickle.dump(data, f)  # serialize the list
-
         self._rllib_agent = Policy.from_checkpoint(checkpoint_path)
-        self.obs_keys_order = [key for key in self._rllib_agent.observation_space.__dict__['original_space'].keys()]
+        self.obs_keys_order = [key for key in self._rllib_agent.observation_space.spaces.keys()]
         print("Observations order: ", self.obs_keys_order)
-        # print("agent observation space is : ", self._rllib_agent.observation_space)
-        # self._rllib_agent.observation_space =
-        # self._rllib_agent = algorithm.from_checkpoint(
-        #     checkpoint_path, policy_ids=[policy_name]
-        # )
 
         # setup env
         self.gym_wrapper = gym_wrapper
@@ -257,20 +214,12 @@ class RllibAgent(HeuristicsAgent):
 
         if HeuristicsAgent.activate_agent(self, observation):
             # Get action from trained RL-agent when in danger.
-            if not any(len(obs_el.shape) > 1 for obs_el in self.gym_wrapper.cur_gym_obs.values()):
-                # Convert the observation dictionary to a NumPy array
-                # print("gym wraper key order: ", [key for key in self.gym_wrapper.cur_gym_obs.keys()])
-                observation_array = np.concatenate([self.gym_wrapper.cur_gym_obs[key] for key in self.obs_keys_order])
-            else:
-                observation_array = self.gym_wrapper.cur_gym_obs
-            # print("current obs:", observation_array)
-            # get action as int
             # compute_single_action returns:
             #   - Tuple consisting of the action,
             #   - the list of RNN state outputs (if any), and
             #   - a dictionary of extra features (if any).
             gym_action, state_out, info = self._rllib_agent.compute_single_action(
-                observation_array,
+                self.gym_wrapper.cur_gym_obs,
                 policy_id="reinforcement_learning_policy"
             )
             # convert Rllib action to grid2op
