@@ -6,9 +6,11 @@ import logging
 import os
 import traceback
 from datetime import datetime
+from pathlib import Path
 from time import time
 from typing import Any, Dict, List, OrderedDict, Union
 
+import grid2op
 import numpy as np
 import ray
 from grid2op.Environment import BaseEnv
@@ -26,12 +28,41 @@ from src.ra_agents.ppo.rllib.rappo.RAPPO import RAPPOTorchPolicy
 from src.rl4pnc.algorithms.custom_ppo import CustomPPO
 from src.rl4pnc.algorithms.optuna_search import MyOptunaSearch
 from src.rl4pnc.experiments.callback import Style, TuneCallback
+from evaluate_rllib_agent import evaluate_rllib_checkpoint
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # register custom components
 POLICIES["rappo_torch_policy"] = RAPPOTorchPolicy
 ModelCatalog.register_custom_model("gnn_model", RLlibGNNModel)
 ModelCatalog.register_custom_model("ragnn_model", RLlibRAGNNModel)
 ModelCatalog.register_custom_model("nrignn_model", RLlibNRIGNNModel)
+
+
+def get_num_available_episodes(env_name: str) -> int:
+    """
+    Get the number of available episodes for a given environment.
+
+    :param env_name: Name of the Grid2Op environment
+    :return: Number of available episodes
+    """
+    try:
+        chronics_path = os.path.join(
+            f"{grid2op.get_current_local_dir()}",
+            env_name,
+            "chronics"
+        )
+        if os.path.exists(chronics_path):
+            num_episodes = len(os.listdir(chronics_path))
+            logger.info(f"Found {num_episodes} available episodes for environment {env_name}")
+            return num_episodes
+        else:
+            logger.warning(f"Chronics path not found: {chronics_path}. Defaulting to 50 episodes.")
+            return 50
+    except Exception as e:
+        logger.warning(f"Error counting episodes: {e}. Defaulting to 50 episodes.")
+        return 50
 
 
 def calculate_action_space_asymmetry(env: BaseEnv, add_dn: bool = False) -> tuple[int, int, dict[int, int]]:
@@ -440,7 +471,10 @@ def run_training(custom_model_config: dict[str, Any], setup: dict[str, Any], job
         print(f"\n{Style.BOLD}{'='*80}{Style.END}")
         print(f"{Style.BOLD}Best hyperparameters found:{Style.END}")
         print(table)
-        print("Corresponding checkpoint can be found under ", best_result.checkpoint.as_directory())
+
+        # Print checkpoint location
+        with best_result.checkpoint.as_directory() as checkpoint_dir:
+            print("Corresponding checkpoint can be found under ", checkpoint_dir)
 
         # Save the Optuna study to a SQLite database for dashboard access
         if algo is not None:
@@ -455,5 +489,51 @@ def run_training(custom_model_config: dict[str, Any], setup: dict[str, Any], job
             print(f"{Style.BOLD}To view in Optuna Dashboard, run:{Style.END}")
             print(f"  optuna-dashboard sqlite:///{db_path}")
             print(f"{Style.BOLD}{'='*80}{Style.END}\n")
+    else:
+        # if no optimization, get best result by episode reward
+        best_result = result_grid.get_best_result(metric="episode_reward_mean", mode="max")
+
+        with best_result.checkpoint.as_directory() as checkpoint_dir:
+            print("Best checkpoint can be found under ", checkpoint_dir)
+
+    # evaluate best checkpoint
+    eval_config = setup.get('post_training_evaluation', {})
+    if eval_config.get('enabled', True):
+        print(f"\n{Style.BOLD}{'='*80}{Style.END}")
+        print(f"{Style.BOLD}Evaluating best checkpoint...{Style.END}")
+
+        with best_result.checkpoint.as_directory() as checkpoint_dir:
+            print(f"Checkpoint directory: {checkpoint_dir}")
+            checkpoint_name = os.path.basename(checkpoint_dir)
+            checkpoint_dir = Path(checkpoint_dir).parent
+
+            # Get evaluation environment name
+            eval_env_name = eval_config.get('env_name', 'l2rpn_case14_sandbox_val')
+
+            # Calculate number of episodes
+            num_episodes_config = eval_config.get('num_episodes', 'all')
+            if num_episodes_config == 'all' or num_episodes_config is None:
+                num_episodes = get_num_available_episodes(eval_env_name)
+            else:
+                num_episodes = int(num_episodes_config)
+
+            print(f"Evaluation environment: {eval_env_name}")
+            print(f"Number of episodes: {num_episodes}")
+
+            try:
+                evaluate_rllib_checkpoint(
+                    checkpoint_path=checkpoint_dir,
+                    policy_name="reinforcement_learning_policy",
+                    checkpoint_name=checkpoint_name,
+                    env_name_override=eval_env_name,
+                    num_episodes=num_episodes,
+                    visualize=eval_config.get('visualize', False)
+                )
+                print(f"{Style.BOLD}Evaluation completed successfully!{Style.END}")
+            except Exception as e:
+                print(f"{Style.BOLD}Warning: Evaluation failed: {e}{Style.END}")
+                traceback.print_exc()
+        print(f"{Style.BOLD}{'='*80}{Style.END}\n")
+
 
     return result_grid

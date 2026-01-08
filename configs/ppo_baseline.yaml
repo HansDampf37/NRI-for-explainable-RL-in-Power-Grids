@@ -14,6 +14,11 @@ setup:
     n_trials: ~
     points_to_evaluate: ~
     load_from: ~  # load previous optimization results from this dir
+  post_training_evaluation:
+    enabled: True  # Whether to evaluate the best checkpoint after training
+    env_name: l2rpn_case14_sandbox_val  # Environment to use for evaluation
+    num_episodes: all  # Number of episodes to evaluate (use "all" for all available episodes)
+    visualize: False  # Whether to show visualization after evaluation
   debugging:
     seed: &seed 9
 
