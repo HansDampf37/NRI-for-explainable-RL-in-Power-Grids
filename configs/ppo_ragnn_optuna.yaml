@@ -2,7 +2,7 @@ setup:
   max_ep_len: 8064
   duration: 22:00  # 22 hours
   nb_timesteps: 50_000
-  checkpoint_freq: 5
+  checkpoint_freq: 10
   verbose: 0
   my_log_level: 1
   folder_name: 0501_ragnn_hyperparameter_optimization
