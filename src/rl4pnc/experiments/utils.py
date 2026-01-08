@@ -412,7 +412,7 @@ def run_training(config: dict[str, Any], setup: dict[str, Any], job_id: str) -> 
             callbacks=[
                 TuneCallback(
                     setup["my_log_level"],
-                    setup["optimization"]["score_metric"],
+                    "evaluation/custom_metrics/grid2op_end_mean",
                     eval_freq=config["evaluation_interval"],
                     heartbeat_freq=60,
                 ),
@@ -420,16 +420,12 @@ def run_training(config: dict[str, Any], setup: dict[str, Any], job_id: str) -> 
             checkpoint_config=air.CheckpointConfig(
                 checkpoint_frequency=setup["checkpoint_freq"],
                 checkpoint_at_end=True,
-                checkpoint_score_attribute=setup["optimization"]["score_metric"],
+                checkpoint_score_attribute="custom_metrics/corrected_ep_len_mean",
                 num_to_keep=5,
             ),
             verbose=setup["verbose"],
         ),
         tune_config=tune.TuneConfig(
-            scheduler=ASHAScheduler(
-                metric=setup["optimization"]["score_metric"],
-                mode=setup["optimization"]["mode"],
-            ),
             trial_name_creator=lambda t: trial_str_creator(t, job_id),
             trial_dirname_creator=lambda t: trial_dir_name(t),
             search_alg=algo,
