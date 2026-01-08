@@ -47,10 +47,12 @@ def setup_config(workdir_path: str, input_path: str, seed: int = None, opponent=
 
     # Set observation space based on model_type
     print(f"Using model type: {model_type}")
-    if model_type == "GNN" or model_type == "RAGNN":
+    if model_type == "GNN" or model_type == "RAGNN" or model_type == "NRIGNN":  # GNN
         custom_config["environment"]["env_config"]["observation_space"] = "BusConnectivityGraphObsSpace"
     elif model_type == "MLP":  # MLP
         custom_config["environment"]["env_config"]["observation_space"] = "BoxGymObsSpace"
+    else:
+        raise ValueError(f"Model type {model_type} not known.")
 
     for key in custom_config.keys():
         if key != "setup" and  key != "optimization":
@@ -85,6 +87,9 @@ def setup_config(workdir_path: str, input_path: str, seed: int = None, opponent=
     elif model_type == "MLP":
         policy_class = None
         model_name = None
+    elif model_type == "NRIGNN":
+        policy_class = None
+        model_name = "nrignn_model"
     else:
         raise ValueError(f"Model type {model_type} not supported.")
 

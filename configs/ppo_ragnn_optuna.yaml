@@ -56,6 +56,7 @@ training:
         hidden_dim: 64  # Use optimal value from GNN optimization
         out_dim: 64  # Use optimal value from GNN optimization
         num_layers: 2  # Use optimal value from GNN optimization
+        edge_probs_path: results/edge_probabilities/edges_averaged_with_forecast_2026-01-08_14-11-58.npy
       encoder: # RAGNN encoder settings
         num_edge_types: !choice [2, 3, 4]  # Number of edge types (2-6)
         max_degree: 7

@@ -2,7 +2,7 @@
 This script contains the relations aware FeatureExtractor (RAFeatureExtractor) and Wrappers that integrate the normal
 GNN model and RA-GNN model into RLlib's model catalog.
 """
-from pprint import pprint
+from os import PathLike
 from typing import Optional, Tuple, Dict, List
 
 import numpy as np
@@ -131,6 +131,65 @@ class RAFeatureExtractor(nn.Module):
 
         return predictions, batched_p_z_given_x
 
+class NRIBasedGNN(nn.Module):
+    def __init__(
+        self,
+        edge_probs_path: PathLike,
+        x_dim: int,
+        hidden_dim_gnn: int,
+        num_layers_gnn: int,
+        x_out_dim: int,
+        dropout_prob: float,
+        residual: bool = False,
+    ):
+        super().__init__()
+        self.edge_probs = Tensor(np.load(edge_probs_path))  # [E, K]
+        self.gumbel_softmax = GumbelSoftmax()
+        self.gnn: RAGNN = RAGNN(
+            x_dim=x_dim,
+            hidden_dim=hidden_dim_gnn,
+            x_out_dim=x_out_dim,
+            num_layers=num_layers_gnn,
+            num_edge_types=self.edge_probs.shape[-1],
+            dropout_prob=dropout_prob,
+            residual=residual,
+            skip_last=True,
+        )
+        self.x_out_dim = x_out_dim
+
+    def forward(self, x: Tensor, batch: Optional[Tensor] = None, **kwargs) -> Tuple[Tensor, Tensor]:
+        """
+        Forward pass.
+
+        Args:
+            x (Tensor): Node features of shape [B*N, x_dim].
+            batch (Tensor): Batch vector mapping each node to its graph [B*N]. (defaults to every node in the same batch)
+
+        Returns:
+            tuple[Tensor, Tensor]:
+                predictions (Tensor): Graph-level features [B, x_out_dim].
+                p_z_given_x (Tensor): Soft edge-type posterior probabilities [B, E, K].
+        """
+        BxN, x_dim = x.shape[-2:]
+        batch = batch if batch is not None else torch.zeros(BxN).to(x.device)
+        edge_set = fully_connected_edge_index_per_batch(batch, x.device)
+
+        # get posterior
+        B = batch.max().item() + 1
+        edge_probs = self.edge_probs.unsqueeze(0).repeat(B, 1, 1).view(-1, self.edge_probs.shape[-1])  # [B*E, K]
+        edge_probs = edge_probs.to(x.device)
+        p_one_hot: Tensor = self.gumbel_softmax.forward(x=edge_probs) # [B*E, K]
+
+        # condition gnn on posterior and push x
+        predictions: Tensor = self.gnn.forward(x=x, batch=batch, edge_index=edge_set, edge_type_posterior=p_one_hot)
+
+        # transform posterior into batched format.
+        edge_batch = batch[edge_set[0]] # edge is in the same batch as incident nodes
+        batched_p_z_given_x, mask = to_dense_batch(edge_probs, edge_batch)
+        assert torch.all(mask), "Different number of edges across batches is not allowed."
+
+        return predictions, batched_p_z_given_x
+
 
 class RAFeatureExtractorSB3(BaseFeaturesExtractor):
     """
@@ -241,23 +300,23 @@ class RLlibGNNModel(TorchModelV2, nn.Module):
                  num_outputs: int,
                  model_config: ModelConfigDict,
                  name: str,
-                 gnn: Dict):
+                 **kwargs):
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs, model_config, name)
         nn.Module.__init__(self)
         self.gnn: BaselineGNN = BaselineGNN(
             x_dim=obs_space.x_dim,
-            hidden_dim=gnn['hidden_dim'],
-            x_out_dim=gnn['out_dim'],
-            num_layers=gnn['num_layers'],
-            dropout_prob=gnn.get('dropout_prob', 0.0),
-            residual=gnn.get('residual', True),
+            hidden_dim=kwargs['gnn']['hidden_dim'],
+            x_out_dim=kwargs['gnn']['out_dim'],
+            num_layers=kwargs['gnn']['num_layers'],
+            dropout_prob=kwargs['gnn'].get('dropout_prob', 0.0),
+            residual=kwargs['gnn'].get('residual', True),
         )
         # Build downstream MLP head(s)
         # Create a Box space for the GNN output to pass to FCN
         gnn_output_space = Box(
             low=-float('inf'),
             high=float('inf'),
-            shape=(gnn['out_dim'],),
+            shape=(kwargs['gnn']['out_dim'],),
             dtype=np.float32
         )
         self.mlp = FullyConnectedNetwork(
@@ -308,30 +367,29 @@ class RLlibRAGNNModel(TorchModelV2, nn.Module):
                  num_outputs: int,
                  model_config: ModelConfigDict,
                  name: str,
-                 encoder: Dict,
-                 gnn: Dict):
+                 **kwargs):
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs, model_config, name)
         nn.Module.__init__(self)
         self.ragnn: RAFeatureExtractor = RAFeatureExtractor(
             x_dim=obs_space.x_dim if hasattr(obs_space, 'x_dim') else 8, # TODO fix hack
-            use_graphormer=encoder.get('use_graphormer', False),
-            hidden_dim_enc=encoder['hidden_dim'],
-            num_layers_enc=encoder['num_layers'],
-            num_edge_types=encoder.get('num_edge_types', 2),
-            max_degree=encoder.get('max_degree', None),
-            max_path_distance=encoder.get('max_path_distance', None),
-            hidden_dim_gnn=gnn['hidden_dim'],
-            x_out_dim=gnn['out_dim'],
-            num_layers_gnn=gnn['num_layers'],
-            dropout_prob=gnn.get('dropout_prob', 0.0),
-            residual=gnn.get('residual', True),
+            use_graphormer=kwargs['encoder'].get('use_graphormer', False),
+            hidden_dim_enc=kwargs['encoder']['hidden_dim'],
+            num_layers_enc=kwargs['encoder']['num_layers'],
+            num_edge_types=kwargs['encoder'].get('num_edge_types', 2),
+            max_degree=kwargs['encoder'].get('max_degree', None),
+            max_path_distance=kwargs['encoder'].get('max_path_distance', None),
+            hidden_dim_gnn=kwargs['gnn']['hidden_dim'],
+            x_out_dim=kwargs['gnn']['out_dim'],
+            num_layers_gnn=kwargs['gnn']['num_layers'],
+            dropout_prob=kwargs['gnn'].get('dropout_prob', 0.0),
+            residual=kwargs['gnn'].get('residual', True),
         )
         # Build downstream MLP head(s)
         # Create a Box space for the GNN output to pass to FCN
         gnn_output_space = Box(
             low=-float('inf'),
             high=float('inf'),
-            shape=(gnn['out_dim'],),
+            shape=(kwargs['gnn']['out_dim'],),
             dtype=np.float32
         )
         self.mlp = FullyConnectedNetwork(
@@ -387,5 +445,75 @@ class RLlibRAGNNModel(TorchModelV2, nn.Module):
         return self.mlp.value_function()
 
 
+class RLlibNRIGNNModel(TorchModelV2, nn.Module):
+    def __init__(self,
+                 obs_space: GraphObservationSpace,
+                 action_space: Discrete,
+                 num_outputs: int,
+                 model_config: ModelConfigDict,
+                 name: str,
+                 **kwargs):
+        TorchModelV2.__init__(self, obs_space, action_space, num_outputs, model_config, name)
+        nn.Module.__init__(self)
+        self.nri_gnn: NRIBasedGNN = NRIBasedGNN(
+            x_dim=obs_space.x_dim if hasattr(obs_space, 'x_dim') else 8, # TODO fix hack
+            hidden_dim_gnn=kwargs['gnn']['hidden_dim'],
+            x_out_dim=kwargs['gnn']['out_dim'],
+            num_layers_gnn=kwargs['gnn']['num_layers'],
+            dropout_prob=kwargs['gnn'].get('dropout_prob', 0.0),
+            residual=kwargs['gnn'].get('residual', True),
+            edge_probs_path=kwargs['gnn']['edge_probs_path'],
+        )
+        # Build downstream MLP head(s)
+        # Create a Box space for the GNN output to pass to FCN
+        gnn_output_space = Box(
+            low=-float('inf'),
+            high=float('inf'),
+            shape=(kwargs['gnn']['out_dim'],),
+            dtype=np.float32
+        )
+        self.mlp = FullyConnectedNetwork(
+            obs_space=gnn_output_space,
+            action_space=action_space,
+            num_outputs=num_outputs,
+            model_config=model_config,
+            name=name + "_fully_connected_network",
+        )
+        self.batched_p_z_given_x: Optional[Tensor] = None
+
+    def forward(self, input_dict: Dict[str, TensorType], state: List[TensorType], seq_lens: TensorType) -> Tuple[TensorType, List[TensorType]]:
+        node_features_batch = input_dict["obs"][NODES]  # [B, N, node_in_dim]
+
+        B, N, _ = node_features_batch.shape
+        device = node_features_batch.device
+
+        # Flatten nodes
+        x = node_features_batch.reshape(B * N, -1)
+        batch = torch.arange(B, device=device).repeat_interleave(N)
+
+        # NRIGNN to produce graph-level representation [B, gnn_out_dim]
+        gnn_out, self.batched_p_z_given_x = self.nri_gnn(x=x, batch=batch)
+
+        # Pass GNN output through FCN (which expects input_dict format)
+        mlp_input_dict = {"obs": gnn_out}
+        logits, _ = self.mlp(mlp_input_dict, state, seq_lens)
+        return logits, []
+
+    def get_posterior(self) -> Tensor:
+        """
+        Returns the posterior distribution for the most recent forward pass.
+        Note that a forward call has to be performed first before this method can return anything and thus that calling
+        this method does not cause an extra forward pass through the network.
+        :return: Posterior distribution tensor of shape [BATCH, NUM_EDGES, NUM_EDGE_TYPES].
+        """
+        assert self.batched_p_z_given_x is not None, "Posterior not computed yet."
+        return self.batched_p_z_given_x
+
+    def value_function(self) -> Tensor:
+        # RLlib expects shape [B]
+        return self.mlp.value_function()
+
+
 ModelCatalog.register_custom_model("gnn_model", RLlibGNNModel)
 ModelCatalog.register_custom_model("ragnn_model", RLlibRAGNNModel)
+ModelCatalog.register_custom_model("nrignn_model", RLlibNRIGNNModel)

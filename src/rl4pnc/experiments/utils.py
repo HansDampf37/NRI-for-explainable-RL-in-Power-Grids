@@ -21,7 +21,7 @@ from ray.tune.schedulers import ASHAScheduler
 from ray.tune.stopper.stopper import Stopper
 from tabulate import tabulate
 
-from src.ra_agents.RAFeatureExtractor import RLlibGNNModel, RLlibRAGNNModel
+from src.ra_agents.RAFeatureExtractor import RLlibGNNModel, RLlibRAGNNModel, RLlibNRIGNNModel
 from src.ra_agents.ppo.rllib.rappo.RAPPO import RAPPOTorchPolicy
 from src.rl4pnc.algorithms.custom_ppo import CustomPPO
 from src.rl4pnc.algorithms.optuna_search import MyOptunaSearch
@@ -31,6 +31,7 @@ from src.rl4pnc.experiments.callback import Style, TuneCallback
 POLICIES["rappo_torch_policy"] = RAPPOTorchPolicy
 ModelCatalog.register_custom_model("gnn_model", RLlibGNNModel)
 ModelCatalog.register_custom_model("ragnn_model", RLlibRAGNNModel)
+ModelCatalog.register_custom_model("nrignn_model", RLlibNRIGNNModel)
 
 
 def calculate_action_space_asymmetry(env: BaseEnv, add_dn: bool = False) -> tuple[int, int, dict[int, int]]:

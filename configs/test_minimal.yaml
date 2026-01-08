@@ -8,7 +8,7 @@ setup:
   folder_name: test_minimal
   experiment_name: test_minimal
   optimization:
-    enable: True
+    enable: False
     score_metric: evaluation/custom_metrics/grid2op_end_mean
     mode: max
     num_trials: ~
@@ -52,6 +52,7 @@ training:
         hidden_dim: 32  # Reduced dimensions
         out_dim: 32
         num_layers: 1  # Single layer
+        edge_probs_path: /home/adrian/Dev/NRI-for-explainable-RL-in-Power-Grids/results/edge_probabilities/edges_averaged_with_forecast_2026-01-08_14-11-58.npy
       encoder:
         num_edge_types: 2  # Number of edge types (defaults to 2: edge exists or doesn't exist)
         max_degree: 7

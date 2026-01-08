@@ -19,7 +19,7 @@ from ray.rllib.models import ModelCatalog
 
 from src.common.baseline_agent import evaluate_agent
 from src.common.constants import SEED
-from src.ra_agents.RAFeatureExtractor import RLlibGNNModel, RLlibRAGNNModel
+from src.ra_agents.RAFeatureExtractor import RLlibGNNModel, RLlibRAGNNModel, RLlibNRIGNNModel
 from src.rl4pnc.evaluation.evaluation_agents import RllibAgent
 from src.rl4pnc.grid2op_env.custom_environment import CustomizedGrid2OpEnvironment
 from src.visualization import get_evaluation_metrics, visualize_agent_survival
@@ -253,5 +253,6 @@ def main():
 if __name__ == "__main__":
     ModelCatalog.register_custom_model("gnn_model", RLlibGNNModel)
     ModelCatalog.register_custom_model("ragnn_model", RLlibRAGNNModel)
+    ModelCatalog.register_custom_model("nrignn_model", RLlibNRIGNNModel)
     main()
 

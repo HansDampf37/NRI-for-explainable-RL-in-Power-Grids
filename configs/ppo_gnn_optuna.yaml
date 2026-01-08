@@ -47,6 +47,7 @@ training:
         out_dim: !choice [32, 64, 128]  # Output dimension of GNN
         num_layers: !quniform [1, 4, 1]  # Number of GNN layers (1-4)
         residual: !choice [True, False]  # Whether to use residual connections
+        edge_probs_path: results/edge_probabilities/edges_averaged_with_forecast_2026-01-08_14-11-58.npy
   _enable_learner_api: False
 
 rl_module:
