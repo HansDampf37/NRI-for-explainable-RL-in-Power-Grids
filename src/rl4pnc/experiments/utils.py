@@ -354,7 +354,7 @@ def print_details(custom_model_config: Dict[str, Any], setup: Dict[str, Any]):
     print("Using action space: ", custom_model_config["env_config"]["action_space"])
     print("Using observation space: ", custom_model_config["env_config"]["observation_space"])
 
-def run_training(custom_model_config: dict[str, Any], setup: dict[str, Any], job_id: str) -> ResultGrid:
+def run_training(config: dict[str, Any], setup: dict[str, Any], job_id: str) -> ResultGrid:
     """
     Function that runs the training script.
     """
@@ -383,9 +383,9 @@ def run_training(custom_model_config: dict[str, Any], setup: dict[str, Any], job
             algo.restore_from_dir(setup['optimization']['load_from'])
             for key in algo._space.keys():
                 if '/' in key:
-                    delete_nested_key(custom_model_config, key)
+                    delete_nested_key(config, key)
                 else:
-                    del custom_model_config[key]
+                    del config[key]
 
     dur = get_duration(setup)
 
@@ -404,7 +404,7 @@ def run_training(custom_model_config: dict[str, Any], setup: dict[str, Any], job
     # Create tuner
     tuner = tune.Tuner(
         trainable=CustomPPO,
-        param_space=custom_model_config,
+        param_space=config,
         run_config=air.RunConfig(
             name=setup["experiment_name"],
             storage_path=storage_path,
@@ -413,7 +413,7 @@ def run_training(custom_model_config: dict[str, Any], setup: dict[str, Any], job
                 TuneCallback(
                     setup["my_log_level"],
                     setup["optimization"]["score_metric"],
-                    eval_freq=custom_model_config["evaluation_interval"],
+                    eval_freq=config["evaluation_interval"],
                     heartbeat_freq=60,
                 ),
             ],
@@ -442,7 +442,7 @@ def run_training(custom_model_config: dict[str, Any], setup: dict[str, Any], job
         ,
     )
 
-    print_details(custom_model_config, setup)
+    print_details(config, setup)
 
     # Launch tuning
     try:
@@ -458,13 +458,13 @@ def run_training(custom_model_config: dict[str, Any], setup: dict[str, Any], job
     # If Optuna optimization was enabled, save results summary
     if do_optimization:
         best_result = result_grid.get_best_result(metric=setup["optimization"]["score_metric"], mode="max")
-        custom_model_config = best_result.config["model"]["custom_model_config"]
+        config = best_result.config["model"]["custom_model_config"]
         relation_awareness_config = best_result.config["relation_awareness"]
-        custom_model_config.update({"relation_awareness": relation_awareness_config})
+        config.update({"relation_awareness": relation_awareness_config})
 
         rows = [
             [f"{module}.{param}", value]
-            for module, params in custom_model_config.items()
+            for module, params in config.items()
             for param, value in params.items()
         ]
         table = tabulate(rows, headers=["Parameter", "Value"], tablefmt="rounded_grid", floatfmt=".3f", )

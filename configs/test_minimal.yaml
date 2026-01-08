@@ -9,7 +9,7 @@ setup:
   experiment_name: test_minimal
   optimization:
     enable: False
-    score_metric: evaluation/custom_metrics/grid2op_end_mean
+    score_metric: custom_metrics/grid2op_end_mean
     mode: max
     num_trials: 2
     load_from: ~  # load previous optimization results from this dir
