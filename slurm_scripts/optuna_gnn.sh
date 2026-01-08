@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Set experiment name and export variable for SLURM
-experiment_name="0501_gnn_hyperparameter_optimization"
+experiment_name="0801_gnn_hyperparameter_optimization_5hours"
 export experiment_name
 cd ..
 

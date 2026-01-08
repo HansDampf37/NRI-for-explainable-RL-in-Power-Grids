@@ -1,6 +1,6 @@
 setup:
   max_ep_len: 8064
-  duration: 22:00  # 22 hours
+  duration: 04:00 # hh:mm
   nb_timesteps: 50_000
   checkpoint_freq: 10
   verbose: 0
@@ -14,10 +14,12 @@ setup:
     n_trials: ~ # if n_trials is None, will run until duration is reached
     load_from: ~  # load previous optimization results from this dir
     points_to_evaluate:
-      hidden_dim: 64
-      out_dim: 64
+      prior_prob_for_graph_edge: 1.0
+      beta: 1.0
+      temperature: 0.0
+      num_edge_types: 2
+      hidden_dim: 256
       num_layers: 2
-      residual: True
   debugging:
     seed: &seed 42
 
@@ -45,7 +47,7 @@ training:
     learning_rate: 0.005
   relation_awareness: # RAGNN-specific settings - OPTIMIZING THESE PARAMETERS
     prior_prob_for_graph_edge: !uniform [0.0, 1.0]  # Prior probability for graph edge
-    beta: !uniform [0.5, 2.0]  # Beta parameter for relation awareness
+    beta: !uniform [0.5, 4.0]  # Beta parameter for relation awareness
     temperature: !uniform [0.0, 1.0]  # the amount of additional edges inferred by the encoder
   model:
     fcnet_hiddens: [256, 256, 256]  # Downstream MLP after GNN
@@ -53,10 +55,10 @@ training:
     post_fcnet_hiddens: [256, 128]
     custom_model_config:
       gnn: # GNN-specific hyperparameters - WILL BE COPIED FROM OPTIMAL GNN CONFIG LATER
-        hidden_dim: 64  # Use optimal value from GNN optimization
+        hidden_dim: 265  # Use optimal value from GNN optimization
         out_dim: 64  # Use optimal value from GNN optimization
-        num_layers: 2  # Use optimal value from GNN optimization
-        edge_probs_path: results/edge_probabilities/edges_averaged_with_forecast_2026-01-08_14-11-58.npy
+        num_layers: 3  # Use optimal value from GNN optimization
+        residual: true  # Use optimal value from GNN optimization
       encoder: # RAGNN encoder settings
         num_edge_types: !choice [2, 3, 4]  # Number of edge types (2-6)
         max_degree: 7
