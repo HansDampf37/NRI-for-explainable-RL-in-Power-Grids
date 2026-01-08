@@ -199,7 +199,15 @@ class RllibAgent(HeuristicsAgent):
         HeuristicsAgent.__init__(self, action_space, rules)
 
         # load neural network of (eg) PPO agent.
-        checkpoint_path = os.path.join(file_path, checkpoint_name, "policies", policy_name)
+        # Handle two cases:
+        # 1. file_path is experiment dir, checkpoint_name is subdirectory name (e.g., "checkpoint_000000")
+        # 2. file_path already points to checkpoint dir, checkpoint_name is empty
+        if checkpoint_name:
+            checkpoint_path = os.path.join(file_path, checkpoint_name, "policies", policy_name)
+        else:
+            # file_path already points to checkpoint directory
+            checkpoint_path = os.path.join(file_path, "policies", policy_name)
+
         self._rllib_agent = Policy.from_checkpoint(checkpoint_path)
 
         # IMPORTANT: Restore the correct observation space structure

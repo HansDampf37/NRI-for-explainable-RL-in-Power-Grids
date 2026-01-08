@@ -18,6 +18,11 @@ setup:
       out_dim: 64
       num_layers: 2
       residual: True
+  post_training_evaluation:
+    enabled: True  # Whether to evaluate the best checkpoint after training
+    env_name: l2rpn_case14_sandbox_val  # Environment to use for evaluation
+    num_episodes: all  # Number of episodes to evaluate (use "all" for all available episodes)
+    visualize: False  # Whether to show visualization after evaluation
   debugging:
     seed: &seed 42
 

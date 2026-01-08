@@ -33,13 +33,20 @@ def load_env_config_from_params(checkpoint_path: str) -> dict:
     """
     Load environment configuration from params.json in the checkpoint directory.
 
-    :param checkpoint_path: Path to the experiment directory containing params.json
+    :param checkpoint_path: Path to the experiment directory or checkpoint subdirectory containing params.json
     :return: Environment configuration dictionary
     """
-    params_path = Path(checkpoint_path) / "params.json"
+    checkpoint_path = Path(checkpoint_path)
 
+    # Try to find params.json in checkpoint_path or its parent
+    params_path = checkpoint_path / "params.json"
     if not params_path.exists():
-        raise FileNotFoundError(f"params.json not found at {params_path}")
+        # If checkpoint_path is a checkpoint subdirectory (e.g., checkpoint_000000),
+        # look in the parent directory (the experiment directory)
+        params_path = checkpoint_path.parent / "params.json"
+        if not params_path.exists():
+            raise FileNotFoundError(f"params.json not found at {checkpoint_path / 'params.json'} or {params_path}")
+        logger.info(f"Found params.json in parent directory: {params_path}")
 
     with open(params_path, 'r') as f:
         params = json.load(f)
@@ -96,7 +103,7 @@ def load_rllib_agent(
     :param checkpoint_name: Name of the checkpoint folder (e.g., "checkpoint_000000")
     :param env_name: Name of the Grid2Op environment to evaluate on
     :param env_config: Environment configuration dictionary
-    :return: Tuple of (RllibAgent, Grid2Op Environment)
+    :return: Tuple of (RllibAgent, Grid2Op Environment, gym_wrapper)
     """
     # Add env_name to config for CustomizedGrid2OpEnvironment
     env_config["env_name"] = env_name
@@ -117,23 +124,33 @@ def load_rllib_agent(
         gym_wrapper=gym_wrapper
     )
 
-    # Restore the original observation space
-    #gym_wrapper.observation_space = original_obs_space
-
-    return agent, g2op_env
+    # Return gym_wrapper to keep it alive and prevent premature cleanup
+    return agent, g2op_env, gym_wrapper
 
 
-def main():
-    """Main evaluation script."""
+def evaluate_rllib_checkpoint(
+    checkpoint_path: str,
+    policy_name: str = "reinforcement_learning_policy",
+    checkpoint_name: str = "checkpoint_000000",
+    env_name_override: str = None,
+    num_episodes: int = 50,
+    visualize: bool = True
+):
+    """
+    Evaluate an RLlib checkpoint on a Grid2Op environment.
 
-    # Configuration
-    checkpoint_path = "/home/adrian/Dev/NRI-for-explainable-RL-in-Power-Grids/results/experiments/test_minimal_run/CustomPPO_TEsTING_5b0896be_2026-01-07_15-25-24"
-    policy_name = "reinforcement_learning_policy"
-    checkpoint_name = "checkpoint_000000"
-
-    # Optional: override env_name for evaluation (otherwise uses the one from params.json)
-    env_name_override = "l2rpn_case14_sandbox_val"  # Set to "l2rpn_case14_sandbox_val" to override
-    num_episodes = 50  # Number of evaluation episodes
+    :param checkpoint_path: Path to the experiment directory containing checkpoints
+    :param policy_name: Name of the policy (default: "reinforcement_learning_policy")
+    :param checkpoint_name: Name of the checkpoint folder (default: "checkpoint_000000")
+    :param env_name_override: Override environment name for evaluation (default: None, uses params.json)
+    :param num_episodes: Number of evaluation episodes (default: 50)
+    :param visualize: Whether to show visualization after evaluation (default: True)
+    :return: Path to results directory
+    """
+    # Register custom models before loading checkpoint
+    ModelCatalog.register_custom_model("gnn_model", RLlibGNNModel)
+    ModelCatalog.register_custom_model("ragnn_model", RLlibRAGNNModel)
+    ModelCatalog.register_custom_model("nrignn_model", RLlibNRIGNNModel)
 
     # Load environment configuration from params.json
     try:
@@ -189,9 +206,10 @@ def main():
     logger.info(f"Checkpoint: {checkpoint_name}")
     logger.info(f"Policy: {policy_name}")
 
+    gym_wrapper = None
     try:
-        # Load the agent
-        agent, g2op_env = load_rllib_agent(
+        # Load the agent and keep gym_wrapper alive to prevent double-close
+        agent, g2op_env, gym_wrapper = load_rllib_agent(
             checkpoint_path=checkpoint_path,
             policy_name=policy_name,
             checkpoint_name=checkpoint_name,
@@ -239,15 +257,50 @@ def main():
         logger.info("Evaluation completed!")
 
         # Load and visualize results
-        logger.info("Generating visualization...")
-        metrics = get_evaluation_metrics(results_path, "RLlib Agent")
-        visualize_agent_survival([metrics], show=True)
+        if visualize:
+            logger.info("Generating visualization...")
+            metrics = get_evaluation_metrics(results_path, "RLlib Agent")
+            visualize_agent_survival([metrics], show=True)
 
         logger.info(f"Results saved to: {results_path}")
+
+        return results_path
 
     except Exception as e:
         logger.error(f"Error during evaluation: {e}", exc_info=True)
         raise
+    finally:
+        # Clean up gym_wrapper which will handle environment cleanup
+        if gym_wrapper is not None:
+            try:
+                # Close the gym environment properly
+                gym_wrapper.env_gym.close()
+            except Exception as cleanup_error:
+                # Ignore errors during cleanup (e.g., already closed)
+                logger.debug(f"Environment cleanup error (ignored): {cleanup_error}")
+
+
+def main():
+    """Main evaluation script when running as standalone."""
+
+    # Configuration
+    checkpoint_path = "/home/adrian/Dev/NRI-for-explainable-RL-in-Power-Grids/results/experiments/test_minimal_run/CustomPPO_TEsTING_5b0896be_2026-01-07_15-25-24"
+    policy_name = "reinforcement_learning_policy"
+    checkpoint_name = "checkpoint_000000"
+
+    # Optional: override env_name for evaluation (otherwise uses the one from params.json)
+    env_name_override = "l2rpn_case14_sandbox_val"  # Set to "l2rpn_case14_sandbox_val" to override
+    num_episodes = 50  # Number of evaluation episodes
+
+    # Call the reusable evaluation function
+    evaluate_rllib_checkpoint(
+        checkpoint_path=checkpoint_path,
+        policy_name=policy_name,
+        checkpoint_name=checkpoint_name,
+        env_name_override=env_name_override,
+        num_episodes=num_episodes,
+        visualize=True
+    )
 
 
 if __name__ == "__main__":

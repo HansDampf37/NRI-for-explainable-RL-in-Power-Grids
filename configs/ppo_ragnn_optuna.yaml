@@ -20,6 +20,11 @@ setup:
       num_edge_types: 2
       hidden_dim: 256
       num_layers: 2
+  post_training_evaluation:
+    enabled: True  # Whether to evaluate the best checkpoint after training
+    env_name: l2rpn_case14_sandbox_val  # Environment to use for evaluation
+    num_episodes: all  # Number of episodes to evaluate (use "all" for all available episodes)
+    visualize: False  # Whether to show visualization after evaluation
   debugging:
     seed: &seed 42
 
@@ -58,7 +63,8 @@ training:
         hidden_dim: 265  # Use optimal value from GNN optimization
         out_dim: 64  # Use optimal value from GNN optimization
         num_layers: 3  # Use optimal value from GNN optimization
-        residual: true  # Use optimal value from GNN optimization
+        residual: True
+        edge_probs_path: results/edge_probabilities/edges_averaged_with_forecast_2026-01-08_14-11-58.npy
       encoder: # RAGNN encoder settings
         num_edge_types: !choice [2, 3, 4]  # Number of edge types (2-6)
         max_degree: 7
