@@ -194,6 +194,40 @@ class RllibAgent(HeuristicsAgent):
         # load neural network of (eg) PPO agent.
         checkpoint_path = os.path.join(file_path, checkpoint_name, "policies", policy_name)
         self._rllib_agent = Policy.from_checkpoint(checkpoint_path)
+
+        # IMPORTANT: Restore the correct observation space structure
+        # The checkpoint deserialization converts custom observation spaces to generic Dict spaces,
+        # losing custom attributes and methods. We need to restore the proper structure.
+        # The observation space from gym_wrapper is the correctly configured one.
+        from src.common.observation_space import BusConnectivityGraphObsSpace
+
+        # Check if we're using a graph observation space and if it got converted to generic Dict
+        expected_obs_space = gym_wrapper.observation_converter.observation_space
+        loaded_obs_space = self._rllib_agent.observation_space
+
+        # If the loaded observation space is different from expected, restore it
+        if hasattr(expected_obs_space, 'spaces') and 'reinforcement_learning_agent' in expected_obs_space.spaces:
+            rl_agent_expected_space = expected_obs_space.spaces['reinforcement_learning_agent']
+
+            # Check if the expected space is a custom GraphObservationSpace but loaded as generic Dict
+            if isinstance(rl_agent_expected_space, BusConnectivityGraphObsSpace):
+                if hasattr(loaded_obs_space, 'spaces') and 'reinforcement_learning_agent' in loaded_obs_space.spaces:
+                    loaded_rl_space = loaded_obs_space.spaces['reinforcement_learning_agent']
+
+                    # If loaded space is a generic Dict, replace it with the correct custom space
+                    if not isinstance(loaded_rl_space, BusConnectivityGraphObsSpace):
+                        print(f"Warning: Loaded observation space is {type(loaded_rl_space).__name__}, "
+                              f"but expected {type(rl_agent_expected_space).__name__}. Restoring correct space.")
+
+                        # Restore the full observation space structure from gym_wrapper
+                        self._rllib_agent.observation_space = expected_obs_space
+
+                        # Verify restoration
+                        restored_space = self._rllib_agent.observation_space.spaces['reinforcement_learning_agent']
+                        if isinstance(restored_space, BusConnectivityGraphObsSpace):
+                            print(f"Successfully restored BusConnectivityGraphObsSpace with x_dim={restored_space.x_dim}, "
+                                  f"num_nodes={restored_space.num_nodes}, max_num_edges={restored_space.max_num_edges}")
+
         self.obs_keys_order = [key for key in self._rllib_agent.observation_space.spaces.keys()]
         print("Observations order: ", self.obs_keys_order)
 

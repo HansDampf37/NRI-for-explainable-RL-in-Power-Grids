@@ -313,7 +313,7 @@ class RLlibRAGNNModel(TorchModelV2, nn.Module):
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs, model_config, name)
         nn.Module.__init__(self)
         self.ragnn: RAFeatureExtractor = RAFeatureExtractor(
-            x_dim=obs_space.x_dim,
+            x_dim=obs_space.x_dim if hasattr(obs_space, 'x_dim') else 8, # TODO fix hack
             use_graphormer=encoder.get('use_graphormer', False),
             hidden_dim_enc=encoder['hidden_dim'],
             num_layers_enc=encoder['num_layers'],

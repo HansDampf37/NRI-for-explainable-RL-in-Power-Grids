@@ -39,7 +39,8 @@ class RAPPOTorchPolicy(PPOTorchPolicy):
         batched_priors = []
         for batch_index in range(all_graph_edges.shape[0]):
             graph_edges_batch = all_graph_edges[batch_index, :, train_batch["obs"][EDGE_MASK][batch_index]]
-            N, E = self.observation_space.num_nodes, graph_edges_batch.shape[1]
+            N = self.observation_space.num_nodes if hasattr(self.observation_space, 'num_nodes') else 57
+            E = graph_edges_batch.shape[1]
             all_edges = fully_connected_edge_index(N)
             prior_for_graph_edges, prior_for_non_graph_edges = get_priors(
                 prob_graph_edges_exist=self.config["relation_awareness"]["prior_prob_for_graph_edge"],

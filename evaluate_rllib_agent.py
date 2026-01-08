@@ -86,13 +86,14 @@ def main():
     """Main evaluation script."""
 
     # Configuration
-    checkpoint_path = "/home/adrian/Schreibtisch/0601_ragnn_prior1_high_beta_temp0_like_gnn/CustomPPO_0_e5056_2026-01-06_12-36-08/"
+    checkpoint_path = "/home/adrian/Dev/NRI-for-explainable-RL-in-Power-Grids/results/experiments/test_minimal_run/CustomPPO_TEsTING_aab8cc62_2026-01-07_16-31-35"
     policy_name = "reinforcement_learning_policy"
-    checkpoint_name = "checkpoint_000010"
+    checkpoint_name = "checkpoint_000000"
     env_name = "l2rpn_case14_sandbox_val"
     num_episodes = 50  # Number of evaluation episodes
 
     # Environment configuration matching the training setup from params.json
+    # todo load this from params.json automatically
     env_config = {
         "env_name": env_name,  # Will be overridden by load_rllib_agent
         "action_space": "medha",  # From params.json
@@ -126,7 +127,7 @@ def main():
     }
 
     # Results path
-    results_path = Path("results/evaluations/ragnn_rllib_0601_close_to_gnn")
+    results_path = Path(checkpoint_path) / "evaluations"
 
     logger.info(f"Loading agent from: {checkpoint_path}")
     logger.info(f"Checkpoint: {checkpoint_name}")
@@ -143,6 +144,30 @@ def main():
         )
 
         logger.info(f"Agent loaded successfully!")
+
+        # Validate observation space restoration
+        from src.common.observation_space import BusConnectivityGraphObsSpace
+        obs_space = agent._rllib_agent.observation_space
+
+        if hasattr(obs_space, 'spaces') and 'reinforcement_learning_agent' in obs_space.spaces:
+            rl_obs_space = obs_space.spaces['reinforcement_learning_agent']
+
+            if isinstance(rl_obs_space, BusConnectivityGraphObsSpace):
+                logger.info(f"✓ Observation space correctly restored as BusConnectivityGraphObsSpace")
+                logger.info(f"  - x_dim: {rl_obs_space.x_dim}")
+                logger.info(f"  - num_nodes: {rl_obs_space.num_nodes}")
+                logger.info(f"  - max_num_edges: {rl_obs_space.max_num_edges}")
+                logger.info(f"  - e_dim: {rl_obs_space.e_dim}")
+
+                # Check for normalization parameters
+                if hasattr(rl_obs_space, 'normalization_min') and rl_obs_space.normalization_min is not None:
+                    logger.info(f"  - Normalization parameters present: Yes")
+                else:
+                    logger.info(f"  - Normalization parameters present: No")
+            else:
+                logger.warning(f"⚠ Observation space is {type(rl_obs_space).__name__}, expected BusConnectivityGraphObsSpace")
+                logger.warning(f"  Custom attributes may be missing!")
+
         logger.info(f"Evaluating on environment: {env_name}")
         logger.info(f"Number of episodes: {num_episodes}")
 
