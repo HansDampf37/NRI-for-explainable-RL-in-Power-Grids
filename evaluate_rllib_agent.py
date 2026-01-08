@@ -11,6 +11,7 @@ wrapped in a multi-agent Dict space during training.
 When loading for evaluation, we need to provide the exact observation space structure
 that the policy expects.
 """
+import json
 import logging
 from pathlib import Path
 
@@ -26,6 +27,46 @@ from src.visualization import get_evaluation_metrics, visualize_agent_survival
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def load_env_config_from_params(checkpoint_path: str) -> dict:
+    """
+    Load environment configuration from params.json in the checkpoint directory.
+
+    :param checkpoint_path: Path to the experiment directory containing params.json
+    :return: Environment configuration dictionary
+    """
+    params_path = Path(checkpoint_path) / "params.json"
+
+    if not params_path.exists():
+        raise FileNotFoundError(f"params.json not found at {params_path}")
+
+    with open(params_path, 'r') as f:
+        params = json.load(f)
+
+    # Get the base training environment config
+    if "env_config" not in params:
+        raise ValueError("No env_config found in params.json")
+
+    env_config = params["env_config"]
+
+    # Clean up the config - remove serialized object strings that can't be used directly
+    # These will be recreated by the environment
+    if "grid2op_kwargs" in env_config:
+        grid2op_kwargs = env_config["grid2op_kwargs"]
+        # Remove serialized class/object references as they need to be recreated
+        keys_to_remove = []
+        for key, value in grid2op_kwargs.items():
+            if isinstance(value, str) and (value.startswith("<class") or value.startswith("<")):
+                keys_to_remove.append(key)
+                logger.debug(f"Removing serialized object: {key} = {value}")
+
+        for key in keys_to_remove:
+            del grid2op_kwargs[key]
+
+        logger.info(f"Cleaned {len(keys_to_remove)} serialized objects from grid2op_kwargs")
+
+    return env_config
 
 
 def create_gym_wrapper_from_config(env_config: dict):
@@ -86,45 +127,60 @@ def main():
     """Main evaluation script."""
 
     # Configuration
-    checkpoint_path = "/home/adrian/Dev/NRI-for-explainable-RL-in-Power-Grids/results/experiments/test_minimal_run/CustomPPO_TEsTING_aab8cc62_2026-01-07_16-31-35"
+    checkpoint_path = "/home/adrian/Dev/NRI-for-explainable-RL-in-Power-Grids/results/experiments/test_minimal_run/CustomPPO_TEsTING_5b0896be_2026-01-07_15-25-24"
     policy_name = "reinforcement_learning_policy"
     checkpoint_name = "checkpoint_000000"
-    env_name = "l2rpn_case14_sandbox_val"
+
+    # Optional: override env_name for evaluation (otherwise uses the one from params.json)
+    env_name_override = "l2rpn_case14_sandbox_val"  # Set to "l2rpn_case14_sandbox_val" to override
     num_episodes = 50  # Number of evaluation episodes
 
-    # Environment configuration matching the training setup from params.json
-    # todo load this from params.json automatically
-    env_config = {
-        "env_name": env_name,  # Will be overridden by load_rllib_agent
-        "action_space": "medha",  # From params.json
-        "mask": 5,
-        "lib_dir": ".",  # Current directory
-        "grid2op_kwargs": {
-            # Will be filled by make_g2op_env
-        },
-        "seed": SEED,
-        "rho_threshold": 0.95,
-        "n_history": 1,
-        "g2op_input": ["r", "t"],
-        "custom_input": ["d"],
-        "observation_space": "BusConnectivityGraphObsSpace",  # CRITICAL: Must match training!
-        "danger": 0.9,
-        "prio": False,
-        "use_ffw": False,  # Set to False for evaluation
-        "reset_topo": 0.9,
-        "line_reco": True,
-        "line_disc": False,
-        "penalty_game_over": 0,
-        "reward_finish": 0,
-        "curriculum_training": False,
-        "rules": {
-            "activation_threshold": 0.95,
+    # Load environment configuration from params.json
+    try:
+        env_config = load_env_config_from_params(checkpoint_path)
+
+        # Override env_name if specified
+        if env_name_override:
+            env_config["env_name"] = env_name_override
+            logger.info(f"Overriding env_name to: {env_name_override}")
+
+        env_name = env_config["env_name"]
+
+    except Exception as e:
+        logger.error(f"Failed to load env_config from params.json: {e}")
+        logger.info("Falling back to manual configuration")
+
+        # Fallback to manual configuration
+        env_name = "l2rpn_case14_sandbox_val"
+        env_config = {
+            "env_name": env_name,
+            "action_space": "medha",
+            "mask": 5,
+            "lib_dir": ".",
+            "grid2op_kwargs": {},
+            "seed": SEED,
+            "rho_threshold": 0.95,
+            "n_history": 1,
+            "g2op_input": ["r", "t"],
+            "custom_input": ["d"],
+            "observation_space": "BusConnectivityGraphObsSpace",
+            "danger": 0.9,
+            "prio": False,
+            "use_ffw": False,
+            "reset_topo": 0.9,
             "line_reco": True,
             "line_disc": False,
-            "reset_topo": 0.9,
-            "simulate": True
+            "penalty_game_over": 0,
+            "reward_finish": 0,
+            "curriculum_training": False,
+            "rules": {
+                "activation_threshold": 0.95,
+                "line_reco": True,
+                "line_disc": False,
+                "reset_topo": 0.9,
+                "simulate": True
+            }
         }
-    }
 
     # Results path
     results_path = Path(checkpoint_path) / "evaluations"

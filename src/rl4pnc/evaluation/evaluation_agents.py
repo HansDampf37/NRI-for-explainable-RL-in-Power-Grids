@@ -189,7 +189,14 @@ class RllibAgent(HeuristicsAgent):
         checkpoint_name: str,
         gym_wrapper: GymEnv,
     ):
-        HeuristicsAgent.__init__(self, action_space, env_config["rules"])
+        rules = {
+            "activation_threshold": env_config["rho_threshold"],
+            "line_reco": env_config["line_reco"],
+            "line_disc": env_config["line_disc"],
+            "reset_topo": env_config["reset_topo"],
+            "simulate": True,
+        }
+        HeuristicsAgent.__init__(self, action_space, rules)
 
         # load neural network of (eg) PPO agent.
         checkpoint_path = os.path.join(file_path, checkpoint_name, "policies", policy_name)
