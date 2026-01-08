@@ -346,7 +346,7 @@ def run_training(custom_model_config: dict[str, Any], setup: dict[str, Any], job
             mode=setup['optimization']["mode"],
             points_to_evaluate=[points_to_eval] if points_to_eval is not None else None,
         )
-        if 'load_from' in setup['optimization'].keys():
+        if setup['optimization'].get("load_from", None) is not None:
             print("Retrieving results old experiment from : ", setup['optimization']['load_from'])
             algo.restore_from_dir(setup['optimization']['load_from'])
             for key in algo._space.keys():
@@ -397,13 +397,12 @@ def run_training(custom_model_config: dict[str, Any], setup: dict[str, Any], job
             scheduler=ASHAScheduler(
                 metric=setup["optimization"]["score_metric"],
                 mode=setup["optimization"]["mode"],
-                grace_period=setup["optimization"].get("grace_period", 10000),
             ),
             trial_name_creator=lambda t: trial_str_creator(t, job_id),
             trial_dirname_creator=lambda t: trial_dir_name(t),
             search_alg=algo,
-            num_samples=setup['optimization']["num_samples"] or -1,
-            time_budget_s=time_budget,  # Time budget for entire optimization
+            num_samples=setup['optimization'].get("num_trials", -1) or -1,
+            time_budget_s=time_budget,
         ) if do_optimization else
         tune.TuneConfig(
             trial_name_creator=lambda t: trial_str_creator(t, job_id),
@@ -428,6 +427,9 @@ def run_training(custom_model_config: dict[str, Any], setup: dict[str, Any], job
     if do_optimization:
         best_result = result_grid.get_best_result(metric=setup["optimization"]["score_metric"], mode="max")
         custom_model_config = best_result.config["model"]["custom_model_config"]
+        relation_awareness_config = best_result.config["relation_awareness"]
+        custom_model_config.update({"relation_awareness": relation_awareness_config})
+
         rows = [
             [f"{module}.{param}", value]
             for module, params in custom_model_config.items()
@@ -442,8 +444,10 @@ def run_training(custom_model_config: dict[str, Any], setup: dict[str, Any], job
         # Save the Optuna study to a SQLite database for dashboard access
         if algo is not None:
             optuna_path = os.path.join(storage_path, setup['experiment_name'], f"optuna_results_{job_id}")
-            db_path = algo.save_study(optuna_path, f"{setup['experiment_name']}_{job_id}")
+            study_name = f"{setup['experiment_name']}_{job_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            db_path = algo.save_study(optuna_path, study_name)
             tune_path = os.path.join(storage_path, setup['experiment_name'], f"tune_results")
+            os.makedirs(tune_path, exist_ok=True)
             algo.save_to_dir(tune_path, f"tune_checkpoint_{job_id}")
             print(f"\n{Style.BOLD}{'='*80}{Style.END}")
             print(f"{Style.BOLD}Optuna study saved to: {db_path}{Style.END}")

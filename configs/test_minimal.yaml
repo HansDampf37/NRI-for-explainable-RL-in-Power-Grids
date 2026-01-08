@@ -1,23 +1,20 @@
 setup:
   max_ep_len: 8064
-  duration: ~ # HH:MM or minutes of training before stopping, used if value > 0
-  nb_timesteps: 500  # Minimal timesteps for quick testing
+  duration: 00:01 # HH:MM or minutes of training before stopping, used if value > 0
+  nb_timesteps: 100  # Minimal timesteps for quick testing
   checkpoint_freq: 100  # Less frequent checkpointing
   verbose: 0
   my_log_level: 1
   folder_name: test_minimal
   experiment_name: test_minimal
   optimization:
-    enable: False
+    enable: True
     score_metric: evaluation/custom_metrics/grid2op_end_mean
     mode: max
-    n_trials: 16
+    num_trials: ~
     load_from: ~  # load previous optimization results from this dir
     points_to_evaluate:
-      hidden_dim: 64
-      out_dim: 64
-      num_layers: 2
-      residual: True
+      temperature: 0.25
   debugging:
     seed: &seed 42
     ray_local_mode: true  # Enable local mode for easier debugging
