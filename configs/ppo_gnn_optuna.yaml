@@ -18,9 +18,8 @@ setup:
       out_dim: 64
       num_layers: 2
       residual: True
-
-debugging:
-  seed: &seed 42
+  debugging:
+    seed: &seed 42
 
 training:
   checkpoint_trainable_policies_only: True

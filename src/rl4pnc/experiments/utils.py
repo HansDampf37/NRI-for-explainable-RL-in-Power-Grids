@@ -330,8 +330,9 @@ def run_training(custom_model_config: dict[str, Any], setup: dict[str, Any], job
     # Set the environment variable
     os.environ["RAY_DEDUP_LOGS"] = "0"
     os.environ["TUNE_DISABLE_STRICT_METRIC_CHECKING"] = "1"
-    ray.init(local_mode=setup.get("debugging", {}).get("ray_local_mode", False))
-    print(f"Ray initialized in {'local' if setup.get('debugging', {}).get('ray_local_mode', False) else 'cluster'} mode.")
+    local_mode = setup.get("debugging", {}).get("ray_local_mode", False)
+    ray.init(local_mode=local_mode)
+    print(f"Ray initialized in {'local' if local_mode else 'cluster'} mode.")
 
     # whether to perform hyperparameter optimization
     do_optimization = setup['optimization']['enable']

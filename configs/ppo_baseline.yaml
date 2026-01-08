@@ -14,16 +14,8 @@ setup:
     n_trials: ~
     points_to_evaluate: ~
     load_from: ~  # load previous optimization results from this dir
-
-debugging:
-  seed: &seed 9
-
-encoder_pretrain: # this section is only used if model_type == "RAGNN" and callbacks include EncoderPretrainCallback
-  enabled: true  # Set to true to enable encoder pretraining
-  ds_size: 1000
-  batch_size: 32
-  num_epochs: 40
-  learning_rate: 0.005
+  debugging:
+    seed: &seed 9
 
 training:
   checkpoint_trainable_policies_only: True
@@ -39,6 +31,12 @@ training:
   sgd_minibatch_size: 32 #!choice [32, 64, 128] #
   train_batch_size: 128 #80 #!choice [128, 256, 512] #
   batch_mode: complete_episodes
+  encoder_pretrain: # this section is only used if model_type == "RAGNN" and callbacks include EncoderPretrainCallback
+    enabled: true  # Set to true to enable encoder pretraining
+    ds_size: 1000
+    batch_size: 32
+    num_epochs: 40
+    learning_rate: 0.005
   relation_awareness: # this section is only used if model_type == "RAGNN", select model type via cli args
     prior_prob_for_graph_edge: 0.9
     beta: 1.0

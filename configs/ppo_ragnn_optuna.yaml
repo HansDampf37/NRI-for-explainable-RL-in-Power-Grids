@@ -18,16 +18,8 @@ setup:
       out_dim: 64
       num_layers: 2
       residual: True
-
-debugging:
-  seed: &seed 42
-
-encoder_pretrain: # Encoder pretraining for RAGNN
-  enabled: true
-  ds_size: 1000
-  batch_size: 32
-  num_epochs: 30
-  learning_rate: 0.005
+  debugging:
+    seed: &seed 42
 
 training:
   checkpoint_trainable_policies_only: True
@@ -45,6 +37,12 @@ training:
   sgd_minibatch_size: 256
   train_batch_size: 1024
   batch_mode: complete_episodes
+  encoder_pretrain: # Encoder pretraining for RAGNN
+    enabled: true
+    ds_size: 1000
+    batch_size: 32
+    num_epochs: 30
+    learning_rate: 0.005
   relation_awareness: # RAGNN-specific settings - OPTIMIZING THESE PARAMETERS
     prior_prob_for_graph_edge: !uniform [0.0, 1.0]  # Prior probability for graph edge
     beta: !uniform [0.5, 2.0]  # Beta parameter for relation awareness

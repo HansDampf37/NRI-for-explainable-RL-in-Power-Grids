@@ -112,6 +112,7 @@ class CustomMetricsCallback(DefaultCallbacks):
         data["custom_metrics"]["grid2op_end_std"] = np.std(data["custom_metrics"]["grid2op_end"])
         # Extra metrics:
         data["custom_metrics"]["mean_interact_count"] = np.mean(data["custom_metrics"]["interact_count"])
+        data["custom_metrics"]["total_agent_interact"] = np.sum(data["custom_metrics"]["interact_count"])
         data["custom_metrics"]["mean_active_dn_count"] = np.mean(data["custom_metrics"]["active_dn_count"])
         data["custom_metrics"]["mean_reconnect_count"] = np.mean(data["custom_metrics"]["reconnect_count"])
         data["custom_metrics"]["mean_disconnect_count"] = np.mean(data["custom_metrics"]["disconnect_count"])
@@ -154,6 +155,7 @@ class CustomMetricsCallback(DefaultCallbacks):
 
         # Extra metrics:
         result["custom_metrics"]["mean_interact_count"] = np.mean(result["custom_metrics"]["interact_count"])
+        result["custom_metrics"]["total_agent_interact"] = np.sum(result["custom_metrics"]["interact_count"])
         result["custom_metrics"]["mean_active_dn_count"] = np.mean(result["custom_metrics"]["active_dn_count"])
         result["custom_metrics"]["mean_reconnect_count"] = np.mean(result["custom_metrics"]["reconnect_count"])
         result["custom_metrics"]["mean_disconnect_count"] = np.mean(result["custom_metrics"]["disconnect_count"])

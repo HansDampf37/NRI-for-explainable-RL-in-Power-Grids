@@ -18,17 +18,9 @@ setup:
       out_dim: 64
       num_layers: 2
       residual: True
-
-debugging:
-  seed: &seed 42
-  ray_local_mode: true  # Enable local mode for easier debugging
-
-encoder_pretrain:
-  enabled: true
-  ds_size: 10  # Reduced if enabled
-  batch_size: 10
-  num_epochs: 1
-  learning_rate: 0.0001
+  debugging:
+    seed: &seed 42
+    ray_local_mode: true  # Enable local mode for easier debugging
 
 training:
   checkpoint_trainable_policies_only: True
@@ -44,6 +36,12 @@ training:
   sgd_minibatch_size: 32
   train_batch_size: 128
   batch_mode: complete_episodes
+  encoder_pretrain:
+    enabled: true
+    ds_size: 10
+    batch_size: 10
+    num_epochs: 1
+    learning_rate: 0.0001
   relation_awareness:
     prior_prob_for_graph_edge: 0.9
     beta: 1.0
