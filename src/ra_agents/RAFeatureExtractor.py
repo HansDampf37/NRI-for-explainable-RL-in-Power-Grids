@@ -262,7 +262,7 @@ class BaselineFeatureExtractorSB3(BaseFeaturesExtractor):
     ):
         BaseFeaturesExtractor.__init__(self, observation_space, features_dim=out_dim)
         self.gnn: BaselineGNN = BaselineGNN(
-            x_dim=observation_space.x_dim,
+            x_dim=obs_space.x_dim if hasattr(obs_space, 'x_dim') else 8, # TODO fix hack
             hidden_dim=hidden_dim,
             x_out_dim=out_dim,
             num_layers=num_layers,
