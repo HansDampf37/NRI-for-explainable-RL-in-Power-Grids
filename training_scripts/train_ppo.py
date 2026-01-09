@@ -36,7 +36,7 @@ def setup_config(workdir_path: str, input_path: str, seed: int = None, opponent=
     custom_config["setup"]["workdir"] = args.workdir
     if seed:
         print(f"Running experiment with seed {seed}.")
-        custom_config["setup"]["debugging"]["seed"] = seed
+        custom_config["debugging"]["seed"] = seed
         custom_config["environment"]["env_config"]["seed"] = seed
 
     # Set experiment name
@@ -101,7 +101,9 @@ def setup_config(workdir_path: str, input_path: str, seed: int = None, opponent=
                 .training(
                     model={
                         "custom_model_config": {
-                            "rho_threshold": custom_config["environment"]["env_config"]["rho_threshold"]
+                            "rho_threshold": custom_config["environment"]["env_config"][
+                                "rho_threshold"
+                            ]
                         }
                     },
                 )

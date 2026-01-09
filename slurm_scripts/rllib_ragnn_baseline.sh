@@ -1,4 +1,4 @@
-experiment_name=0801_did_scheduler_mess_up
+experiment_name=0901_repairs
 export experiment_name
 cd ..
 
@@ -8,11 +8,7 @@ mkdir -p results/experiments/${experiment_name}/out
 sbatch << EOF
 #!/bin/bash
 
-<<<<<<< HEAD
-#SBATCH --job-name=ragnn_ppo_baseline                                           # Name of the job
-=======
 #SBATCH --job-name=ra_gnn_ppo_baseline                                           # Name of the job
->>>>>>> 5b2e800d00e5aafb0d0824952eafa3f025b1f401
 #SBATCH --output=results/experiments/${experiment_name}/out/ragnn_ppo.%j.log            # Output file
 #SBATCH --error=results/experiments/${experiment_name}/out/error_ragnn_ppo.%j.log       # Error file
 #SBATCH --ntasks=1                                                            # Number of tasks
@@ -66,7 +62,7 @@ EOF
 sbatch << EOF
 #!/bin/bash
 
-#SBATCH --job-name=mlp_ray_ppo_baseline                                           # Name of the job
+#SBATCH --job-name=mlp_ppo_baseline                                           # Name of the job
 #SBATCH --output=results/experiments/${experiment_name}/out/mlp_ppo.%j.log            # Output file
 #SBATCH --error=results/experiments/${experiment_name}/out/error_mlp_ppo.%j.log       # Error file
 #SBATCH --ntasks=1                                                            # Number of tasks

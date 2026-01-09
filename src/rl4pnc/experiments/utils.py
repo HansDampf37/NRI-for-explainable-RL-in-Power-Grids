@@ -362,6 +362,10 @@ def run_training(config: dict[str, Any], setup: dict[str, Any], job_id: str) -> 
     # Set the environment variable
     os.environ["RAY_DEDUP_LOGS"] = "0"
     os.environ["TUNE_DISABLE_STRICT_METRIC_CHECKING"] = "1"
+    os.environ["WANDB_MODE"] = "offline"
+    os.environ["WANDB_SILENT"] = "true"
+    tmp_dir = ray._private.utils.get_ray_temp_dir()
+    print(f"Ray's temporary directory: {tmp_dir}")
     local_mode = setup.get("debugging", {}).get("ray_local_mode", False)
     ray.init(local_mode=local_mode)
     print(f"Ray initialized in {'local' if local_mode else 'cluster'} mode.")

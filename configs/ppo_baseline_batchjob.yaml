@@ -5,6 +5,7 @@ setup:
   checkpoint_freq: 10
   verbose: 0
   my_log_level: 1
+  storage_path: ./runs
   folder_name: 0501_compare_gnn_ragnn_mlp
   experiment_name: 0501_compare_gnn_ragnn_mlp
   optimization:
@@ -19,8 +20,8 @@ setup:
     env_name: l2rpn_case14_sandbox_val  # Environment to use for evaluation
     num_episodes: all  # Number of episodes to evaluate (use "all" for all available episodes)
     visualize: False  # Whether to show visualization after evaluation
-  debugging:
-    seed: &seed 14
+debugging:
+  seed: &seed 14
 
 training:
   checkpoint_trainable_policies_only: True

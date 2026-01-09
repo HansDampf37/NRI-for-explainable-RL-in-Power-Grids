@@ -5,6 +5,7 @@ setup:
   checkpoint_freq: 100  # Less frequent checkpointing
   verbose: 0
   my_log_level: 1
+  storage_path: ./runs
   folder_name: test_minimal
   experiment_name: test_minimal
   optimization:

@@ -5,6 +5,7 @@ setup:
   checkpoint_freq: 10
   verbose: 0
   my_log_level: 1
+  storage_path: ./runs
   folder_name: 0501_ragnn_hyperparameter_optimization
   experiment_name: 0501_ragnn_hyperparameter_optimization
   optimization:
