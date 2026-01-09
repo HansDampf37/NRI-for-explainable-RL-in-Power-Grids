@@ -1,6 +1,6 @@
 setup:
   max_ep_len: 8064
-  duration: 04:00 # hh:mm
+  duration: 03:00 # hh:mm
   nb_timesteps: 50_000
   checkpoint_freq: 10
   verbose: 0

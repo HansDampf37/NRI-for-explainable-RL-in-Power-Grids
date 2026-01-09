@@ -1,4 +1,4 @@
-experiment_name=0901_repairs
+experiment_name=0901_compare_all_after_repairs
 export experiment_name
 cd ..
 

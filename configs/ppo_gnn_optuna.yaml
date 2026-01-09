@@ -1,7 +1,7 @@
 setup:
   max_ep_len: 8064
-  duration: 02:00  # 5 hours
-  nb_timesteps: 100_000
+  duration: 03:00  # hh:mm
+  nb_timesteps: 75_000
   checkpoint_freq: 10
   verbose: 0
   my_log_level: 1

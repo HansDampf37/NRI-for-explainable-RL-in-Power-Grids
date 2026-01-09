@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Set experiment name and export variable for SLURM
-experiment_name="0801_ragnn_hyperparameter_optimization_2hours"
+experiment_name="0901_ragnn_hyperparameter_optimization_04hours"
 export experiment_name
 cd ..
 
@@ -12,12 +12,12 @@ mkdir -p results/experiments/${experiment_name}/out
 sbatch << EOF
 #!/bin/bash
 
-#SBATCH --job-name=long_ragnn_optuna                                           # Job name
+#SBATCH --job-name=ragnn_optuna                                           # Job name
 #SBATCH --output=results/experiments/${experiment_name}/out/ragnn_optuna.%j.log                          # Output file
 #SBATCH --error=results/experiments/${experiment_name}/out/ragnn_optuna_error.%j.log                     # Error file
 #SBATCH --ntasks=1                                                        # Number of tasks
 #SBATCH --cpus-per-task=111                                                # Number of CPU cores per task
-#SBATCH --time=72:00:00                                                   # Max wall time (HH:MM:SS)
+#SBATCH --time=04:00:00                                                   # Max wall time (HH:MM:SS)
 #SBATCH --mem=220G                                                        # Memory requirement
 #SBATCH --partition=cpu,cpu_il                                            # Partition to use
 
