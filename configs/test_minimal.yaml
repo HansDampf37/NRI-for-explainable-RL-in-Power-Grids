@@ -21,9 +21,10 @@ setup:
     env_name: l2rpn_case14_sandbox_val  # Environment to use for evaluation
     num_episodes: 1  # Number of episodes to evaluate (use "all" for all available episodes)
     visualize: False  # Whether to show visualization after evaluation
-  debugging:
-    seed: &seed 42
-    ray_local_mode: true  # Enable local mode for easier debugging
+
+debugging:
+  seed: &seed 42
+  ray_local_mode: true  # Enable local mode for easier debugging
 
 training:
   checkpoint_trainable_policies_only: True
