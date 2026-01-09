@@ -57,7 +57,7 @@ training:
         hidden_dim: 64
         out_dim: 64
         num_layers: 2
-        edge_probs_path: results/edge_probabilities/edges_averaged_with_forecast_2026-01-08_14-11-58.npy
+        edge_probs_path: /pfs/data6/home/ka/ka_iai/ka_hw6998/dev/NRI-for-explainable-RL-in-Power-Grids/results/edge_probabilities/edges_averaged_with_forecast_2026-01-08_14-11-58.npy
       encoder: # this section is only used if model_type == "RAGNN", select model type via cli args
         max_degree: 7 # todo change if bigger envs are considered
         max_path_distance: 9 # todo change if bigger envs are considered

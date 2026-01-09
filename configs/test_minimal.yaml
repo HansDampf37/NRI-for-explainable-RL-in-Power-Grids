@@ -58,7 +58,7 @@ training:
         hidden_dim: 32  # Reduced dimensions
         out_dim: 32
         num_layers: 1  # Single layer
-        edge_probs_path: /home/adrian/Dev/NRI-for-explainable-RL-in-Power-Grids/results/edge_probabilities/edges_averaged_with_forecast_2026-01-08_14-11-58.npy
+        edge_probs_path: /pfs/data6/home/ka/ka_iai/ka_hw6998/dev/NRI-for-explainable-RL-in-Power-Grids/results/edge_probabilities/edges_averaged_with_forecast_2026-01-08_14-11-58.npy
       encoder:
         num_edge_types: 2  # Number of edge types (defaults to 2: edge exists or doesn't exist)
         max_degree: 7
