@@ -438,8 +438,8 @@ def run_training(config: dict[str, Any], setup: dict[str, Any], job_id: str) -> 
         ) if do_optimization else
         tune.TuneConfig(
             trial_name_creator=lambda t: trial_str_creator(t, job_id),
-            trial_dirname_creator=lambda t: trial_dir_name(t), )
-        ,
+            trial_dirname_creator=lambda t: trial_dir_name(t),
+        ),
     )
 
     print_details(config, setup)
