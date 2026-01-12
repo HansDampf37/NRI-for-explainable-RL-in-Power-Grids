@@ -1,4 +1,4 @@
-experiment_name=0901_compare_all_after_repairs
+experiment_name=1201_rappo_with_optimal_params
 export experiment_name
 cd ..
 
@@ -8,7 +8,7 @@ mkdir -p results/experiments/${experiment_name}/out
 sbatch << EOF
 #!/bin/bash
 
-#SBATCH --job-name=ra_gnn_ppo_baseline                                           # Name of the job
+#SBATCH --job-name=comp_ragnn                                           # Name of the job
 #SBATCH --output=results/experiments/${experiment_name}/out/ragnn_ppo.%j.log            # Output file
 #SBATCH --error=results/experiments/${experiment_name}/out/error_ragnn_ppo.%j.log       # Error file
 #SBATCH --ntasks=1                                                            # Number of tasks

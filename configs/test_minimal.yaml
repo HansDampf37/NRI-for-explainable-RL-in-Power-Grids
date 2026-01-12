@@ -1,6 +1,6 @@
 setup:
   max_ep_len: 8064
-  duration: 00:00 # HH:MM or minutes of training before stopping, used if value > 0
+  duration: 00:01 # HH:MM or minutes of training before stopping, used if value > 0
   nb_timesteps: 100  # Minimal timesteps for quick testing
   checkpoint_freq: 100  # Less frequent checkpointing
   verbose: 0
@@ -12,7 +12,7 @@ setup:
     enable: True
     score_metric: evaluation/custom_metrics/grid2op_end_mean
     mode: max
-    num_trials: 1
+    num_trials: ~
     load_from: ~  # load previous optimization results from this dir
     points_to_evaluate:
       relation_awareness/prior_prob_for_graph_edge: 1.0
@@ -22,10 +22,11 @@ setup:
       model/custom_model_config/encoder/hidden_dim: 256
       model/custom_model_config/encoder/num_layers: 2
   post_training_evaluation:
-    enabled: False  # Whether to evaluate the best checkpoint after training
+    enabled: True  # Whether to evaluate the best checkpoint after training
     env_name: l2rpn_case14_sandbox_val  # Environment to use for evaluation
     num_episodes: 1  # Number of episodes to evaluate (use "all" for all available episodes)
     visualize: False  # Whether to show visualization after evaluation
+
 debugging:
   seed: &seed 42
   ray_local_mode: true  # Enable local mode for easier debugging

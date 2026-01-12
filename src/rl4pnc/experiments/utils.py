@@ -391,6 +391,13 @@ def run_training(config: dict[str, Any], setup: dict[str, Any], job_id: str) -> 
                 else:
                     del config[key]
 
+        asha = ASHAScheduler(
+            time_attr="timesteps_total", # must be monotonic with training iterations
+            max_t=setup["nb_timesteps"],  # same unit as time_attr
+            grace_period=max(1, setup["nb_timesteps"] // 10),  # or another warmup in timesteps
+            reduction_factor=3,
+        )
+
     dur = get_duration(setup)
 
     # Get time budget for entire optimization (different from per-trial duration)
@@ -424,7 +431,7 @@ def run_training(config: dict[str, Any], setup: dict[str, Any], job_id: str) -> 
             checkpoint_config=air.CheckpointConfig(
                 checkpoint_frequency=setup["checkpoint_freq"],
                 checkpoint_at_end=True,
-                checkpoint_score_attribute="custom_metrics/corrected_ep_len_mean",
+                checkpoint_score_attribute=setup['optimization']["score_metric"],
                 num_to_keep=5,
             ),
             verbose=setup["verbose"],
@@ -433,6 +440,9 @@ def run_training(config: dict[str, Any], setup: dict[str, Any], job_id: str) -> 
             trial_name_creator=lambda t: trial_str_creator(t, job_id),
             trial_dirname_creator=lambda t: trial_dir_name(t),
             search_alg=algo,
+            scheduler=asha,
+            metric=setup['optimization']["score_metric"],
+            mode=setup['optimization']["mode"],
             num_samples=setup['optimization'].get("num_trials", -1) or -1,
             time_budget_s=time_budget,
         ) if do_optimization else
@@ -477,7 +487,27 @@ def run_training(config: dict[str, Any], setup: dict[str, Any], job_id: str) -> 
 
     # If Optuna optimization was enabled, save results summary
     if do_optimization:
-        best_result = result_grid.get_best_result(metric=setup["optimization"]["score_metric"], mode="max")
+        try:
+            best_result = result_grid.get_best_result(metric=setup["optimization"]["score_metric"], mode="max")
+        except RuntimeError as e:
+            print(f"\n{Style.BOLD}{Style.RED}{'='*80}{Style.END}")
+            print(f"{Style.BOLD}{Style.RED}ERROR: Could not find best trial for metric '{setup['optimization']['score_metric']}'{Style.END}")
+            print(f"{Style.RED}This usually means:{Style.END}")
+            print(f"{Style.RED}  1. No trials completed successfully{Style.END}")
+            print(f"{Style.RED}  2. The metric was never reported (check if evaluation is enabled){Style.END}")
+            print(f"{Style.RED}  3. All trials failed before reporting any results{Style.END}")
+            print(f"\n{Style.RED}Original error: {str(e)}{Style.END}")
+            print(f"{Style.BOLD}{Style.RED}{'='*80}{Style.END}\n")
+
+            # Check if any trials completed
+            if len(result_grid) == 0:
+                print(f"{Style.RED}No trials were run. Check the configuration.{Style.END}")
+            else:
+                print(f"{Style.YELLOW}Found {len(result_grid)} trial(s), but none reported the required metric.{Style.END}")
+                print(f"{Style.YELLOW}Check that evaluation is enabled and runs at least once during training.{Style.END}")
+
+            return result_grid
+
         config = best_result.config["model"]["custom_model_config"]
         relation_awareness_config = best_result.config["relation_awareness"]
         config.update({"relation_awareness": relation_awareness_config})
@@ -511,7 +541,15 @@ def run_training(config: dict[str, Any], setup: dict[str, Any], job_id: str) -> 
             print(f"{Style.BOLD}{'='*80}{Style.END}\n")
     else:
         # if no optimization, get best result by episode reward
-        best_result = result_grid.get_best_result(metric="episode_reward_mean", mode="max")
+        try:
+            best_result = result_grid.get_best_result(metric="episode_reward_mean", mode="max")
+        except RuntimeError as e:
+            print(f"\n{Style.BOLD}{Style.RED}{'='*80}{Style.END}")
+            print(f"{Style.BOLD}{Style.RED}ERROR: Could not find best trial{Style.END}")
+            print(f"{Style.RED}No trials completed successfully or reported metrics.{Style.END}")
+            print(f"\n{Style.RED}Original error: {str(e)}{Style.END}")
+            print(f"{Style.BOLD}{Style.RED}{'='*80}{Style.END}\n")
+            return result_grid
 
         with best_result.checkpoint.as_directory() as checkpoint_dir:
             print("Best checkpoint can be found under ", checkpoint_dir)
