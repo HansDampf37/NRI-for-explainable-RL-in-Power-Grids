@@ -200,10 +200,11 @@ def display_training_progress(metrics: List[AgentMetrics], show: bool = True) ->
     fig = plt.figure(figsize=(10, 5))
     shortest_training_duration = min([len(metrics.survival_duration) for metrics in metrics])
     xs = np.arange(shortest_training_duration)
-    for metric in metrics:
+    cmap = plt.get_cmap("tab10")
+    for i, metric in enumerate(metrics):
         survival_duration = metric.survival_duration[:shortest_training_duration]
-        smooth_survival = smooth_curve(survival_duration)
-        plt.plot(xs, smooth_survival, label=metric.label)
+        smooth_survival = smooth_curve_conv(survival_duration)
+        plt.plot(xs, smooth_survival, label=metric.label, color=cmap(i))
 
     plt.legend()
 
@@ -217,7 +218,22 @@ def display_training_progress(metrics: List[AgentMetrics], show: bool = True) ->
     return fig
 
 
-def smooth_curve(curve: List[float] | npt.NDArray, alpha=0.1) -> npt.NDArray | List[float]:
+def smooth_curve_conv(curve: List[float] | npt.NDArray, window: int = 5) -> npt.NDArray | List[float]:
+    curve = np.asarray(curve, dtype=float)
+
+    if window < 1:
+        raise ValueError("window must be >= 1")
+
+    kernel = np.ones(window) / window
+    pad = window // 2
+
+    # Repeat edge values outside the signal
+    padded = np.pad(curve, pad_width=pad, mode="edge")
+
+    smoothed = np.convolve(padded, kernel, mode="valid")
+    return smoothed
+
+def smooth_curve(curve: List[float] | npt.NDArray, alpha=1.0) -> npt.NDArray | List[float]:
     smoothed = np.zeros_like(curve, dtype=float)
     smoothed[0] = curve[0]
     for i in range(1, len(curve)):
