@@ -1,10 +1,11 @@
 setup:
   max_ep_len: 8064
-  duration: 22:00  # 22 hours
-  nb_timesteps: 100_000
+  duration: 03:00  # hh:mm
+  nb_timesteps: 75_000
   checkpoint_freq: 10
   verbose: 0
   my_log_level: 1
+  storage_path: ./runs
   folder_name: 0501_gnn_hyperparameter_optimization
   experiment_name: 0501_gnn_hyperparameter_optimization
   optimization:
@@ -52,7 +53,6 @@ training:
         out_dim: !choice [32, 64, 128]  # Output dimension of GNN
         num_layers: !quniform [1, 4, 1]  # Number of GNN layers (1-4)
         residual: !choice [True, False]  # Whether to use residual connections
-        edge_probs_path: results/edge_probabilities/edges_averaged_with_forecast_2026-01-08_14-11-58.npy
   _enable_learner_api: False
 
 rl_module:

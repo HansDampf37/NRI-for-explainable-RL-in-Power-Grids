@@ -1,4 +1,4 @@
-experiment_name=0801_did_scheduler_mess_up
+experiment_name=0901_compare_all_after_repairs
 export experiment_name
 cd ..
 
@@ -49,7 +49,7 @@ sbatch << EOF
 #SBATCH --error=results/experiments/${experiment_name}/out/error_gnn_ppo.%j.log       # Error file
 #SBATCH --ntasks=1                                                            # Number of tasks
 #SBATCH --cpus-per-task=111                                                    # Number of CPU cores per task
-#SBATCH --time=03:00:00                                                       # Max wall time (HH:MM:SS)
+#SBATCH --time=08:00:00                                                       # Max wall time (HH:MM:SS)
 #SBATCH --mem=100G                                                            # Memory requirement
 #SBATCH --partition=cpu,cpu_il                          # Specify the GPU partition gpu_mi300
 
@@ -62,12 +62,12 @@ EOF
 sbatch << EOF
 #!/bin/bash
 
-#SBATCH --job-name=mlp_ray_ppo_baseline                                           # Name of the job
+#SBATCH --job-name=mlp_ppo_baseline                                           # Name of the job
 #SBATCH --output=results/experiments/${experiment_name}/out/mlp_ppo.%j.log            # Output file
 #SBATCH --error=results/experiments/${experiment_name}/out/error_mlp_ppo.%j.log       # Error file
 #SBATCH --ntasks=1                                                            # Number of tasks
 #SBATCH --cpus-per-task=111                                                    # Number of CPU cores per task
-#SBATCH --time=03:00:00                                                       # Max wall time (HH:MM:SS)
+#SBATCH --time=08:00:00                                                       # Max wall time (HH:MM:SS)
 #SBATCH --mem=100G                                                            # Memory requirement
 #SBATCH --partition=cpu,cpu_il                          # Specify the GPU partition gpu_mi300
 

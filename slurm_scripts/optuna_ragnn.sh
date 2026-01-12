@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Set experiment name and export variable for SLURM
-experiment_name="0501_ragnn_hyperparameter_optimization"
+experiment_name="0901_ragnn_hyperparameter_optimization_04hours"
 export experiment_name
 cd ..
 
@@ -17,8 +17,8 @@ sbatch << EOF
 #SBATCH --error=results/experiments/${experiment_name}/out/ragnn_optuna_error.%j.log                     # Error file
 #SBATCH --ntasks=1                                                        # Number of tasks
 #SBATCH --cpus-per-task=111                                                # Number of CPU cores per task
-#SBATCH --time=72:00:00                                                   # Max wall time (HH:MM:SS)
-#SBATCH --mem=160G                                                        # Memory requirement
+#SBATCH --time=04:00:00                                                   # Max wall time (HH:MM:SS)
+#SBATCH --mem=220G                                                        # Memory requirement
 #SBATCH --partition=cpu,cpu_il                                            # Partition to use
 
 # Load the necessary module and activate conda environment
