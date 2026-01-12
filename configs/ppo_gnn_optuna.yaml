@@ -15,10 +15,10 @@ setup:
     n_trials: ~ # if n_trials is None, will run until duration is reached
     load_from: ~  # load previous optimization results from this dir
     points_to_evaluate:
-      hidden_dim: 64
-      out_dim: 64
-      num_layers: 2
-      residual: True
+      model/custom_model_config/gnn/hidden_dim: 64
+      model/custom_model_config/gnn/out_dim: 64
+      model/custom_model_config/gnn/num_layers: 2
+      model/custom_model_config/gnn/residual: True
   post_training_evaluation:
     enabled: True  # Whether to evaluate the best checkpoint after training
     env_name: l2rpn_case14_sandbox_val  # Environment to use for evaluation

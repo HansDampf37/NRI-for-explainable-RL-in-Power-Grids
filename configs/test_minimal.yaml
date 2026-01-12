@@ -10,12 +10,17 @@ setup:
   experiment_name: test_minimal
   optimization:
     enable: True
-    score_metric: custom_metrics/grid2op_end_mean
+    score_metric: evaluation/custom_metrics/grid2op_end_mean
     mode: max
     num_trials: ~
     load_from: ~  # load previous optimization results from this dir
     points_to_evaluate:
-      temperature: 0.25
+      relation_awareness/prior_prob_for_graph_edge: 1.0
+      relation_awareness/beta: 1.0
+      relation_awareness/temperature: 0.0
+      model/custom_model_config/encoder/num_edge_types: 2
+      model/custom_model_config/encoder/hidden_dim: 256
+      model/custom_model_config/encoder/num_layers: 2
   post_training_evaluation:
     enabled: True  # Whether to evaluate the best checkpoint after training
     env_name: l2rpn_case14_sandbox_val  # Environment to use for evaluation
@@ -46,26 +51,27 @@ training:
     batch_size: 10
     num_epochs: 1
     learning_rate: 0.0001
-  relation_awareness:
-    prior_prob_for_graph_edge: 0.9
-    beta: 1.0
-    temperature: !choice [0.2, 0.3]
+  relation_awareness: # RAGNN-specific settings - OPTIMIZING THESE PARAMETERS
+    prior_prob_for_graph_edge: !uniform [ 0.0, 1.0 ]  # Prior probability for graph edge
+    beta: !uniform [ 0.5, 4.0 ]  # Beta parameter for relation awareness
+    temperature: !uniform [ 0.0, 1.0 ]  # the amount of additional edges inferred by the encoder
   model:
-    fcnet_hiddens: [128, 128]  # Smaller network
+    fcnet_hiddens: [ 256, 256, 256 ]  # Downstream MLP after GNN
     fcnet_activation: relu
-    post_fcnet_hiddens: [128]
+    post_fcnet_hiddens: [ 256, 128 ]
     custom_model_config:
-      gnn:
-        hidden_dim: 32  # Reduced dimensions
-        out_dim: 32
-        num_layers: 1  # Single layer
-        edge_probs_path: /pfs/data6/home/ka/ka_iai/ka_hw6998/dev/NRI-for-explainable-RL-in-Power-Grids/results/edge_probabilities/edges_averaged_with_forecast_2026-01-08_14-11-58.npy
-      encoder:
-        num_edge_types: 2  # Number of edge types (defaults to 2: edge exists or doesn't exist)
+      gnn: # GNN-specific hyperparameters - WILL BE COPIED FROM OPTIMAL GNN CONFIG LATER
+        hidden_dim: 265  # Use optimal value from GNN optimization
+        out_dim: 64  # Use optimal value from GNN optimization
+        num_layers: 3  # Use optimal value from GNN optimization
+        residual: True
+      encoder: # RAGNN encoder settings
+        num_edge_types: !choice [ 2, 3, 4 ]  # Number of edge types (2-6)
         max_degree: 7
         max_path_distance: 9
-        hidden_dim: 32  # Reduced dimensions
-        num_layers: 2  # Single layer
+        use_graphormer: True
+        hidden_dim: !choice [ 32, 64, 128, 256 ]
+        num_layers: !choice [ 2, 3, 4 ]
   _enable_learner_api: False
 
 rl_module:

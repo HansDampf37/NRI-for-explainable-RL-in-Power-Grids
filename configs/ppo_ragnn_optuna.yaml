@@ -15,12 +15,12 @@ setup:
     n_trials: ~ # if n_trials is None, will run until duration is reached
     load_from: ~  # load previous optimization results from this dir
     points_to_evaluate:
-      prior_prob_for_graph_edge: 1.0
-      beta: 1.0
-      temperature: 0.0
-      num_edge_types: 2
-      hidden_dim: 256
-      num_layers: 2
+      relation_awareness/prior_prob_for_graph_edge: 1.0
+      relation_awareness/beta: 1.0
+      relation_awareness/temperature: 0.0
+      model/custom_model_config/encoder/num_edge_types: 2
+      model/custom_model_config/encoder/hidden_dim: 256
+      model/custom_model_config/encoder/num_layers: 2
   post_training_evaluation:
     enabled: True  # Whether to evaluate the best checkpoint after training
     env_name: l2rpn_case14_sandbox_val  # Environment to use for evaluation
