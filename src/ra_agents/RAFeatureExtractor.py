@@ -210,7 +210,7 @@ class RAFeatureExtractorSB3(BaseFeaturesExtractor):
     ):
         BaseFeaturesExtractor.__init__(self, observation_space, features_dim=out_dim)
         self.gnn_feature_extractor = RAFeatureExtractor(
-            x_dim=observation_space.x_dim,
+            x_dim=observation_space.x_dim if hasattr(observation_space, 'x_dim') else 8, # TODO fix hack
             hidden_dim_gnn=hidden_dim,
             hidden_dim_enc=hidden_dim,
             x_out_dim=out_dim,
@@ -262,7 +262,7 @@ class BaselineFeatureExtractorSB3(BaseFeaturesExtractor):
     ):
         BaseFeaturesExtractor.__init__(self, observation_space, features_dim=out_dim)
         self.gnn: BaselineGNN = BaselineGNN(
-            x_dim=obs_space.x_dim if hasattr(obs_space, 'x_dim') else 8, # TODO fix hack
+            x_dim=observation_space.x_dim if hasattr(observation_space, 'x_dim') else 8, # TODO fix hack
             hidden_dim=hidden_dim,
             x_out_dim=out_dim,
             num_layers=num_layers,
@@ -304,7 +304,7 @@ class RLlibGNNModel(TorchModelV2, nn.Module):
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs, model_config, name)
         nn.Module.__init__(self)
         self.gnn: BaselineGNN = BaselineGNN(
-            x_dim=obs_space.x_dim,
+            x_dim=obs_space.x_dim if hasattr(obs_space, 'x_dim') else 8, # TODO fix hack
             hidden_dim=kwargs['gnn']['hidden_dim'],
             x_out_dim=kwargs['gnn']['out_dim'],
             num_layers=kwargs['gnn']['num_layers'],
