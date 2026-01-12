@@ -1,7 +1,7 @@
 """
 Utilities in the grid2op experiments.
 """
-
+import json
 import logging
 import os
 import traceback
@@ -454,6 +454,26 @@ def run_training(config: dict[str, Any], setup: dict[str, Any], job_id: str) -> 
     finally:
         # Close ray instance
         ray.shutdown()
+
+    for i in range(len(result_grid)):
+        result = result_grid[i]
+        if not result.error:
+            # Print and save available checkpoints
+            checkpoints_tojson = {
+                os.path.basename(checkpoint.path): metrics['evaluation']['custom_metrics'] for
+                checkpoint, metrics in result.best_checkpoints
+            }
+            with open(os.path.join(result.path, "checkpoint_results.json"), "w") as outfile:
+                json.dump(checkpoints_tojson, outfile)
+
+            print(Style.BOLD + f" *---- Trial {i} finished successfully with evaluation results ---*\n" + Style.END +
+                  tabulate(
+                      [[k] + list(v.values()) for k, v in checkpoints_tojson.items()],
+                      headers=['checkpoint'] + list(result.metrics['evaluation']['custom_metrics'].keys()),
+                      tablefmt='rounded_grid')
+                  )
+        else:
+            print(f"Trial failed with error {result.error}.")
 
     # If Optuna optimization was enabled, save results summary
     if do_optimization:
