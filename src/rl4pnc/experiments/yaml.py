@@ -20,7 +20,7 @@ from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from yaml.loader import FullLoader, Loader, UnsafeLoader
 from yaml.nodes import MappingNode, ScalarNode, SequenceNode
 
-from src.rl4pnc.experiments.callback import CustomMetricsCallback, EncoderPretrainCallback
+from src.rl4pnc.experiments.callback import CustomMetricsCallback, EncoderPretrainCallback, AnnealingCallback
 from src.rl4pnc.experiments.rewards import (
     LossReward,
     ScaledL2RPNReward,
@@ -132,6 +132,13 @@ def encoder_pretrain_callback_constructor(
 ) -> DefaultCallbacks:
     """Custom constructor for EncoderPretrainCallback"""
     return EncoderPretrainCallback
+
+
+def annealing_callback_constructor(
+    loader: Union[Loader, FullLoader, UnsafeLoader], node: MappingNode
+) -> DefaultCallbacks:
+    """Custom constructor for AnnealingCallback"""
+    return AnnealingCallback
 
 
 def combined_callbacks_constructor(
@@ -290,6 +297,7 @@ def add_constructors() -> None:
     yaml.FullLoader.add_constructor("!policy_mapping_fn", policy_mapping_fn_constructor)
     yaml.FullLoader.add_constructor("!CustomMetricsCallback", custom_metrics_callback_constructor)
     yaml.FullLoader.add_constructor("!EncoderPretrainCallback", encoder_pretrain_callback_constructor)
+    yaml.FullLoader.add_constructor("!AnnealingCallback", annealing_callback_constructor)
     yaml.FullLoader.add_constructor("!CombinedCallbacks", combined_callbacks_constructor)
     yaml.FullLoader.add_constructor("!Discrete", discrete_constructor)
     yaml.FullLoader.add_constructor("!AlgorithmConfig", algorithm_config_constructor)

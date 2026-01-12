@@ -366,7 +366,7 @@ def run_training(config: dict[str, Any], setup: dict[str, Any], job_id: str) -> 
     os.environ["WANDB_SILENT"] = "true"
     tmp_dir = ray._private.utils.get_ray_temp_dir()
     print(f"Ray's temporary directory: {tmp_dir}")
-    local_mode = setup.get("debugging", {}).get("ray_local_mode", False)
+    local_mode = setup.get("ray_local_mode", False)
     ray.init(local_mode=local_mode)
     print(f"Ray initialized in {'local' if local_mode else 'cluster'} mode.")
 
@@ -411,6 +411,9 @@ def run_training(config: dict[str, Any], setup: dict[str, Any], job_id: str) -> 
 
     storage_path = os.path.abspath(os.path.join(setup.get("workdir", "."), "results", "experiments"))
     os.makedirs(storage_path, exist_ok=True)
+
+    # Add total timesteps to config for use in callbacks
+    config["total_timesteps"] = setup["nb_timesteps"]
 
     # Create tuner
     tuner = tune.Tuner(

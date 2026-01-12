@@ -53,6 +53,11 @@ training:
     learning_rate: 0.005
   relation_awareness: # RAGNN-specific settings - OPTIMIZING THESE PARAMETERS
     prior_prob_for_graph_edge: !uniform [0.0, 1.0]  # Prior probability for graph edge
+    beta_start: 0.0  # Start beta at 0
+    beta_end: !uniform [0.5, 4.0]  # Anneal to this value
+    tau_start: 1.0  # Start with high temperature
+    tau_end: !uniform [0.5, 1.0]  # Anneal to this value
+    # Legacy parameters for backwards compatibility
     beta: !uniform [0.5, 4.0]  # Beta parameter for relation awareness
     temperature: !uniform [0.0, 1.0]  # the amount of additional edges inferred by the encoder
   model:
@@ -84,6 +89,7 @@ explore:
 callbacks:
   callbacks: !CombinedCallbacks
     - !CustomMetricsCallback
+    - !AnnealingCallback
     - !EncoderPretrainCallback
 
 framework:

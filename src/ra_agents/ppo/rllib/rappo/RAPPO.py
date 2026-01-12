@@ -31,6 +31,14 @@ class RAPPOTorchPolicy(PPOTorchPolicy):
         Returns:
             The PPO loss tensor given the input batch.
         """
+        # Initialize annealed parameters on first call (lazy initialization)
+        if not hasattr(self, 'current_beta'):
+            ra_config = self.config.get("relation_awareness", {})
+            self.current_beta = ra_config.get("beta_start", 0.0)
+            self.target_beta = ra_config.get("beta_end", ra_config.get("beta", 1.0))
+            self.current_tau = ra_config.get("tau_start", 1.0)
+            self.target_tau = ra_config.get("tau_end", ra_config.get("temperature", 0.5))
+
         total_loss = super().loss(model, dist_class, train_batch)
 
         # build dynamic prior tensor
@@ -63,12 +71,14 @@ class RAPPOTorchPolicy(PPOTorchPolicy):
         kl_loss = (posteriors * (torch.log(posteriors + eps) - torch.log(prior_tensor + eps))).sum(dim=-1)
         kl_loss = kl_loss.mean()
 
-        total_loss += kl_loss * self.config["relation_awareness"]["beta"]
+        total_loss += kl_loss * self.current_beta
 
         model.tower_stats["kl_loss"] = kl_loss
         model.tower_stats["total_loss"] = total_loss
         model.tower_stats["mean_prior"] = torch.mean(prior_tensor, dim=0) # mean over batch dimension -> [E, K]
         model.tower_stats["mean_posterior"] = torch.mean(posteriors, dim=0) # mean over batch dimension -> [E, K]
+        model.tower_stats["current_beta"] = self.current_beta
+        model.tower_stats["current_tau"] = self.current_tau
 
         return total_loss
 
@@ -84,6 +94,14 @@ class RAPPOTorchPolicy(PPOTorchPolicy):
             "relation_awareness/kl_loss": torch.mean(
                 torch.stack([t.tower_stats["kl_loss"].detach() for t in self.model_gpu_towers])
             ).item(),
+            "relation_awareness/current_beta": torch.mean(
+                torch.stack([torch.tensor(t.tower_stats["current_beta"]) for t in self.model_gpu_towers])
+            ).item(),
+            "relation_awareness/target_beta": self.target_beta,
+            "relation_awareness/current_tau": torch.mean(
+                torch.stack([torch.tensor(t.tower_stats["current_tau"]) for t in self.model_gpu_towers])
+            ).item(),
+            "relation_awareness/target_tau": self.target_tau,
             "relation_awareness/prior_existence_probs": torch.mean(
                 torch.stack([t.tower_stats["mean_prior"][:, 0].detach() for t in self.model_gpu_towers]), dim=0
             ).cpu().numpy().flatten().tolist(),

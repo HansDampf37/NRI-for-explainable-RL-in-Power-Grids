@@ -39,13 +39,18 @@ training:
   train_batch_size: 1024 #256 # 128 #!choice [256, 512, 1024] #
   batch_mode: complete_episodes
   encoder_pretrain: # this section is only used if model_type == "RAGNN" and callbacks include EncoderPretrainCallback
-    enabled: true  # Set to true to enable encoder pretraining
+    enabled: false  # Set to true to enable encoder pretraining
     ds_size: 1000
     batch_size: 32
     num_epochs: 30
     learning_rate: 0.005
   relation_awareness: # this section is only used if model_type == "RAGNN", select model type via cli args
     prior_prob_for_graph_edge: 0.9
+    beta_start: 0.0  # Start beta at 0
+    beta_end: 1.0  # Anneal to this value
+    tau_start: 1.5  # Start with high temperature
+    tau_end: 0.5  # Anneal to this value
+    # Legacy parameters
     beta: 1.0
     temperature: 0.2
   model:
@@ -78,6 +83,7 @@ explore:
 callbacks:
   callbacks: !CombinedCallbacks
     - !CustomMetricsCallback
+    - !AnnealingCallback
     - !EncoderPretrainCallback
 
 framework:

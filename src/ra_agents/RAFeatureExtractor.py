@@ -97,6 +97,10 @@ class RAFeatureExtractor(nn.Module):
         )
         self.x_out_dim = x_out_dim
 
+    def set_tau(self, tau: float):
+        """Update the temperature parameter of the Gumbel-Softmax sampler."""
+        self.gumbel_softmax.tau = tau
+
     def forward(self, x: Tensor, batch: Optional[Tensor] = None, powerline_edge_index: Optional[Tensor] = None, edge_set: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
         """
         Forward pass.
@@ -156,6 +160,10 @@ class NRIBasedGNN(nn.Module):
             skip_last=True,
         )
         self.x_out_dim = x_out_dim
+
+    def set_tau(self, tau: float):
+        """Update the temperature parameter of the Gumbel-Softmax sampler."""
+        self.gumbel_softmax.tau = tau
 
     def forward(self, x: Tensor, batch: Optional[Tensor] = None, **kwargs) -> Tuple[Tensor, Tensor]:
         """
@@ -439,6 +447,10 @@ class RLlibRAGNNModel(TorchModelV2, nn.Module):
         """
         assert self.batched_p_z_given_x is not None, "Posterior not computed yet."
         return self.batched_p_z_given_x
+
+    def set_tau(self, tau: float):
+        """Update the temperature parameter of the Gumbel-Softmax sampler."""
+        self.ragnn.set_tau(tau)
 
     def value_function(self) -> Tensor:
         # RLlib expects shape [B]

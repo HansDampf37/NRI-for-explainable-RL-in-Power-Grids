@@ -1,15 +1,16 @@
 setup:
   max_ep_len: 8064
   duration: 00:01 # HH:MM or minutes of training before stopping, used if value > 0
-  nb_timesteps: 100  # Minimal timesteps for quick testing
+  nb_timesteps: 1000  # Minimal timesteps for quick testing
   checkpoint_freq: 100  # Less frequent checkpointing
   verbose: 0
   my_log_level: 1
   storage_path: ./runs
   folder_name: test_minimal
   experiment_name: test_minimal
+  ray_local_mode: true  # Enable local mode for easier debugging
   optimization:
-    enable: True
+    enable: False
     score_metric: evaluation/custom_metrics/grid2op_end_mean
     mode: max
     num_trials: ~
@@ -29,7 +30,6 @@ setup:
 
 debugging:
   seed: &seed 42
-  ray_local_mode: true  # Enable local mode for easier debugging
 
 training:
   checkpoint_trainable_policies_only: True
@@ -53,7 +53,12 @@ training:
     learning_rate: 0.0001
   relation_awareness: # RAGNN-specific settings - OPTIMIZING THESE PARAMETERS
     prior_prob_for_graph_edge: !uniform [ 0.0, 1.0 ]  # Prior probability for graph edge
-    beta: !uniform [ 0.5, 4.0 ]  # Beta parameter for relation awareness
+    beta_start: 0.0  # Start beta at 0
+    beta_end: !uniform [ 0.5, 4.0 ]  # Anneal to this value
+    tau_start: 1.5  # Start with high temperature
+    tau_end: !uniform [ 0.5, 1.0 ]  # Anneal to this value
+    # Legacy parameters for backwards compatibility
+    # beta: !uniform [ 0.5, 4.0 ]  # Beta parameter for relation awareness
     temperature: !uniform [ 0.0, 1.0 ]  # the amount of additional edges inferred by the encoder
   model:
     fcnet_hiddens: [ 256, 256, 256 ]  # Downstream MLP after GNN
@@ -84,6 +89,7 @@ explore:
 callbacks:
   callbacks: !CombinedCallbacks
     - !CustomMetricsCallback
+    - !AnnealingCallback
     - !EncoderPretrainCallback
 
 framework:

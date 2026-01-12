@@ -185,6 +185,142 @@ class CustomMetricsCallback(DefaultCallbacks):
                 print(f"Curriculum level increased to {self.curr_level}")
 
 
+class AnnealingCallback(DefaultCallbacks):
+    """Callback that anneals beta and tau parameters during training.
+
+    Uses a cosine decay schedule with three phases:
+    - First 10%: Hold constant at start value
+    - Next 80%: Cosine decay from start to end value
+    - Last 10%: Hold constant at end value
+    """
+
+    def on_algorithm_init(self, *, algorithm: Algorithm, **kwargs) -> None:
+        """Initialize tau to its starting value at the beginning of training."""
+        super().on_algorithm_init(algorithm=algorithm, **kwargs)
+
+        # Get the policy
+        policy = algorithm.get_policy("reinforcement_learning_policy")
+        if policy is None:
+            return
+
+        # Get config
+        ra_config = policy.config.get("relation_awareness", {})
+        tau_start = ra_config.get("tau_start", 1.0)
+
+        # Set initial tau in model on all workers
+        def set_initial_tau(worker):
+            policy = worker.policy_map.get("reinforcement_learning_policy")
+            if policy and hasattr(policy, 'model') and hasattr(policy.model, 'set_tau'):
+                policy.model.set_tau(tau_start)
+
+        # Set on local worker
+        set_initial_tau(algorithm.workers.local_worker())
+
+        # Set on remote workers
+        algorithm.workers.foreach_worker(set_initial_tau)
+
+    @staticmethod
+    def cosine_decay_schedule(current_step: int, total_steps: int, start_val: float, end_val: float) -> float:
+        """
+        Compute value using cosine decay schedule.
+
+        Schedule:
+        - 0-10% of training: constant at start_val
+        - 10-90% of training: cosine decay from start_val to end_val
+        - 90-100% of training: constant at end_val
+
+        Args:
+            current_step: Current training step
+            total_steps: Total training steps for annealing
+            start_val: Starting value
+            end_val: Ending value
+
+        Returns:
+            Current annealed value
+        """
+        if total_steps <= 0:
+            return end_val
+
+        progress = current_step / total_steps
+
+        # First 10%: hold constant at start
+        if progress < 0.1:
+            return start_val
+
+        # Last 10%: hold constant at end
+        if progress > 0.9:
+            return end_val
+
+        # Middle 80%: cosine decay
+        # Map progress from [0.1, 0.9] to [0, 1]
+        decay_progress = (progress - 0.1) / 0.8
+
+        # Cosine decay: starts at 1.0, ends at 0.0
+        cosine_decay = 0.5 * (1.0 + np.cos(np.pi * decay_progress))
+
+        # Interpolate between start and end using cosine decay
+        return end_val + (start_val - end_val) * cosine_decay
+
+    def on_train_result(
+            self,
+            *,
+            algorithm: "Algorithm",
+            result: dict,
+            **kwargs,
+    ) -> None:
+        """Update beta and tau based on training progress using cosine decay."""
+        # Get the policy
+        policy = algorithm.get_policy("reinforcement_learning_policy")
+        if policy is None or not hasattr(policy, 'current_beta'):
+            return
+
+        # Get config
+        ra_config = policy.config.get("relation_awareness", {})
+
+        # Get total timesteps for training (max steps, not current)
+        total_timesteps = algorithm.config.get("total_timesteps", result.get("timesteps_total", 0))
+
+        # Get annealing parameters
+        beta_start = ra_config.get("beta_start", 0.0)
+        beta_end = ra_config.get("beta_end", ra_config.get("beta", 1.0))
+        beta_anneal_timesteps = ra_config.get("beta_anneal_timesteps", total_timesteps)
+
+        tau_start = ra_config.get("tau_start", 1.0)
+        tau_end = ra_config.get("tau_end", ra_config.get("temperature", 1.0))
+        tau_anneal_timesteps = ra_config.get("tau_anneal_timesteps", total_timesteps)
+
+        # Get current timesteps
+        current_timesteps = result.get("timesteps_total", 0)
+
+        # Compute annealed beta using cosine decay schedule
+        new_beta = self.cosine_decay_schedule(
+            current_timesteps, beta_anneal_timesteps, beta_start, beta_end
+        )
+
+        # Compute annealed tau using cosine decay schedule
+        new_tau = self.cosine_decay_schedule(
+            current_timesteps, tau_anneal_timesteps, tau_start, tau_end
+        )
+
+        # Update beta and tau in all policies and models
+        def update_annealing_params(worker):
+            policy = worker.policy_map.get("reinforcement_learning_policy")
+            if policy and hasattr(policy, 'current_beta'):
+                # Update policy attributes (for logging)
+                policy.current_beta = new_beta
+                policy.current_tau = new_tau
+
+                # Update model's GumbelSoftmax tau (for functional effect)
+                if hasattr(policy, 'model') and hasattr(policy.model, 'set_tau'):
+                    policy.model.set_tau(new_tau)
+
+        # Update on local worker
+        update_annealing_params(algorithm.workers.local_worker())
+
+        # Update on remote workers
+        algorithm.workers.foreach_worker(update_annealing_params)
+
+
 class EncoderPretrainCallback(DefaultCallbacks):
     """Callback that pretrains the encoder before RL training starts."""
 
@@ -353,11 +489,11 @@ class TuneCallback(TuneReporterBase):
                   result['training_iteration'],
                   _get_time_str(self._start_time, time.time())[1],
                   result["timesteps_total"],
-                  result["custom_metrics"]["total_agent_interact"],
-                  eval_res["custom_metrics"]["grid2op_end_mean"],
+                  result["custom_metrics"].get("total_agent_interact", "N/A"),
+                  eval_res["custom_metrics"].get("grid2op_end_mean", "N/A"),
                   eval_res["episode_reward_mean"],
-                  train_res["grid2op_end_mean"],
-                  train_res["corrected_ep_len_mean"],
+                  train_res.get("grid2op_end_mean", "N/A"),
+                  train_res.get("corrected_ep_len_mean", "N/A"),
                   result["episode_reward_mean"],
                   result["episodes_this_iter"]]]
         print(tabulate(table, headers, tablefmt="rounded_grid", floatfmt=".3f"))
