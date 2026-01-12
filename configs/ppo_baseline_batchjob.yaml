@@ -1,7 +1,7 @@
 setup:
   max_ep_len: 8064
   duration: ~ # HH:MM or minutes of training before stopping, overwrites nb_timesteps limit if value > 0
-  nb_timesteps: 125_000 # 500.000 with opponent
+  nb_timesteps: 200_000 # 500.000 with opponent
   checkpoint_freq: 10
   verbose: 0
   my_log_level: 1
@@ -45,14 +45,14 @@ training:
     num_epochs: 30
     learning_rate: 0.005
   relation_awareness: # this section is only used if model_type == "RAGNN", select model type via cli args
-    prior_prob_for_graph_edge: 0.9
+    prior_prob_for_graph_edge: 0.6
     beta_start: 0.0  # Start beta at 0
-    beta_end: 1.0  # Anneal to this value
+    beta_end: 5.0  # Anneal to this value
     tau_start: 1.5  # Start with high temperature
     tau_end: 0.5  # Anneal to this value
     # Legacy parameters
     beta: 1.0
-    temperature: 0.2
+    temperature: 0.5
   model:
 #    custom_model : linfcn
     fcnet_hiddens: [256,256,256] # !choice [(128,128,128), (256,256,256), (256, 128, 256)]  # [128,128,128] #
