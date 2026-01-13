@@ -13,6 +13,7 @@ that the policy expects.
 """
 import json
 import logging
+import os
 from pathlib import Path
 
 from ray.rllib.models import ModelCatalog
@@ -73,6 +74,7 @@ def load_env_config_from_params(checkpoint_path: str) -> dict:
 
         logger.info(f"Cleaned {len(keys_to_remove)} serialized objects from grid2op_kwargs")
 
+    env_config["lib_dir"] = os.getcwd()
     return env_config
 
 
@@ -284,9 +286,9 @@ def main():
     """Main evaluation script when running as standalone."""
 
     # Configuration
-    checkpoint_path = "/home/adrian/Dev/NRI-for-explainable-RL-in-Power-Grids/results/experiments/test_minimal_run/CustomPPO_TEsTING_5b0896be_2026-01-07_15-25-24"
+    checkpoint_path = "/home/adrian/Dev/NRI-for-explainable-RL-in-Power-Grids/results/experiments/1201_rappo_with_anneal/CustomPPO_0_88271_2026-01-12_19-57-24"
     policy_name = "reinforcement_learning_policy"
-    checkpoint_name = "checkpoint_000000"
+    checkpoint_name = "checkpoint_000010"
 
     # Optional: override env_name for evaluation (otherwise uses the one from params.json)
     env_name_override = "l2rpn_case14_sandbox_val"  # Set to "l2rpn_case14_sandbox_val" to override
