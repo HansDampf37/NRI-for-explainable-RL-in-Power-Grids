@@ -46,6 +46,7 @@ class RAFeatureExtractor(nn.Module):
     :param num_gnn_layers (int): Number of layers in both encoder and GNN.
     :param x_out_dim (int): Output node feature dimension.
     :param dropout_prob (float): Dropout probability used in both encoder and GNN.
+    :param tau (float): Initial temperature for Gumbel-Softmax sampling.
     :param use_graphormer (bool): Whether to use Graphormer-based encoder. If False, uses NRI-based encoder.
     :param max_degree (Optional[int]): Maximum node degree for Graphormer encoder.
     :param max_path_distance (Optional[int]): Maximum path distance for Graphormer encoder.
@@ -61,6 +62,7 @@ class RAFeatureExtractor(nn.Module):
         num_layers_gnn: int,
         x_out_dim: int,
         dropout_prob: float,
+        tau: int = 1.0,
         residual: bool = False,
         use_graphormer: bool = False,
         max_degree: Optional[int] = None,
@@ -84,7 +86,7 @@ class RAFeatureExtractor(nn.Module):
                 num_edge_types=num_edge_types,
                 dropout_prob=dropout_prob,
             )
-        self.gumbel_softmax = GumbelSoftmax()
+        self.gumbel_softmax = GumbelSoftmax(tau=tau)
         self.gnn: RAGNN = RAGNN(
             x_dim=x_dim,
             hidden_dim=hidden_dim_gnn,
@@ -391,6 +393,7 @@ class RLlibRAGNNModel(TorchModelV2, nn.Module):
             num_layers_gnn=kwargs['gnn']['num_layers'],
             dropout_prob=kwargs['gnn'].get('dropout_prob', 0.0),
             residual=kwargs['gnn'].get('residual', True),
+            tau=kwargs.get('tau', 0.5175)
         )
         # Build downstream MLP head(s)
         # Create a Box space for the GNN output to pass to FCN

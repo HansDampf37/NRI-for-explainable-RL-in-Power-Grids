@@ -4,7 +4,7 @@ setup:
   nb_timesteps: 50_000
   checkpoint_freq: 10
   verbose: 0
-  my_log_level: 1
+  my_log_level: 2
   storage_path: ./runs
   folder_name: 0501_ragnn_hyperparameter_optimization
   experiment_name: 0501_ragnn_hyperparameter_optimization
@@ -57,6 +57,8 @@ training:
     beta_end: !uniform [0.5, 4.0]  # Anneal to this value
     tau_start: 1.0  # Start with high temperature
     tau_end: !uniform [0.5, 1.0]  # Anneal to this value
+    # Legacy parameters
+    tau: 0.5 # override if no annealing is used (e.g. final evaluation)
     # Legacy parameters for backwards compatibility
     beta: !uniform [0.5, 4.0]  # Beta parameter for relation awareness
     temperature: !uniform [0.0, 1.0]  # the amount of additional edges inferred by the encoder

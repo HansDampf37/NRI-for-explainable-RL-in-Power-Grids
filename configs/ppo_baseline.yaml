@@ -4,7 +4,7 @@ setup:
   nb_timesteps: 10_000
   checkpoint_freq: 10
   verbose: 0
-  my_log_level: 1
+  my_log_level: 2
   storage_path: ./runs
   folder_name: TestSandbox14
   experiment_name: TestSb14
@@ -48,7 +48,8 @@ training:
     beta_start: 0.0  # Start beta at 0
     beta_end: 1.0  # Anneal to this value
     tau_start: 1.0  # Start with high temperature
-    tau_end: 0.2  # Anneal to this value
+    tau_end: &tau_end 0.2  # Anneal to this value
+    tau: *tau_end # override if no annealing is used (e.g. final evaluation)
     # Legacy parameters
     beta: 1.0
     temperature: 0.2

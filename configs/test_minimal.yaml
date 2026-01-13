@@ -4,7 +4,7 @@ setup:
   nb_timesteps: 1000  # Minimal timesteps for quick testing
   checkpoint_freq: 100  # Less frequent checkpointing
   verbose: 0
-  my_log_level: 1
+  my_log_level: 2
   storage_path: ./runs
   folder_name: test_minimal
   experiment_name: test_minimal
@@ -58,7 +58,8 @@ training:
     tau_start: 1.5  # Start with high temperature
     tau_end: !uniform [ 0.5, 1.0 ]  # Anneal to this value
     # Legacy parameters for backwards compatibility
-    # beta: !uniform [ 0.5, 4.0 ]  # Beta parameter for relation awareness
+    tau: 0.5 # override if no annealing is used (e.g. final evaluation)
+    beta: !uniform [ 0.5, 4.0 ]  # Beta parameter for relation awareness
     temperature: !uniform [ 0.0, 1.0 ]  # the amount of additional edges inferred by the encoder
   model:
     fcnet_hiddens: [ 256, 256, 256 ]  # Downstream MLP after GNN

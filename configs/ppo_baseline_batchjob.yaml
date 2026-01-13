@@ -2,9 +2,9 @@ setup:
   max_ep_len: 8064
   duration: ~ # HH:MM or minutes of training before stopping, overwrites nb_timesteps limit if value > 0
   nb_timesteps: 200_000 # 500.000 with opponent
-  checkpoint_freq: 10
+  checkpoint_freq: 5
   verbose: 0
-  my_log_level: 1
+  my_log_level: 2
   storage_path: ./runs
   folder_name: 0501_compare_gnn_ragnn_mlp
   experiment_name: 0501_compare_gnn_ragnn_mlp
@@ -49,8 +49,9 @@ training:
     beta_start: 0.0  # Start beta at 0
     beta_end: 5.0  # Anneal to this value
     tau_start: 1.5  # Start with high temperature
-    tau_end: 0.5  # Anneal to this value
+    tau_end: &tau_end 0.5  # Anneal to this value
     # Legacy parameters
+    tau: *tau_end # override if no annealing is used (e.g. final evaluation)
     beta: 1.0
     temperature: 0.5
   model:
