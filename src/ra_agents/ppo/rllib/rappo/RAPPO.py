@@ -79,6 +79,7 @@ class RAPPOTorchPolicy(PPOTorchPolicy):
         model.tower_stats["mean_posterior"] = torch.mean(posteriors, dim=0) # mean over batch dimension -> [E, K]
         model.tower_stats["current_beta"] = self.current_beta
         model.tower_stats["current_tau"] = self.current_tau
+        model.tower_stats["latent_edge_probs"] = posteriors
 
         return total_loss
 
@@ -108,6 +109,9 @@ class RAPPOTorchPolicy(PPOTorchPolicy):
             "relation_awareness/posterior_existence_probs": torch.mean(
                 torch.stack([t.tower_stats["mean_posterior"][:, 0].detach() for t in self.model_gpu_towers]), dim=0
             ).cpu().numpy().flatten().tolist(),
+            "relation_awareness/latent_graph_probs": torch.mean(
+                torch.cat([t.tower_stats["latent_edge_probs"].detach() for t in self.model_gpu_towers], 0), dim=0
+            ).cpu().numpy().tolist(),
         })
 
         return stats

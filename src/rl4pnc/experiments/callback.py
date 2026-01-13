@@ -5,7 +5,9 @@ Implements callbacks.
 import time
 from typing import Any, Dict, Optional, List
 
+import grid2op
 import numpy as np
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 from ray._private.dict import unflattened_lookup
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
@@ -24,8 +26,19 @@ from ray.tune.experimental.output import (
 from tabulate import tabulate
 
 from src.common.env import G2OpGymEnv
+from src.common.observation_space import BusConnectivityGraphObsSpace
 from src.nri.utils import prior_from_env
 from src.ra_agents.pretrain_encoder import train, create_dataset
+from src.visualization import visualize_graph, PlottingArgs, get_node_styles
+
+
+def fig_to_chw_uint8(fig):
+    canvas = FigureCanvasAgg(fig)
+    canvas.draw()
+    rgba = np.asarray(canvas.buffer_rgba(), dtype=np.uint8)   # (H, W, 4)
+    rgb  = rgba[..., :3]                                     # (H, W, 3)
+    chw  = np.transpose(rgb, (2, 0, 1))                       # (3, H, W)
+    return np.ascontiguousarray(chw)
 
 
 class Style:
@@ -125,17 +138,6 @@ class CustomMetricsCallback(DefaultCallbacks):
                 "grid2op_end": data["custom_metrics"]["grid2op_end"],
                 "reward": data["hist_stats"]["episode_reward"]}
             print(tabulate(overview, headers="keys", tablefmt="rounded_grid"))
-        # Delete irrelevant results
-        del data["custom_metrics"]["grid2op_end"]
-        del data["episode_media"]["chronic_id"]
-        del data["custom_metrics"]["corrected_ep_len"]
-        del data["sampler_results"]
-
-        del data["custom_metrics"]["interact_count"]
-        del data["custom_metrics"]["active_dn_count"]
-        del data["custom_metrics"]["reconnect_count"]
-        del data["custom_metrics"]["disconnect_count"]
-        del data["custom_metrics"]["reset_count"]
 
     def on_train_result(
             self,
@@ -159,6 +161,15 @@ class CustomMetricsCallback(DefaultCallbacks):
         result["custom_metrics"]["mean_reconnect_count"] = np.mean(result["custom_metrics"]["reconnect_count"])
         result["custom_metrics"]["mean_disconnect_count"] = np.mean(result["custom_metrics"]["disconnect_count"])
         result["custom_metrics"]["mean_reset_count"] = np.mean(result["custom_metrics"]["reset_count"])
+
+        fig = visualize_graph(PlottingArgs(
+            num_nodes=57,
+            node_styles=get_node_styles(grid2op.make("l2rpn_case14_sandbox"), BusConnectivityGraphObsSpace),
+            latent_edge_probs=np.array(result['info']["learner"]["reinforcement_learning_policy"]["learner_stats"]["relation_awareness/latent_graph_probs"]),
+        ))
+        img = fig_to_chw_uint8(fig)
+        print(img.shape, img.dtype)
+        result["relation_awareness/latent_graph"] = img
 
         # Delete irrelevant results
         del result["custom_metrics"]["grid2op_end"]
