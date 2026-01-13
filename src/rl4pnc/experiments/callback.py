@@ -119,12 +119,11 @@ class CustomMetricsCallback(DefaultCallbacks):
         data["custom_metrics"]["mean_reset_count"] = np.mean(data["custom_metrics"]["reset_count"])
 
         if self.log_level > 1:
-            head_len = self.log_level  # only show the first #head_len chronics
-            print(f" Showing results for the first {head_len} evaluated chronics:")
+            print(f" Showing results for evaluated chronics:")
             overview = {
-                "chronic_id": data["episode_media"]["chronic_id"][:head_len],
-                "grid2op_end": data["custom_metrics"]["grid2op_end"][:head_len],
-                "reward": data["hist_stats"]["episode_reward"][:head_len]}
+                "chronic_id": data["episode_media"]["chronic_id"],
+                "grid2op_end": data["custom_metrics"]["grid2op_end"],
+                "reward": data["hist_stats"]["episode_reward"]}
             print(tabulate(overview, headers="keys", tablefmt="rounded_grid"))
         # Delete irrelevant results
         del data["custom_metrics"]["grid2op_end"]
@@ -269,6 +268,7 @@ class AnnealingCallback(DefaultCallbacks):
             **kwargs,
     ) -> None:
         """Update beta and tau based on training progress using cosine decay."""
+        super().on_train_result(algorithm=algorithm, result=result, **kwargs)
         # Get the policy
         policy = algorithm.get_policy("reinforcement_learning_policy")
         if policy is None or not hasattr(policy, 'current_beta'):
