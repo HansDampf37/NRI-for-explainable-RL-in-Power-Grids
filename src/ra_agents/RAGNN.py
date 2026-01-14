@@ -5,6 +5,11 @@ from torch_geometric.nn import global_mean_pool, GCNConv, BatchNorm
 from src.common.MLP import MLP
 
 
+def _mean_l2_norm(t: Tensor, eps: float = 1e-12) -> Tensor:
+    # mean over nodes of the per-node L2 norm (feature dim)
+    return torch.linalg.vector_norm(t, dim=-1).mean().clamp_min(eps)
+
+
 class RAGNN(nn.Module):
     """
     The Relation Aware GNN (RAGNN) performs message passing conditioned on edge-type probabilities
@@ -99,6 +104,9 @@ class RAGNN(nn.Module):
             do_batch_norm=False
         )
 
+        self.stats = {}
+
+
     def forward(self, x: Tensor, edge_index: Tensor, edge_type_posterior: Tensor, batch: Tensor) -> Tensor:
         """
         Forward pass. Accepts only graphs batched via batch vector.
@@ -123,6 +131,8 @@ class RAGNN(nn.Module):
             x_h_ks = torch.stack(outs).sum(0)
             x_h_ks = self.bn_message_passing[l](x_h_ks)
             x_h_ks = self.activation_function(x_h_ks)
+            msg_ratio = _mean_l2_norm(x_h_ks) / _mean_l2_norm(x_h)
+            self.stats[f'msg_ratio_layer_{l}'] = msg_ratio
             x_h = self.dropout(x_h)
             x_h = x_h + x_h_ks if self.residual else x_h_ks
 
@@ -204,6 +214,9 @@ class BaselineGNN(nn.Module):
             do_batch_norm=False
         )
 
+        self.stats = {}
+
+
     def forward(self, x: Tensor, edge_index: Tensor, batch: Tensor) -> Tensor:
         """
         Forward pass. Accepts only graphs batched via batch vector.
@@ -223,6 +236,8 @@ class BaselineGNN(nn.Module):
             x_h = self.layers[l](x=x_h, edge_index=edge_index)
             x_h = self.bn_message_passing[l](x_h)
             x_h = self.activation_function(x_h)
+            msg_ratio = _mean_l2_norm(x_h) / _mean_l2_norm(x_residual)
+            self.stats[f'msg_ratio_layer_{l}'] = msg_ratio
             x_h = x_h + x_residual if self.residual else x_h
             x_residual = x_h
             x_h = self.dropout(x_h)

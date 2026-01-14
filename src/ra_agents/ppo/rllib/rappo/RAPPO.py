@@ -93,6 +93,7 @@ class RAPPOTorchPolicy(PPOTorchPolicy):
         model.tower_stats["current_beta"] = self.current_beta
         model.tower_stats["current_tau"] = self.current_tau
         model.tower_stats["latent_edge_probs"] = posteriors
+        model.tower_stats["gnn"] = model.ragnn.gnn.stats
 
         return total_loss
 
@@ -132,6 +133,11 @@ class RAPPOTorchPolicy(PPOTorchPolicy):
                 torch.cat([t.tower_stats["latent_edge_probs"].detach() for t in self.model_gpu_towers], 0), dim=0
             ).cpu().numpy().tolist(),
         })
+
+        for key, value in self.model_gpu_towers[0].tower_stats["gnn"].items():
+            stats[f"relation_awareness/gnn/{key}"] = torch.mean(
+                torch.stack([t.tower_stats["gnn"][key].detach() for t in self.model_gpu_towers])
+            ).item()
 
         return stats
 
