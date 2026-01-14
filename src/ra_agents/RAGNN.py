@@ -123,8 +123,8 @@ class RAGNN(nn.Module):
             x_h_ks = torch.stack(outs).sum(0)
             x_h_ks = self.bn_message_passing[l](x_h_ks)
             x_h_ks = self.activation_function(x_h_ks)
-            x_h = x_h + x_h_ks if self.residual else x_h_ks
             x_h = self.dropout(x_h)
+            x_h = x_h + x_h_ks if self.residual else x_h_ks
 
         # project hidden space onto output space
         x_final = self.final(x_h)  # [N, x_out_dim]
@@ -224,8 +224,8 @@ class BaselineGNN(nn.Module):
             x_h = self.bn_message_passing[l](x_h)
             x_h = self.activation_function(x_h)
             x_h = x_h + x_residual if self.residual else x_h
-            x_h = self.dropout(x_h)
             x_residual = x_h
+            x_h = self.dropout(x_h)
 
         # project hidden space onto output space
         x_final = self.final(x_h)  # [N, x_out_dim]
