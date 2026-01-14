@@ -235,9 +235,9 @@ class AnnealingCallback(DefaultCallbacks):
         Compute value using cosine decay schedule.
 
         Schedule:
-        - 0-10% of training: constant at start_val
-        - 10-90% of training: cosine decay from start_val to end_val
-        - 90-100% of training: constant at end_val
+        - 0-40% of training: constant at start_val
+        - 40-80% of training: cosine decay from start_val to end_val
+        - 80-100% of training: constant at end_val
 
         Args:
             current_step: Current training step
@@ -253,17 +253,17 @@ class AnnealingCallback(DefaultCallbacks):
 
         progress = current_step / total_steps
 
-        # First 10%: hold constant at start
-        if progress < 0.1:
+        # First 40%: hold constant at start
+        if progress < 0.4:
             return start_val
 
         # Last 10%: hold constant at end
-        if progress > 0.9:
+        if progress > 0.8:
             return end_val
 
-        # Middle 80%: cosine decay
-        # Map progress from [0.1, 0.9] to [0, 1]
-        decay_progress = (progress - 0.1) / 0.8
+        # Middle 40%: cosine decay
+        # Map progress from [0.5, 0.9] to [0, 1]
+        decay_progress = (progress - 0.4) / 0.4
 
         # Cosine decay: starts at 1.0, ends at 0.0
         cosine_decay = 0.5 * (1.0 + np.cos(np.pi * decay_progress))
