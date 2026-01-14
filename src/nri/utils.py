@@ -142,8 +142,34 @@ def prior_from_env(prob_graph_edge_exists: float, env: G2OpGymEnv, temperature: 
     return prior
 
 
+def create_graph_edge_mask(graph_edges: Tensor, all_edges: Tensor) -> Tensor:
+    """
+    Create a boolean mask identifying which edges in all_edges are graph edges.
+
+    @param graph_edges: Edge index for graph edges [2, E]
+    @param all_edges: Edge index for all considered edges [2, E'] (typically fully connected)
+    @return: Boolean mask of shape [E'] where True indicates a graph edge
+    """
+    all_edges_T = all_edges.T  # [E', 2]
+    num_all_edges = all_edges_T.shape[0]
+    mask = torch.zeros((num_all_edges,), dtype=torch.bool)
+    reversed_graph_edges = graph_edges[[1, 0], :]
+
+    for e in range(graph_edges.shape[1]):
+        mask = torch.logical_or(
+            torch.all(all_edges_T == graph_edges[:, e].unsqueeze(0), dim=1),
+            mask
+        )
+        mask = torch.logical_or(
+            torch.all(all_edges_T == reversed_graph_edges[:, e].unsqueeze(0), dim=1),
+            mask
+        )
+
+    return mask
+
+
 def get_prior_tensor(graph_edges: Tensor, all_edges: Tensor, prior_for_graph_edges: Tensor,
-                     prior_for_non_graph_edges: Tensor, num_edge_types: int = 2) -> Tensor:
+                     prior_for_non_graph_edges: Tensor, num_edge_types: int = 2, return_mask: bool = False) -> Tensor:
     """
     Given edge indices for graph edges [2, E] and all considered edges [2, E'] return a tensor of shape [E', K] containing
     prior distribution for each considered edge in E'. If the edge exists as part of the graph it receives the distribution
@@ -154,22 +180,22 @@ def get_prior_tensor(graph_edges: Tensor, all_edges: Tensor, prior_for_graph_edg
     @param all_edges: Edge index for all considered edges [2, E'] (typically fully connected)
     @param prior_for_graph_edges: prior distribution for graph edges [2,]
     @param prior_for_non_graph_edges: prior distribution for non-graph edges [2,]
-    @return: prior distribution for all considered edges in E'
+    @param return_mask: whether to return the mask indicating graph edges
+    @return: prior distribution for all considered edges in E', (mask if return_mask is True)
     """
     assert prior_for_graph_edges.shape == prior_for_non_graph_edges.shape
-    all_edges = all_edges.T
-    E, _ = all_edges.shape
-    mask = torch.zeros((E,), dtype=torch.bool)
-    reversed_graph_edges = graph_edges[[1, 0], :]
-    for e in range(graph_edges.shape[1]):
-        mask = torch.logical_or(torch.all(all_edges == graph_edges[:, e].unsqueeze(0), dim=1), mask)
-        mask = torch.logical_or(torch.all(all_edges == reversed_graph_edges[:, e].unsqueeze(0), dim=1), mask)
 
-    prior = torch.zeros((E, num_edge_types), dtype=torch.float32)
+    mask = create_graph_edge_mask(graph_edges, all_edges)
+    num_edges = mask.shape[0]
+
+    prior = torch.zeros((num_edges, num_edge_types), dtype=torch.float32)
     prior[mask, :num_edge_types - 1] = prior_for_graph_edges[0] / (num_edge_types - 1)
     prior[mask, -1] = prior_for_graph_edges[1]
     prior[torch.logical_not(mask), :num_edge_types - 1] = prior_for_non_graph_edges[0] / (num_edge_types - 1)
     prior[torch.logical_not(mask), -1] = prior_for_non_graph_edges[1]
+
+    if return_mask:
+        return prior, mask
     return prior
 
 

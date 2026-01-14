@@ -8,7 +8,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TensorType
 
 from src.common.observation_space import EDGE_INDEX, EDGE_MASK
-from src.nri.utils import get_priors, fully_connected_edge_index, get_prior_tensor
+from src.nri.utils import get_priors, fully_connected_edge_index, get_prior_tensor, create_graph_edge_mask
 from src.ra_agents.RAFeatureExtractor import RLlibRAGNNModel
 from ray.rllib.algorithms.registry import POLICIES
 
@@ -45,6 +45,8 @@ class RAPPOTorchPolicy(PPOTorchPolicy):
         # iterate over batches to build respective prior tensors depending on edges
         all_graph_edges = train_batch["obs"][EDGE_INDEX]
         batched_priors = []
+        batched_graph_edge_masks = []
+
         for batch_index in range(all_graph_edges.shape[0]):
             graph_edges_batch = all_graph_edges[batch_index, :, train_batch["obs"][EDGE_MASK][batch_index]]
             N = self.observation_space.num_nodes if hasattr(self.observation_space, 'num_nodes') else 57
@@ -56,24 +58,35 @@ class RAPPOTorchPolicy(PPOTorchPolicy):
                 num_non_graph_edges=all_edges.shape[1] - E,
                 temperature=self.config["relation_awareness"]["temperature"]
             )
-            prior_tensor = get_prior_tensor(
+            prior_tensor, graph_edge_mask = get_prior_tensor(
                 graph_edges=graph_edges_batch,
                 all_edges=all_edges,
                 prior_for_graph_edges=prior_for_graph_edges,
                 prior_for_non_graph_edges=prior_for_non_graph_edges,
-                num_edge_types=self.config["model"]["custom_model_config"]["encoder"]["num_edge_types"]
+                num_edge_types=self.config["model"]["custom_model_config"]["encoder"]["num_edge_types"],
+                return_mask=True,
             )
             batched_priors.append(prior_tensor.to(device=self.device, dtype=torch.float32))
+            batched_graph_edge_masks.append(graph_edge_mask.to(device=self.device))
 
         eps = 0.0000001
-        posteriors = model.get_posterior()
-        prior_tensor = torch.stack(batched_priors, dim=0)
-        kl_loss = (posteriors * (torch.log(posteriors + eps) - torch.log(prior_tensor + eps))).sum(dim=-1)
-        kl_loss = kl_loss.mean()
+        posteriors = model.get_posterior() # [B, E, K]
+        prior_tensor = torch.stack(batched_priors, dim=0) # [B, E, K]
+        graph_edge_masks = torch.stack(batched_graph_edge_masks, dim=0) # [B, E]
+
+        # Calculate KL divergence for each edge
+        kl_per_edge = (posteriors * (torch.log(posteriors + eps) - torch.log(prior_tensor + eps))).sum(dim=-1)  # [B, E]
+
+        # Split KL loss into graph edges and non-graph edges and compute means
+        kl_loss_graph_edges = kl_per_edge[graph_edge_masks].mean() if graph_edge_masks.any() else torch.tensor(0.0, device=self.device)
+        kl_loss_non_graph_edges = kl_per_edge[~graph_edge_masks].mean() if (~graph_edge_masks).any() else torch.tensor(0.0, device=self.device)
+        kl_loss = kl_per_edge.mean()
 
         total_loss += kl_loss * self.current_beta
 
         model.tower_stats["kl_loss"] = kl_loss
+        model.tower_stats["kl_loss_graph_edges"] = kl_loss_graph_edges
+        model.tower_stats["kl_loss_non_graph_edges"] = kl_loss_non_graph_edges
         model.tower_stats["total_loss"] = total_loss
         model.tower_stats["mean_prior"] = torch.mean(prior_tensor, dim=0) # mean over batch dimension -> [E, K]
         model.tower_stats["mean_posterior"] = torch.mean(posteriors, dim=0) # mean over batch dimension -> [E, K]
@@ -94,6 +107,12 @@ class RAPPOTorchPolicy(PPOTorchPolicy):
         stats.update({
             "relation_awareness/kl_loss": torch.mean(
                 torch.stack([t.tower_stats["kl_loss"].detach() for t in self.model_gpu_towers])
+            ).item(),
+            "relation_awareness/kl_loss_graph_edges": torch.mean(
+                torch.stack([t.tower_stats["kl_loss_graph_edges"].detach() for t in self.model_gpu_towers])
+            ).item(),
+            "relation_awareness/kl_loss_non_graph_edges": torch.mean(
+                torch.stack([t.tower_stats["kl_loss_non_graph_edges"].detach() for t in self.model_gpu_towers])
             ).item(),
             "relation_awareness/current_beta": torch.mean(
                 torch.stack([torch.tensor(t.tower_stats["current_beta"]) for t in self.model_gpu_towers])
