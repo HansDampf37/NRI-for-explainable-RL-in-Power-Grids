@@ -241,24 +241,37 @@ def smooth_curve(curve: List[float] | npt.NDArray, alpha=1.0) -> npt.NDArray | L
     return smoothed
 
 
-def visualize_graph(args: PlottingArgs) -> Figure:
+def visualize_graph(args: PlottingArgs, ax=None) -> Figure:
     """
     Visualize the graph including latent edges predicted by the NRI module.
     :param args: args for plotting
-    :return a figure
+    :param ax: optional matplotlib axis to draw on. If None, creates new figure.
+    :return a figure (or None if ax is provided)
     """
     assert args.latent_edge_probs is None or args.num_nodes * (args.num_nodes - 1) == args.latent_edge_probs.shape[0]
 
     scale = 0.66
-    fig, ax = plt.subplots(figsize=(18 * scale, 10 * scale), dpi=100)
+
+    # Create new figure if no axis provided
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(18 * scale, 10 * scale), dpi=100)
+        return_fig = True
+    else:
+        fig = ax.get_figure()
+        return_fig = False
 
     G = nx.MultiDiGraph()
     G.add_nodes_from(range(args.num_nodes))
 
-    # base edges
+    # base edges - convert to undirected by filtering out duplicate directed edges
     if args.powerline_edge_index is not None:
+        seen_edges = set()
         for src, dst in args.powerline_edge_index.T:
-            G.add_edge(int(src), int(dst), color="gray", weight=1, type="Connection")
+            # Create unordered edge tuple (always smaller node first)
+            edge_tuple = tuple(sorted([int(src), int(dst)]))
+            if edge_tuple not in seen_edges:
+                seen_edges.add(edge_tuple)
+                G.add_edge(int(src), int(dst), color="gray", weight=1, type="Connection")
 
     # latent edges
     if args.latent_edge_probs is not None:
@@ -285,20 +298,7 @@ def visualize_graph(args: PlottingArgs) -> Figure:
     conn_edges = [(u, v, d) for u, v, d in G.edges(data=True) if d["type"] == "Connection"]
     dep_edges = [(u, v, d) for u, v, d in G.edges(data=True) if d["type"] == "Dependency"]
 
-    # draw base edges
-    if conn_edges:
-        lc = nx.draw_networkx_edges(
-            G,
-            pos,
-            edgelist=[(u, v) for u, v, _ in conn_edges],
-            edge_color=[d["color"] for _, _, d in conn_edges],
-            width=[d["weight"] for _, _, d in conn_edges],
-            arrows=False,
-            style="-"
-        )
-        lc.set_zorder(1)
-
-    # draw latent edges top
+    # draw latent edges FIRST (bottom layer) with transparency
     if dep_edges:
         lc = nx.draw_networkx_edges(
             G,
@@ -307,15 +307,32 @@ def visualize_graph(args: PlottingArgs) -> Figure:
             edge_color=[d["color"] for _, _, d in dep_edges],
             width=[d["weight"] for _, _, d in dep_edges],
             arrows=False,
+            alpha=0.5,  # Make latent edges semi-transparent
+            ax=ax
         )
-        lc.set_zorder(2)
+        lc.set_zorder(1)
 
-    # draw nodes
+    # draw base edges ON TOP with dashed style for visibility
+    if conn_edges:
+        lc = nx.draw_networkx_edges(
+            G,
+            pos,
+            edgelist=[(u, v) for u, v, _ in conn_edges],
+            edge_color=[d["color"] for _, _, d in conn_edges],
+            width=[d["weight"] for _, _, d in conn_edges],
+            arrows=False,
+            style="--",  # Dashed style makes them distinguishable
+            alpha=1.0,  # Fully opaque
+            ax=ax
+        )
+        lc.set_zorder(3)  # Higher z-order to be on top
+
+    # draw nodes (with highest z-order to be on top of all edges)
     if args.node_styles is not None:
         shapes = set(ns.shape for ns in args.node_styles)
         for shape in shapes:
             idx = [i for i, ns in enumerate(args.node_styles) if ns.shape == shape]
-            nx.draw_networkx_nodes(
+            node_collection = nx.draw_networkx_nodes(
                 G,
                 pos,
                 nodelist=idx,
@@ -324,16 +341,23 @@ def visualize_graph(args: PlottingArgs) -> Figure:
                 node_size=[args.node_styles[i].size * scale for i in idx],
                 ax=ax,
             )
-        _create_legend(args, G)
+            node_collection.set_zorder(10)  # Highest z-order to be on top
+        # Create legend (pass ax if provided)
+        _create_legend(args, G, ax)
     else:
-        nx.draw_networkx_nodes(G, pos, node_color="grey", ax=ax)
+        node_collection = nx.draw_networkx_nodes(G, pos, node_color="grey", ax=ax)
+        node_collection.set_zorder(10)
 
-    plt.axis("off")
-    fig.tight_layout()
-    return fig
+    ax.axis("off")
+
+    if return_fig:
+        fig.tight_layout()
+        return fig
+    else:
+        return None
 
 
-def _create_legend(args: PlottingArgs, G: nx.Graph) -> None:
+def _create_legend(args: PlottingArgs, G: nx.Graph, ax=None) -> None:
     # --- Node legend ---
     unique_labels = {}
     for ns in args.node_styles:
@@ -369,12 +393,16 @@ def _create_legend(args: PlottingArgs, G: nx.Graph) -> None:
             [0], [0],
             color=powerline_edge_color[0],
             lw=2,
-            label=f"Connection"
+            linestyle='--',  # Match the dashed style
+            label=f"Power Grid"
         )
         edge_legend.insert(0, powerline_legend_entry)
 
-    # Combine and draw
-    plt.legend(handles=node_legend + edge_legend, loc="best", frameon=False)
+    # Combine and draw - use provided ax or current axes
+    if ax is not None:
+        ax.legend(handles=node_legend + edge_legend, loc="best", frameon=False)
+    else:
+        plt.legend(handles=node_legend + edge_legend, loc="best", frameon=False)
 
 
 def latent_edge_hist(accumulated_edge_probabilities: npt.NDArray, skip_last_edge_type: bool = True):

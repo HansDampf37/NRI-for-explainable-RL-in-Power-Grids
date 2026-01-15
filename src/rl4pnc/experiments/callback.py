@@ -162,14 +162,19 @@ class CustomMetricsCallback(DefaultCallbacks):
         result["custom_metrics"]["mean_disconnect_count"] = np.mean(result["custom_metrics"]["disconnect_count"])
         result["custom_metrics"]["mean_reset_count"] = np.mean(result["custom_metrics"]["reset_count"])
 
-        fig = visualize_graph(PlottingArgs(
-            num_nodes=57,
-            node_styles=get_node_styles(grid2op.make("l2rpn_case14_sandbox"), BusConnectivityGraphObsSpace),
-            latent_edge_probs=np.array(result['info']["learner"]["reinforcement_learning_policy"]["learner_stats"]["relation_awareness/latent_graph_probs"]),
-        ))
-        img = fig_to_chw_uint8(fig)
-        print(img.shape, img.dtype)
-        result["relation_awareness/latent_graph"] = img
+        result["relation_awareness/latent_graph_mean"] = fig_to_chw_uint8(
+            visualize_graph(PlottingArgs(
+                num_nodes=57,
+                node_styles=get_node_styles(grid2op.make("l2rpn_case14_sandbox"), BusConnectivityGraphObsSpace),
+                latent_edge_probs=np.array(result['info']["learner"]["reinforcement_learning_policy"]["learner_stats"]["relation_awareness/latent_graph_probs_mean"]),
+        )))
+
+        result["relation_awareness/latent_graph_var"] = fig_to_chw_uint8(
+            visualize_graph(PlottingArgs(
+                num_nodes=57,
+                node_styles=get_node_styles(grid2op.make("l2rpn_case14_sandbox"), BusConnectivityGraphObsSpace),
+                latent_edge_probs=np.array(result['info']["learner"]["reinforcement_learning_policy"]["learner_stats"]["relation_awareness/latent_graph_probs_var"]),
+        )))
 
         # Delete irrelevant results
         del result["custom_metrics"]["grid2op_end"]

@@ -87,7 +87,7 @@ class CustomizedGrid2OpEnvironment(MultiAgentEnv):
         self.possible_substation_actions.insert(0, do_nothing_action)
 
         # 2. create the gym environment
-        self.env_gym = GymEnv(self.env_g2op) #, shuffle_chronics=env_config["shuffle_scenarios"])
+        self.env_gym = GymEnv(self.env_g2op, with_forecast=True) #, shuffle_chronics=env_config["shuffle_scenarios"])
         self.env_gym.reset()
 
         # 3. Define agents:
