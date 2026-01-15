@@ -286,9 +286,9 @@ def main():
     """Main evaluation script when running as standalone."""
 
     # Configuration
-    checkpoint_path = "/home/adrian/Dev/NRI-for-explainable-RL-in-Power-Grids/results/experiments/1201_rappo_with_anneal/CustomPPO_0_88271_2026-01-12_19-57-24"
+    checkpoint_path = "/home/adrian/Schreibtisch/1301_THIS_rappo_with_anneal_2/CustomPPO_0_107a0_2026-01-14_22-36-19/"
     policy_name = "reinforcement_learning_policy"
-    checkpoint_name = "checkpoint_000010"
+    checkpoint_name = "checkpoint_000020"
 
     # Optional: override env_name for evaluation (otherwise uses the one from params.json)
     env_name_override = "l2rpn_case14_sandbox_val"  # Set to "l2rpn_case14_sandbox_val" to override
