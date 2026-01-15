@@ -1,10 +1,10 @@
 setup:
   max_ep_len: 8064
-  duration: 03:00  # hh:mm
-  nb_timesteps: 75_000
-  checkpoint_freq: 10
+  duration: 70:00  # hh:mm
+  nb_timesteps: 100_000
+  checkpoint_freq: 5
   verbose: 0
-  my_log_level: 1
+  my_log_level: 2
   storage_path: ./runs
   folder_name: 0501_gnn_hyperparameter_optimization
   experiment_name: 0501_gnn_hyperparameter_optimization

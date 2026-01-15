@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # Set experiment name and export variable for SLURM
-experiment_name="1001_OPT_RAGNN"
+experiment_name="1301_OPT_RAGNN"
 export experiment_name
-cd ..
+cd ../../
 
 # Ensure that the output directory exists
 mkdir -p results/experiments/${experiment_name}/out

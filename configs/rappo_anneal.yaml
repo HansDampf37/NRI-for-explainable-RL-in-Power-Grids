@@ -1,8 +1,8 @@
 setup:
   max_ep_len: 8064
   duration: ~ # HH:MM or minutes of training before stopping, overwrites nb_timesteps limit if value > 0
-  nb_timesteps: 125_000 # 500.000 with opponent
-  checkpoint_freq: 10
+  nb_timesteps: 150_000 # 500.000 with opponent
+  checkpoint_freq: 5
   verbose: 0
   my_log_level: 2
   storage_path: ./runs
@@ -42,18 +42,18 @@ training:
     enabled: true  # Set to true to enable encoder pretraining
     ds_size: 1000
     batch_size: 32
-    num_epochs: 30
+    num_epochs: 15
     learning_rate: 0.005
   relation_awareness: # this section is only used if model_type == "RAGNN", select model type via cli args
-    prior_prob_for_graph_edge: 0.467
+    prior_prob_for_graph_edge: 0.9
     beta_start: 0.0  # Start beta at 0
-    beta_end: 3.520  # Anneal to this value
-    tau_start: 1.5  # Start with high temperature (more exploration)
+    beta_end: 5.0  # Anneal to this value
+    tau_start: 2.0  # Start with high temperature
     tau_end: &tau_end 0.5  # Anneal to this value
     # Legacy parameters
     tau: *tau_end # override if no annealing is used (e.g. final evaluation)
-    beta: 3.520
-    temperature: 0.730
+    beta: 1.0
+    temperature: 0.5
   model:
 #    custom_model : linfcn
     fcnet_hiddens: [256,256,256] # !choice [(128,128,128), (256,256,256), (256, 128, 256)]  # [128,128,128] #
@@ -64,9 +64,8 @@ training:
         hidden_dim: 256
         out_dim: 64
         num_layers: 3
-        residual: 1
       encoder: # this section is only used if model_type == "RAGNN", select model type via cli args
-        num_edge_types: 3  # Number of edge types (defaults to 2: edge exists or doesn't exist)
+        num_edge_types: 2  # Number of edge types (defaults to 2: edge exists or doesn't exist)
         max_degree: 7 # todo change if bigger envs are considered
         max_path_distance: 9 # todo change if bigger envs are considered
         use_graphormer: True
@@ -84,8 +83,8 @@ explore:
 callbacks:
   callbacks: !CombinedCallbacks
     - !CustomMetricsCallback
-    - !EncoderPretrainCallback
     - !AnnealingCallback
+    - !EncoderPretrainCallback
 
 framework:
   framework: torch
