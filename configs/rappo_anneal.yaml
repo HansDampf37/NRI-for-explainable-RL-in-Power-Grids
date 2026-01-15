@@ -47,7 +47,7 @@ training:
   relation_awareness: # this section is only used if model_type == "RAGNN", select model type via cli args
     prior_prob_for_graph_edge: 0.9
     beta_start: 0.0  # Start beta at 0
-    beta_end: 5.0  # Anneal to this value
+    beta_end: 1.0  # Anneal to this value
     tau_start: 2.0  # Start with high temperature
     tau_end: &tau_end 0.5  # Anneal to this value
     # Legacy parameters
