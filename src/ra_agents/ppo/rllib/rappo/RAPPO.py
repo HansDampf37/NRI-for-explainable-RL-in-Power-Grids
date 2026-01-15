@@ -129,7 +129,10 @@ class RAPPOTorchPolicy(PPOTorchPolicy):
             "relation_awareness/posterior_existence_probs": torch.mean(
                 torch.stack([t.tower_stats["mean_posterior"][:, 0].detach() for t in self.model_gpu_towers]), dim=0
             ).cpu().numpy().flatten().tolist(),
-            "relation_awareness/latent_graph_probs": torch.mean(
+            "relation_awareness/latent_graph_probs_mean": torch.mean(
+                torch.cat([t.tower_stats["latent_edge_probs"].detach() for t in self.model_gpu_towers], 0), dim=0
+            ).cpu().numpy().tolist(),
+            "relation_awareness/latent_graph_probs_var": torch.var(
                 torch.cat([t.tower_stats["latent_edge_probs"].detach() for t in self.model_gpu_towers], 0), dim=0
             ).cpu().numpy().tolist(),
         })
