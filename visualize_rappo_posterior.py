@@ -260,8 +260,7 @@ def main():
     """Main entry point."""
 
     # CONFIGURATION - Edit these parameters
-    checkpoint_path = "/home/adrian/Schreibtisch/1301_THIS_rappo_with_anneal_2/CustomPPO_0_107a0_2026-01-14_22-36-19/"
-    policy_name = "reinforcement_learning_policy"
+    checkpoint_path = "/home/adrian/Schreibtisch/1501_rappo_with_anneal/CustomPPO_0_a0abf_2026-01-15_11-54-55/"
     checkpoint_name = "checkpoint_000020"
     env_name_override = "l2rpn_case14_sandbox_val"  # Use None to auto-load from params.json
 
@@ -273,7 +272,6 @@ def main():
 
     run_rappo_visualization(
         checkpoint_path=checkpoint_path,
-        policy_name=policy_name,
         checkpoint_name=checkpoint_name,
         env_name_override=env_name_override,
         num_episodes=num_episodes,

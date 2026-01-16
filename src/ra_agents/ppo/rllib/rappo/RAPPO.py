@@ -36,6 +36,8 @@ class RAPPOTorchPolicy(PPOTorchPolicy):
             ra_config = self.config.get("relation_awareness", {})
             self.current_beta = ra_config.get("beta_start", 0.0)
             self.target_beta = ra_config.get("beta_end", ra_config.get("beta", 1.0))
+            self.current_beta_non_graph_edges = ra_config.get("beta_non_graph_edges_start", 0.0)
+            self.target_beta_non_graph_edges = ra_config.get("beta_non_graph_edges_end", ra_config.get("beta", 1.0))
             self.current_tau = ra_config.get("tau_start", 1.0)
             self.target_tau = ra_config.get("tau_end", ra_config.get("temperature", 0.5))
 
@@ -80,17 +82,31 @@ class RAPPOTorchPolicy(PPOTorchPolicy):
         # Split KL loss into graph edges and non-graph edges and compute means
         kl_loss_graph_edges = kl_per_edge[graph_edge_masks].mean() if graph_edge_masks.any() else torch.tensor(0.0, device=self.device)
         kl_loss_non_graph_edges = kl_per_edge[~graph_edge_masks].mean() if (~graph_edge_masks).any() else torch.tensor(0.0, device=self.device)
-        kl_loss = kl_per_edge.mean()
 
-        total_loss += kl_loss * self.current_beta
+        # Calculate occurrence fractions
+        num_graph_edges = graph_edge_masks.sum().float()
+        num_non_graph_edges = (~graph_edge_masks).sum().float()
+        total_edges = num_graph_edges + num_non_graph_edges
+
+        fraction_graph_edges = num_graph_edges / total_edges if total_edges > 0 else torch.tensor(0.0, device=self.device)
+        fraction_non_graph_edges = num_non_graph_edges / total_edges if total_edges > 0 else torch.tensor(0.0, device=self.device)
+
+        # Weighted KL loss: each component weighted by occurrence fraction and respective beta
+        kl_loss = (fraction_graph_edges * self.current_beta * kl_loss_graph_edges +
+                   fraction_non_graph_edges * self.current_beta_non_graph_edges * kl_loss_non_graph_edges)
+
+        total_loss += kl_loss
 
         model.tower_stats["kl_loss"] = kl_loss
         model.tower_stats["kl_loss_graph_edges"] = kl_loss_graph_edges
         model.tower_stats["kl_loss_non_graph_edges"] = kl_loss_non_graph_edges
+        model.tower_stats["fraction_graph_edges"] = fraction_graph_edges
+        model.tower_stats["fraction_non_graph_edges"] = fraction_non_graph_edges
         model.tower_stats["total_loss"] = total_loss
         model.tower_stats["mean_prior"] = torch.mean(prior_tensor, dim=0) # mean over batch dimension -> [E, K]
         model.tower_stats["mean_posterior"] = torch.mean(posteriors, dim=0) # mean over batch dimension -> [E, K]
         model.tower_stats["current_beta"] = self.current_beta
+        model.tower_stats["current_beta_non_graph_edges"] = self.current_beta_non_graph_edges
         model.tower_stats["current_tau"] = self.current_tau
         model.tower_stats["latent_edge_probs"] = posteriors
         model.tower_stats["gnn"] = model.ragnn.gnn.stats
@@ -119,6 +135,16 @@ class RAPPOTorchPolicy(PPOTorchPolicy):
                 torch.stack([torch.tensor(t.tower_stats["current_beta"]) for t in self.model_gpu_towers])
             ).item(),
             "relation_awareness/target_beta": self.target_beta,
+            "relation_awareness/current_beta_non_graph_edges": torch.mean(
+                torch.stack([torch.tensor(t.tower_stats["current_beta_non_graph_edges"]) for t in self.model_gpu_towers])
+            ).item(),
+            "relation_awareness/target_beta_non_graph_edges": self.target_beta_non_graph_edges,
+            "relation_awareness/fraction_graph_edges": torch.mean(
+                torch.stack([t.tower_stats["fraction_graph_edges"].detach() for t in self.model_gpu_towers])
+            ).item(),
+            "relation_awareness/fraction_non_graph_edges": torch.mean(
+                torch.stack([t.tower_stats["fraction_non_graph_edges"].detach() for t in self.model_gpu_towers])
+            ).item(),
             "relation_awareness/current_tau": torch.mean(
                 torch.stack([torch.tensor(t.tower_stats["current_tau"]) for t in self.model_gpu_towers])
             ).item(),

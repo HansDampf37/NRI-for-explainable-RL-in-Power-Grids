@@ -298,7 +298,9 @@ class AnnealingCallback(DefaultCallbacks):
 
         # Get annealing parameters
         beta_start = ra_config.get("beta_start", 0.0)
+        beta_start_non_graph = ra_config.get("beta_non_graph_edges_start", 0.0)
         beta_end = ra_config.get("beta_end", ra_config.get("beta", 1.0))
+        beta_end_non_graph = ra_config.get("beta_non_graph_edges_end", ra_config.get("beta", 1.0))
         beta_anneal_timesteps = ra_config.get("beta_anneal_timesteps", total_timesteps)
 
         tau_start = ra_config.get("tau_start", 1.0)
@@ -313,6 +315,11 @@ class AnnealingCallback(DefaultCallbacks):
             current_timesteps, beta_anneal_timesteps, beta_start, beta_end
         )
 
+        # compute annealed beta for non-graph edges
+        new_beta_non_graph_edges = self.cosine_decay_schedule(
+            current_timesteps, beta_anneal_timesteps, beta_start_non_graph, beta_end_non_graph
+        )
+
         # Compute annealed tau using cosine decay schedule
         new_tau = self.cosine_decay_schedule(
             current_timesteps, tau_anneal_timesteps, tau_start, tau_end
@@ -324,6 +331,7 @@ class AnnealingCallback(DefaultCallbacks):
             if policy and hasattr(policy, 'current_beta'):
                 # Update policy attributes (for logging)
                 policy.current_beta = new_beta
+                policy.current_beta_non_graph_edges = new_beta_non_graph_edges
                 policy.current_tau = new_tau
 
                 # Update model's GumbelSoftmax tau (for functional effect)
