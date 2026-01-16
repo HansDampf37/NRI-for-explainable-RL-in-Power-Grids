@@ -1,4 +1,4 @@
-experiment_name=1301_rappo_with_anneal_2
+experiment_name=1601_rappo_with_anneal_different_betas
 export experiment_name
 cd ../../
 

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Set experiment name and export variable for SLURM
-experiment_name="1301_OPT_RAGNN"
+experiment_name="1601_OPT_RAGNN"
 export experiment_name
 cd ../../
 
