@@ -1,7 +1,7 @@
 setup:
   max_ep_len: 8064
-  duration: 00:01 # HH:MM or minutes of training before stopping, used if value > 0
-  nb_timesteps: 1000  # Minimal timesteps for quick testing
+  duration: ~ # HH:MM or minutes of training before stopping, overwrites nb_timesteps limit if value > 0
+  nb_timesteps: 100  # Minimal timesteps for quick testing
   checkpoint_freq: 100  # Less frequent checkpointing
   verbose: 0
   my_log_level: 2
@@ -10,10 +10,10 @@ setup:
   experiment_name: test_minimal
   ray_local_mode: true  # Enable local mode for easier debugging
   optimization:
-    enable: False
+    enable: false
     score_metric: evaluation/custom_metrics/grid2op_end_mean
     mode: max
-    num_trials: ~
+    num_trials: 2
     load_from: ~  # load previous optimization results from this dir
     points_to_evaluate:
       relation_awareness/prior_prob_for_graph_edge: 1.0
@@ -33,17 +33,17 @@ debugging:
 
 training:
   checkpoint_trainable_policies_only: True
-  gamma: 0.99  # Fixed value for testing
+  gamma: 0.99
   lr: 0.0001
-  vf_loss_coeff: 0.5
-  entropy_coeff: 0.05
-  clip_param: 0.3
+  kl_coeff: 0.2
+  entropy_coeff: 0.0
+  clip_param:  0.3
   lambda: 0.95
+  vf_loss_coeff: 0.5
   vf_clip_param: 100
-  use_kl_loss: False
-  num_sgd_iter: 1  # Minimal SGD iterations
-  sgd_minibatch_size: 32
-  train_batch_size: 128
+  num_sgd_iter: 5
+  sgd_minibatch_size: 256
+  train_batch_size: 1024
   batch_mode: complete_episodes
   encoder_pretrain:
     enabled: true
@@ -51,8 +51,8 @@ training:
     batch_size: 10
     num_epochs: 1
     learning_rate: 0.0001
-  relation_awareness: # RAGNN-specific settings - OPTIMIZING THESE PARAMETERS
-    prior_prob_for_graph_edge: !uniform [ 0.0, 1.0 ]  # Prior probability for graph edge
+  relation_awareness:
+    prior_prob_for_graph_edge: !uniform [ 0.0, 1.0 ]
     beta_start: 0.0  # Start beta at 0
     beta_end: !uniform [ 0.5, 4.0 ]  # Anneal to this value
     tau_start: 1.5  # Start with high temperature
@@ -64,15 +64,15 @@ training:
   model:
     fcnet_hiddens: [ 256, 256, 256 ]  # Downstream MLP after GNN
     fcnet_activation: relu
-    post_fcnet_hiddens: [ 256, 128 ]
+    # post_fcnet_hiddens: [ 256, 128 ]
     custom_model_config:
-      gnn: # GNN-specific hyperparameters - WILL BE COPIED FROM OPTIMAL GNN CONFIG LATER
-        hidden_dim: 265  # Use optimal value from GNN optimization
-        out_dim: 64  # Use optimal value from GNN optimization
-        num_layers: 3  # Use optimal value from GNN optimization
-        residual: True
-      encoder: # RAGNN encoder settings
-        num_edge_types: !choice [ 2, 3, 4 ]  # Number of edge types (2-6)
+      gnn: # this section is only used if model_type == "GNN" or "RAGNN" select model type via cli args
+        hidden_dim: 256
+        out_dim: 64
+        num_layers: 3
+        edge_probs_path: "/pfs/data6/home/ka/ka_iai/ka_hw6998/dev/NRI-for-explainable-RL-in-Power-Grids/results/edge_probabilities/edges_averaged_with_forecast_2026-01-08_14-11-58.npy"
+      encoder: # this section is only used if model_type == "RAGNN", select model type via cli args
+        num_edge_types: !choice [ 2, 3, 4 ]  # Number of edge types (defaults to 2: edge exists or doesn't exist)
         max_degree: 7
         max_path_distance: 9
         use_graphormer: True
@@ -104,32 +104,34 @@ multi_agent:
 environment:
   env_config: &env_config_train
     env_name: l2rpn_case14_sandbox_train
-    action_space: medha
-    mask: 5
+    action_space: d3qn2022 # options: assym, medha, tennet, d3qn2022, masked
+    mask: 3 # only used if action space is "masked" (as in SMAAC from Yoon et al. 2021)
     lib_dir: !workdir
     grid2op_kwargs:
       # general kwargs
-      reward_class: !RewardRho
+      reward_class: !ScaledL2RPNReward #!ScaledL2RPNReward #L2RPNReward #!LossRwRescaled2 #!LossRwNew #!AlphaZeroRW #!LinesCapacityReward #!LossReward #!RewardRho #!ConstantReward
     seed: *seed
-    rho_threshold: 0.4
-    n_history: 1
-    g2op_input: ["r", "t"]
-    custom_input: ["d"]
-    danger: 0.9
+    rho_threshold: 0.99
     prio: False
-    use_ffw: True
-    reset_topo: 0.9
-    line_reco: True
-    line_disc: False
-    penalty_game_over: 0
-    reward_finish: 0
-    curriculum_training: False
-    curriculum_thresholds: [150,300]
+    use_ffw: False # feed forward chronic when using prio
+    g2op_input: ['r', 't'] # ["p_i", "p_l", "r", "o", "t" ] #['v_l', 'a', 'r', 't'] # #"all" #all options: ["t" (topo), "l" (line status), "p_i"(active power input), "p_l" (act power lines), "q_i", "q_l", "v_i", "v_l", "theta_i", "theta_l", "a", "r", "o", "m" ]
+    custom_input: [] #options: [ "d" (danger), "t" (time of day), "y" (day of year)]
+    danger: 0.9 # used when danger is in custom_input
+    n_history: 1 # If n_history > 1, the observation will be a list of previous observations
+    reset_topo: 0.9 # No reset topo applied when = 0
+    line_reco: True # Line reconnection when possible
+    line_disc: False # Line disconnection when overloaded for >1 consecutive time steps
+    penalty_game_over: -300
+    reward_finish: 500
+    curriculum_training: True
+    curriculum_thresholds: [20, 40] # used if curriculum_training is True
 
 evaluation:
   evaluation_interval: 1
   evaluation_duration_unit: episodes
-  always_attach_evaluation_results: False
+  always_attach_evaluation_results: True
+  evaluation_sample_timeout_s: 720
+#  evaluation_parallel_to_training: True #Currently not working
   evaluation_num_workers: 1
   evaluation_config:
     explore: False,
@@ -138,11 +140,16 @@ evaluation:
       env_name: l2rpn_case14_sandbox_val
       shuffle_scenarios: False
       prio: False
+      curriculum_training: False
 
 reporting:
   keep_per_episode_custom_metrics: True
 
+scaling_config:
+  num_workers: 1
+
 resources:
+  #num_gpus: 1
   num_learner_workers: 1
 
 rollouts:

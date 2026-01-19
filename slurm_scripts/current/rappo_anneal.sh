@@ -1,4 +1,4 @@
-experiment_name=1901_rappo_with_anneal_different_betas
+experiment_name=1901_rainbow_rappo_with_anneal_different_betas
 export experiment_name
 cd ../../
 
@@ -8,7 +8,7 @@ mkdir -p results/experiments/${experiment_name}/out
 sbatch << EOF
 #!/bin/bash
 
-#SBATCH --job-name=anneal_ragnn                                           # Name of the job
+#SBATCH --job-name=ragnn_rb                                           # Name of the job
 #SBATCH --output=results/experiments/${experiment_name}/out/ragnn_ppo.%j.log            # Output file
 #SBATCH --error=results/experiments/${experiment_name}/out/error_ragnn_ppo.%j.log       # Error file
 #SBATCH --ntasks=1                                                            # Number of tasks

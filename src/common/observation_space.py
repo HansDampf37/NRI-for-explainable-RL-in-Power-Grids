@@ -164,44 +164,44 @@ class BusConnectivityGraphObsSpace(GraphObservationSpace):
         :return: The node features
         """
         # Compute currents for generators and loads
-        if not g2op_obs._is_done:
-            P_MW = np.concatenate([g2op_obs.gen_p, g2op_obs.load_p])
-            Q_MVar = np.concatenate([g2op_obs.gen_q, g2op_obs.load_q])
-            V_kV = np.concatenate([g2op_obs.gen_v, g2op_obs.load_v])
-            theta_deg = np.concatenate([g2op_obs.gen_theta, g2op_obs.load_theta])
+        #if not g2op_obs._is_done:
+            #P_MW = np.concatenate([g2op_obs.gen_p, g2op_obs.load_p])
+            #Q_MVar = np.concatenate([g2op_obs.gen_q, g2op_obs.load_q])
+            #V_kV = np.concatenate([g2op_obs.gen_v, g2op_obs.load_v])
+            #theta_deg = np.concatenate([g2op_obs.gen_theta, g2op_obs.load_theta])
 
-            S = (P_MW + 1j * Q_MVar) * 1e6
-            V_mag = V_kV * 1e3
-            theta_rad = np.deg2rad(theta_deg)
-            V_phasor = V_mag * (np.cos(theta_rad) + 1j * np.sin(theta_rad))
-            I_phasor = np.conj(S) / (np.sqrt(3) * V_phasor)
-            I_mag = np.abs(I_phasor)
+            #S = (P_MW + 1j * Q_MVar) * 1e6
+            #V_mag = V_kV * 1e3
+            #theta_rad = np.deg2rad(theta_deg)
+           # V_phasor = V_mag * (np.cos(theta_rad) + 1j * np.sin(theta_rad))
+            #I_phasor = np.conj(S) / (np.sqrt(3) * V_phasor)
+            #I_mag = np.abs(I_phasor)
 
             # Concatenate features for all nodes: line ends + generators + loads
-            load_p, load_q, prod_p, prod_q, _ = g2op_obs.get_forecast_arrays()
-            active_power_forecast = np.concatenate([np.zeros((2 * g2op_obs.n_line,)), prod_p[1], -load_p[1]])
-            reactive_power_forecast = np.concatenate([np.zeros((2 * g2op_obs.n_line,)), prod_q[1], -load_q[1]])
+            #load_p, load_q, prod_p, prod_q, _ = g2op_obs.get_forecast_arrays()
+            #active_power_forecast = np.concatenate([np.zeros((2 * g2op_obs.n_line,)), prod_p[1], -load_p[1]])
+            #reactive_power_forecast = np.concatenate([np.zeros((2 * g2op_obs.n_line,)), prod_q[1], -load_q[1]])
 
-        else:
-            I_mag = np.zeros(shape=(g2op_obs.n_gen + g2op_obs.n_load, ))
-            active_power_forecast = np.zeros((2 * g2op_obs.n_line + g2op_obs.n_gen + g2op_obs.n_load,))
-            reactive_power_forecast = np.zeros((2 * g2op_obs.n_line + g2op_obs.n_gen + g2op_obs.n_load,))
+        #else:
+            # I_mag = np.zeros(shape=(g2op_obs.n_gen + g2op_obs.n_load, ))
+            #active_power_forecast = np.zeros((2 * g2op_obs.n_line + g2op_obs.n_gen + g2op_obs.n_load,))
+            #reactive_power_forecast = np.zeros((2 * g2op_obs.n_line + g2op_obs.n_gen + g2op_obs.n_load,))
 
-        active_power = np.concatenate([g2op_obs.p_or, g2op_obs.p_ex, g2op_obs.gen_p, -g2op_obs.load_p])
-        reactive_power = np.concatenate([g2op_obs.q_or, g2op_obs.q_ex, g2op_obs.gen_q, -g2op_obs.load_q])
-        voltage = np.concatenate([g2op_obs.v_or, g2op_obs.v_ex, g2op_obs.gen_v, g2op_obs.load_v])
-        voltage_angle = np.concatenate([g2op_obs.theta_or, g2op_obs.theta_ex, g2op_obs.gen_theta, g2op_obs.load_theta])
-        current = np.concatenate([g2op_obs.a_or, g2op_obs.a_ex, I_mag])
+        #active_power = np.concatenate([g2op_obs.p_or, g2op_obs.p_ex, g2op_obs.gen_p, -g2op_obs.load_p])
+        #reactive_power = np.concatenate([g2op_obs.q_or, g2op_obs.q_ex, g2op_obs.gen_q, -g2op_obs.load_q])
+        #voltage = np.concatenate([g2op_obs.v_or, g2op_obs.v_ex, g2op_obs.gen_v, g2op_obs.load_v])
+        #voltage_angle = np.concatenate([g2op_obs.theta_or, g2op_obs.theta_ex, g2op_obs.gen_theta, g2op_obs.load_theta])
+        #current = np.concatenate([g2op_obs.a_or, g2op_obs.a_ex, I_mag])
         rho = np.concatenate([g2op_obs.rho, g2op_obs.rho, np.zeros((g2op_obs.n_gen + g2op_obs.n_load,))])
 
         features = [
-            active_power_forecast,
-            reactive_power_forecast,
-            active_power,
-            reactive_power,
-            voltage,
-            voltage_angle,
-            current,
+            #active_power_forecast,
+            #reactive_power_forecast,
+            #active_power,
+            #reactive_power,
+            #voltage,
+            #voltage_angle,
+            #current,
             rho,
         ]
 
@@ -236,13 +236,13 @@ class BusConnectivityGraphObsSpace(GraphObservationSpace):
     @property
     def node_feature_names(self) -> List[str]:
         feature_names = [
-            "active_power_forecast",
-            "reactive_power_forecast",
-            "active_power",
-            "reactive_power",
-            "voltage",
-            "voltage_angle",
-            "current",
+            #"active_power_forecast",
+            #"reactive_power_forecast",
+            #"active_power",
+            #"reactive_power",
+            #"voltage",
+            #"voltage_angle",
+            #"current",
             "rho",
         ]
 

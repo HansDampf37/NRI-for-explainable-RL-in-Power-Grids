@@ -1,4 +1,4 @@
-experiment_name=1901_baselines
+experiment_name=1901_rainbow_baselines
 export experiment_name
 cd ../../
 
@@ -8,7 +8,7 @@ mkdir -p results/experiments/${experiment_name}/out
 sbatch << EOF
 #!/bin/bash
 
-#SBATCH --job-name=gnn_opp                                           # Name of the job
+#SBATCH --job-name=gnn_rb_opp                                           # Name of the job
 #SBATCH --output=results/experiments/${experiment_name}/out/ragnn_ppo.%j.log            # Output file
 #SBATCH --error=results/experiments/${experiment_name}/out/error_ragnn_ppo.%j.log       # Error file
 #SBATCH --ntasks=1                                                            # Number of tasks
@@ -26,7 +26,7 @@ EOF
 sbatch << EOF
 #!/bin/bash
 
-#SBATCH --job-name=gnn                                           # Name of the job
+#SBATCH --job-name=gnn_rb                                           # Name of the job
 #SBATCH --output=results/experiments/${experiment_name}/out/ragnn_ppo.%j.log            # Output file
 #SBATCH --error=results/experiments/${experiment_name}/out/error_ragnn_ppo.%j.log       # Error file
 #SBATCH --ntasks=1                                                            # Number of tasks
@@ -44,7 +44,7 @@ EOF
 sbatch << EOF
 #!/bin/bash
 
-#SBATCH --job-name=mlp_opp                                           # Name of the job
+#SBATCH --job-name=mlp_rb_opp                                           # Name of the job
 #SBATCH --output=results/experiments/${experiment_name}/out/ragnn_ppo.%j.log            # Output file
 #SBATCH --error=results/experiments/${experiment_name}/out/error_ragnn_ppo.%j.log       # Error file
 #SBATCH --ntasks=1                                                            # Number of tasks
@@ -62,7 +62,7 @@ EOF
 sbatch << EOF
 #!/bin/bash
 
-#SBATCH --job-name=mlp                                           # Name of the job
+#SBATCH --job-name=mlp_rb                                           # Name of the job
 #SBATCH --output=results/experiments/${experiment_name}/out/ragnn_ppo.%j.log            # Output file
 #SBATCH --error=results/experiments/${experiment_name}/out/error_ragnn_ppo.%j.log       # Error file
 #SBATCH --ntasks=1                                                            # Number of tasks
@@ -80,7 +80,7 @@ EOF
 sbatch << EOF
 #!/bin/bash
 
-#SBATCH --job-name=nri_opp                                           # Name of the job
+#SBATCH --job-name=nri_opp_rb                                           # Name of the job
 #SBATCH --output=results/experiments/${experiment_name}/out/ragnn_ppo.%j.log            # Output file
 #SBATCH --error=results/experiments/${experiment_name}/out/error_ragnn_ppo.%j.log       # Error file
 #SBATCH --ntasks=1                                                            # Number of tasks
@@ -98,7 +98,7 @@ EOF
 sbatch << EOF
 #!/bin/bash
 
-#SBATCH --job-name=nri                                           # Name of the job
+#SBATCH --job-name=nri_rb                                           # Name of the job
 #SBATCH --output=results/experiments/${experiment_name}/out/ragnn_ppo.%j.log            # Output file
 #SBATCH --error=results/experiments/${experiment_name}/out/error_ragnn_ppo.%j.log       # Error file
 #SBATCH --ntasks=1                                                            # Number of tasks

@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import random
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, List
@@ -49,7 +50,7 @@ class AgentMetrics:
     survival_duration: List[int]
 
 
-def visualize_agent_survival(datasets: List[AgentMetrics], save_to: Optional[Path] = None, show: bool = True):
+def visualize_agent_survival(datasets: List[AgentMetrics], save_to: Optional[Path] = None, show: bool = True, figsize=(15, 5)):
     records = []
     for data in datasets:
         records.extend([{"Agent": data.label, "Survival Duration": d}
@@ -57,7 +58,7 @@ def visualize_agent_survival(datasets: List[AgentMetrics], save_to: Optional[Pat
     df = pd.DataFrame(records)
 
     sns.set_theme(style="whitegrid", palette="muted", font_scale=1.2)
-    plt.figure(figsize=(15, 5))
+    plt.figure(figsize=figsize)
     # --- Boxplot ---
     sns.boxplot(
         data=df,
@@ -68,7 +69,7 @@ def visualize_agent_survival(datasets: List[AgentMetrics], save_to: Optional[Pat
         legend=False
     )
 
-    plt.title("Survival Duration Boxplot per Agent")
+    plt.title("Survival duration on evaluation episodes")
     plt.xlabel("Agent")
     plt.ylabel("Time Steps")
 
