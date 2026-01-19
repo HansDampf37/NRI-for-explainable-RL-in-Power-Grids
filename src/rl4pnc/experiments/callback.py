@@ -166,21 +166,23 @@ class CustomMetricsCallback(DefaultCallbacks):
         result["custom_metrics"]["mean_disconnect_count"] = np.mean(result["custom_metrics"]["disconnect_count"])
         result["custom_metrics"]["mean_reset_count"] = np.mean(result["custom_metrics"]["reset_count"])
 
-        result["relation_awareness/latent_graph_mean"] = fig_to_chw_uint8(
-            visualize_graph(PlottingArgs(
-                num_nodes=57,
-                node_styles=self.node_styles,
-                latent_edge_probs=np.array(result['info']["learner"]["reinforcement_learning_policy"]["learner_stats"]["relation_awareness/latent_graph_probs_mean"]),
+        latent_edge_probs = result['info']["learner"]["reinforcement_learning_policy"]["learner_stats"].get("relation_awareness/latent_graph_probs_mean", None)
+        if latent_edge_probs is not None:
+            result["relation_awareness/latent_graph_mean"] = fig_to_chw_uint8(
+                visualize_graph(PlottingArgs(
+                    num_nodes=57,
+                    node_styles=self.node_styles,
+                    latent_edge_probs=np.array(latent_edge_probs),
                 powerline_edge_index=self.powerline_edge_index,
-        )))
+            )))
 
-        result["relation_awareness/latent_graph_var"] = fig_to_chw_uint8(
-            visualize_graph(PlottingArgs(
-                num_nodes=57,
-                node_styles=self.node_styles,
-                latent_edge_probs=np.array(result['info']["learner"]["reinforcement_learning_policy"]["learner_stats"]["relation_awareness/latent_graph_probs_var"]),
-                powerline_edge_index=self.powerline_edge_index,
-        )))
+            result["relation_awareness/latent_graph_var"] = fig_to_chw_uint8(
+                visualize_graph(PlottingArgs(
+                    num_nodes=57,
+                    node_styles=self.node_styles,
+                    latent_edge_probs=np.array(latent_edge_probs),
+                    powerline_edge_index=self.powerline_edge_index,
+            )))
 
         # Delete irrelevant results
         del result["custom_metrics"]["grid2op_end"]
