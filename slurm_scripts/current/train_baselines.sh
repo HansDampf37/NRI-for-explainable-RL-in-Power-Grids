@@ -1,4 +1,4 @@
-experiment_name=19_01_baselines
+experiment_name=1901_baselines
 export experiment_name
 cd ../../
 
