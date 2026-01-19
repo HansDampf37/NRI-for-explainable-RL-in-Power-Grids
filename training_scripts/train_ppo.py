@@ -60,7 +60,7 @@ def setup_config(workdir_path: str, input_path: str, seed: int = None, opponent=
 
     if opponent:
         print("Train with opponent.")
-        opponent_path = os.path.join(workdir_path, f"configs/{ppo_config['env_config']['env_name'].replace('_train', '')}/opponent.yaml")
+        opponent_path = os.path.join(workdir_path, f"configs/opponent.yaml")
         opponent_kwargs = load_config(opponent_path)
     else:
         # Get kwargs for no opponent
