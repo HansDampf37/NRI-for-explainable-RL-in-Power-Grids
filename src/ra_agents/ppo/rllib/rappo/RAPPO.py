@@ -8,7 +8,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TensorType
 
 from src.common.observation_space import EDGE_INDEX, EDGE_MASK
-from src.nri.utils import get_priors, fully_connected_edge_index, get_prior_tensor, create_graph_edge_mask
+from src.nri.utils import get_priors, fully_connected_edge_index, get_prior_tensor
 from src.ra_agents.RAFeatureExtractor import RLlibRAGNNModel
 from ray.rllib.algorithms.registry import POLICIES
 
@@ -94,12 +94,14 @@ class RAPPOTorchPolicy(PPOTorchPolicy):
         # Weighted KL loss: each component weighted by occurrence fraction and respective beta
         kl_loss = (fraction_graph_edges * self.current_beta * kl_loss_graph_edges +
                    fraction_non_graph_edges * self.current_beta_non_graph_edges * kl_loss_non_graph_edges)
+        kl_div_unweighted = (fraction_graph_edges * kl_loss_graph_edges + fraction_non_graph_edges * kl_loss_non_graph_edges)
 
         total_loss += kl_loss
 
         model.tower_stats["kl_loss"] = kl_loss
-        model.tower_stats["kl_loss_graph_edges"] = kl_loss_graph_edges
-        model.tower_stats["kl_loss_non_graph_edges"] = kl_loss_non_graph_edges
+        model.tower_stats["kl_div_total"] = kl_div_unweighted
+        model.tower_stats["kl_div_graph_edges"] = kl_loss_graph_edges
+        model.tower_stats["kl_div_non_graph_edges"] = kl_loss_non_graph_edges
         model.tower_stats["fraction_graph_edges"] = fraction_graph_edges
         model.tower_stats["fraction_non_graph_edges"] = fraction_non_graph_edges
         model.tower_stats["total_loss"] = total_loss
@@ -125,11 +127,14 @@ class RAPPOTorchPolicy(PPOTorchPolicy):
             "relation_awareness/kl_loss": torch.mean(
                 torch.stack([t.tower_stats["kl_loss"].detach() for t in self.model_gpu_towers])
             ).item(),
-            "relation_awareness/kl_loss_graph_edges": torch.mean(
-                torch.stack([t.tower_stats["kl_loss_graph_edges"].detach() for t in self.model_gpu_towers])
+            "relation_awareness/kl_div_total": torch.mean(
+                torch.stack([t.tower_stats["kl_div_total"].detach() for t in self.model_gpu_towers])
             ).item(),
-            "relation_awareness/kl_loss_non_graph_edges": torch.mean(
-                torch.stack([t.tower_stats["kl_loss_non_graph_edges"].detach() for t in self.model_gpu_towers])
+            "relation_awareness/kl_div_graph_edges": torch.mean(
+                torch.stack([t.tower_stats["kl_div_graph_edges"].detach() for t in self.model_gpu_towers])
+            ).item(),
+            "relation_awareness/kl_div_non_graph_edges": torch.mean(
+                torch.stack([t.tower_stats["kl_div_non_graph_edges"].detach() for t in self.model_gpu_towers])
             ).item(),
             "relation_awareness/current_beta": torch.mean(
                 torch.stack([torch.tensor(t.tower_stats["current_beta"]) for t in self.model_gpu_towers])

@@ -67,6 +67,10 @@ class CustomMetricsCallback(DefaultCallbacks):
     ) -> None:
         self.log_level = algorithm.my_log_level
         self.curr_level = 0
+        self.node_styles = get_node_styles(grid2op.make("l2rpn_case14_sandbox"), BusConnectivityGraphObsSpace)
+        env = grid2op.make("l2rpn_case14_sandbox")
+        obs_space = BusConnectivityGraphObsSpace(env.observation_space)
+        self.powerline_edge_index = obs_space.get_edge_index(env.reset())
         if algorithm.curriculum_training:
             print(f"Start with curriculum level {self.curr_level}")
 
@@ -165,15 +169,17 @@ class CustomMetricsCallback(DefaultCallbacks):
         result["relation_awareness/latent_graph_mean"] = fig_to_chw_uint8(
             visualize_graph(PlottingArgs(
                 num_nodes=57,
-                node_styles=get_node_styles(grid2op.make("l2rpn_case14_sandbox"), BusConnectivityGraphObsSpace),
+                node_styles=self.node_styles,
                 latent_edge_probs=np.array(result['info']["learner"]["reinforcement_learning_policy"]["learner_stats"]["relation_awareness/latent_graph_probs_mean"]),
+                powerline_edge_index=self.powerline_edge_index,
         )))
 
         result["relation_awareness/latent_graph_var"] = fig_to_chw_uint8(
             visualize_graph(PlottingArgs(
                 num_nodes=57,
-                node_styles=get_node_styles(grid2op.make("l2rpn_case14_sandbox"), BusConnectivityGraphObsSpace),
+                node_styles=self.node_styles,
                 latent_edge_probs=np.array(result['info']["learner"]["reinforcement_learning_policy"]["learner_stats"]["relation_awareness/latent_graph_probs_var"]),
+                powerline_edge_index=self.powerline_edge_index,
         )))
 
         # Delete irrelevant results
