@@ -40,6 +40,7 @@ class PlottingArgs:
     latent_edge_weight: float = 5.0
     do_weight_sweep: bool = False
     skip_last_edge_type: bool = True
+    visualize_edge_prob_threshold: float = 0.5
 
 
 @dataclass
@@ -284,7 +285,7 @@ def visualize_graph(args: PlottingArgs, ax=None) -> Figure:
                 if args.skip_last_edge_type and t == max_type:
                     continue
                 # 1 for p = 0.5, args.latent_edge_weight for p = 1
-                w = (2 * args.latent_edge_weight - 2) * p - (args.latent_edge_weight - 2) if p > 0.5 else 0
+                w = (2 * args.latent_edge_weight - 2) * p - (args.latent_edge_weight - 2) if p > args.visualize_edge_prob_threshold else 0
                 if w >= 1:
                     G.add_edge(int(src), int(dst), color=cmap(1 + t), weight=w, type="Dependency")
 
