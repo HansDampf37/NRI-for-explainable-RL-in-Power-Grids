@@ -41,6 +41,8 @@ class PlottingArgs:
     do_weight_sweep: bool = False
     skip_last_edge_type: bool = True
     visualize_edge_prob_threshold: float = 0.5
+    node_labels: Optional[dict[int, str]] = None  # Dict mapping node_id to label text
+    node_sizes_override: Optional[dict[int, float]] = None  # Dict mapping node_id to size multiplier
 
 
 @dataclass
@@ -333,16 +335,60 @@ def visualize_graph(args: PlottingArgs, ax=None) -> Figure:
         shapes = set(ns.shape for ns in args.node_styles)
         for shape in shapes:
             idx = [i for i, ns in enumerate(args.node_styles) if ns.shape == shape]
+            # Apply size overrides if provided
+            node_sizes = []
+            for i in idx:
+                base_size = args.node_styles[i].size * scale
+                if args.node_sizes_override is not None and i in args.node_sizes_override:
+                    base_size *= args.node_sizes_override[i]
+                node_sizes.append(base_size)
+
             node_collection = nx.draw_networkx_nodes(
                 G,
                 pos,
                 nodelist=idx,
                 node_color=[args.node_styles[i].color for i in idx],
                 node_shape=shape,
-                node_size=[args.node_styles[i].size * scale for i in idx],
+                node_size=node_sizes,
                 ax=ax,
             )
             node_collection.set_zorder(10)  # Highest z-order to be on top
+
+        # Draw node labels if provided
+        if args.node_labels is not None:
+            # Create label dict filtered to existing labels
+            labels_to_draw = {node_id: label for node_id, label in args.node_labels.items()
+                            if node_id < len(args.node_styles)}
+
+            # Calculate font sizes based on node sizes
+            if args.node_sizes_override is not None:
+                # Font size scales with node size, but keep readable
+                font_sizes = {}
+                for node_id in labels_to_draw.keys():
+                    size_multiplier = args.node_sizes_override.get(node_id, 1.0)
+                    # Base font size of 6, scales up to 10 for largest nodes
+                    font_size = max(4, min(10, 4 + 2 * (size_multiplier - 0.3) / 0.7))
+                    font_sizes[node_id] = font_size
+            else:
+                # Default font size
+                font_sizes = {node_id: 7 for node_id in labels_to_draw.keys()}
+
+            # Draw labels on top of nodes (higher z-order)
+            for node_id, label in labels_to_draw.items():
+                label_artists = nx.draw_networkx_labels(
+                    G,
+                    pos,
+                    labels={node_id: label},
+                    font_size=font_sizes[node_id],
+                    font_color='black',
+                    font_weight='bold',
+                    bbox=dict(boxstyle='round,pad=0.2', facecolor='white', edgecolor='none', alpha=0.8),
+                    ax=ax
+                )
+                # Set z-order higher than nodes (nodes are at 10)
+                for text in label_artists.values():
+                    text.set_zorder(15)
+
         # Create legend (pass ax if provided)
         _create_legend(args, G, ax)
     else:

@@ -30,9 +30,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def load_env_config_from_params(checkpoint_path: str) -> dict:
+def load_config(checkpoint_path: str) -> dict:
     """
-    Load environment configuration from params.json in the checkpoint directory.
+    Load configuration from params.json in the checkpoint directory.
 
     :param checkpoint_path: Path to the experiment directory or checkpoint subdirectory containing params.json
     :return: Environment configuration dictionary
@@ -75,7 +75,8 @@ def load_env_config_from_params(checkpoint_path: str) -> dict:
         logger.info(f"Cleaned {len(keys_to_remove)} serialized objects from grid2op_kwargs")
 
     env_config["lib_dir"] = os.getcwd()
-    return env_config
+    params["env_config"] = env_config
+    return params
 
 
 def create_gym_wrapper_from_config(env_config: dict):
@@ -156,7 +157,8 @@ def evaluate_rllib_checkpoint(
 
     # Load environment configuration from params.json
     try:
-        env_config = load_env_config_from_params(checkpoint_path)
+        params = load_config(checkpoint_path)
+        env_config = params["env_config"]
 
         # Override env_name if specified
         if env_name_override:
