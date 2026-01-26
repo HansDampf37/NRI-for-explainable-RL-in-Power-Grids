@@ -822,8 +822,6 @@ def run_rappo_visualization(
 
 
 def main():
-    """Main entry point."""
-    os.chdir("../../../")  # Change working directory to project root
     # CONFIGURATION - Edit these parameters
     checkpoint_path = "/home/adrian/Schreibtisch/1901/1901_rappo_with_anneal_different_betas/CustomPPO_0_426b7_2026-01-19_10-28-48"
     checkpoint_name = "checkpoint_000020"
@@ -835,7 +833,7 @@ def main():
         checkpoint_name=checkpoint_name,
         env_name_override=env_name_override,
         num_episodes=num_episodes,
-        save_dir=Path("results/visualizations/1901_agg"),
+        save_dir=Path("results/experiments/2601_compute_metrics"),
     )
 
 
