@@ -2,6 +2,7 @@
 This script contains the relations aware FeatureExtractor (RAFeatureExtractor) and Wrappers that integrate the normal
 GNN model and RA-GNN model into RLlib's model catalog.
 """
+import logging
 from os import PathLike
 from typing import Optional, Tuple, Dict, List
 
@@ -24,6 +25,7 @@ from .Encoder import Encoder
 from .RAGNN import RAGNN, BaselineGNN
 from .graphormer.GraphormerEncoder import GraphormerNRIEncoder
 
+logger = logging.getLogger(__name__)
 
 class RAFeatureExtractor(nn.Module):
     """
@@ -149,7 +151,12 @@ class NRIBasedGNN(nn.Module):
         residual: bool = False,
     ):
         super().__init__()
-        self.edge_probs = Tensor(np.load(edge_probs_path))  # [E, K]
+        try:
+            self.edge_probs = Tensor(np.load(edge_probs_path))  # [E, K]
+        except FileNotFoundError:
+            self.edge_probs = Tensor(np.load('/home/adrian/Dev/NRI-for-explainable-RL-in-Power-Grids/results/edge_probabilities/edges_averaged_with_forecast_2026-01-08_14-11-58.npy'))  # [E, K]
+            logger.warning("Warning: edge_probs_path not found. Using default edge probabilities.")
+
         self.gumbel_softmax = GumbelSoftmax()
         self.gnn: RAGNN = RAGNN(
             x_dim=x_dim,

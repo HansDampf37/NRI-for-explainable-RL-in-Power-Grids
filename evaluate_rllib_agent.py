@@ -72,10 +72,30 @@ def load_config(checkpoint_path: str) -> dict:
         for key in keys_to_remove:
             del grid2op_kwargs[key]
 
-        logger.info(f"Cleaned {len(keys_to_remove)} serialized objects from grid2op_kwargs")
+        logger.debug(f"Cleaned {len(keys_to_remove)} serialized objects from grid2op_kwargs")
+
+    evaluation_env_config = params["evaluation_config"]["env_config"]
+    # Clean up the config - remove serialized object strings that can't be used directly
+    # These will be recreated by the environment
+    if "grid2op_kwargs" in evaluation_env_config:
+        grid2op_kwargs = evaluation_env_config["grid2op_kwargs"]
+        # Remove serialized class/object references as they need to be recreated
+        keys_to_remove = []
+        for key, value in grid2op_kwargs.items():
+            if isinstance(value, str) and (value.startswith("<class") or value.startswith("<")):
+                keys_to_remove.append(key)
+                logger.debug(f"Removing serialized object: {key} = {value}")
+
+        for key in keys_to_remove:
+            del grid2op_kwargs[key]
+
+        logger.debug(f"Cleaned {len(keys_to_remove)} serialized objects from grid2op_kwargs")
 
     env_config["lib_dir"] = os.getcwd()
+    evaluation_env_config["lib_dir"] = os.getcwd()
     params["env_config"] = env_config
+    params["evaluation_config"]["env_config"] = evaluation_env_config
+    params["evaluation_config"]["env_config"]["observation_space"] = params["env_config"]["observation_space"]
     return params
 
 

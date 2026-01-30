@@ -43,6 +43,8 @@ class PlottingArgs:
     visualize_edge_prob_threshold: float = 0.5
     node_labels: Optional[dict[int, str]] = None  # Dict mapping node_id to label text
     node_sizes_override: Optional[dict[int, float]] = None  # Dict mapping node_id to size multiplier
+    powerline_edge_colors: Optional[List[str]] = None  # Custom colors for powerline edges
+    powerline_edge_widths: Optional[List[float]] = None  # Custom widths for powerline edges
 
 
 @dataclass
@@ -269,12 +271,15 @@ def visualize_graph(args: PlottingArgs, ax=None) -> Figure:
     # base edges - convert to undirected by filtering out duplicate directed edges
     if args.powerline_edge_index is not None:
         seen_edges = set()
-        for src, dst in args.powerline_edge_index.T:
+        for i, (src, dst) in enumerate(args.powerline_edge_index.T):
             # Create unordered edge tuple (always smaller node first)
             edge_tuple = tuple(sorted([int(src), int(dst)]))
             if edge_tuple not in seen_edges:
                 seen_edges.add(edge_tuple)
-                G.add_edge(int(src), int(dst), color="gray", weight=1, type="Connection")
+                # Use custom colors and widths if provided
+                edge_color = args.powerline_edge_colors[i] if args.powerline_edge_colors is not None else "gray"
+                edge_width = args.powerline_edge_widths[i] if args.powerline_edge_widths is not None else 1
+                G.add_edge(int(src), int(dst), color=edge_color, weight=edge_width, type="Connection")
 
     # latent edges
     if args.latent_edge_probs is not None:

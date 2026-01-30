@@ -2,9 +2,8 @@
 Test script for the SymmetryMetricVisualizer.
 """
 import numpy as np
-import matplotlib.pyplot as plt
-from src.ra_agents.analyze_latent_graphs.Metrics import SymmetryMetricVisualizer
-from src.visualization.utils import NodeStyle
+from src.experiments.analyze_latent_graphs.Metrics import SymmetryMetricVisualizer
+
 
 def test_symmetry_metric():
     """Test the symmetry metric computation and visualization."""

@@ -7,7 +7,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-from src.ra_agents.analyze_latent_graphs.Metrics import PathLengthVisualizer
+from src.experiments.analyze_latent_graphs.Metrics import PathLengthVisualizer
 from src.visualization.utils import NodeStyle
 
 # Create test data

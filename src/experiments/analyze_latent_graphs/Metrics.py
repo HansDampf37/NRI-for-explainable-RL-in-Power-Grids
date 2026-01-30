@@ -125,7 +125,7 @@ class MetricVisualizer(abc.ABC, Generic[T]):
         :param path: the path to save the data to
         """
         with open(path, "wb") as f:
-            pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
+            pickle.dump(data, f)
 
 class DegreeDistributionVisualizer(MetricVisualizer[Dict[str, npt.NDArray]]):
     """Visualizes per-node degree distributions for latent and powergrid graphs (full and subgraph)."""
@@ -975,6 +975,11 @@ class EntropyVsKLVisualizer(MetricVisualizer[Tuple[npt.NDArray, npt.NDArray]]):
         plt.scatter(entropies, per_edge_kl, alpha=0.6, color='purple')
         plt.xlabel('Edge Entropy')
         plt.ylabel('Per-Edge KL Divergence')
+        mean_entropy = np.mean(entropies)
+        mean_kl = np.mean(per_edge_kl)
+        plt.axvline(x=mean_entropy, color='blue', linestyle='--', linewidth=1, label=f'Mean entropy: {mean_entropy:.3f}')
+        plt.axhline(y=mean_kl, color='green', linestyle='--', linewidth=1, label=f'Mean per edge KL: {mean_kl:.3f}')
+        plt.legend()
         if aggregated:
             plt.title(f'Edge Entropy vs. KL Divergence (Aggregated)')
         else:

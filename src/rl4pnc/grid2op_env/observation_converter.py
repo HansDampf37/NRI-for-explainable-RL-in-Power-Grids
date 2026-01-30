@@ -1,3 +1,4 @@
+import logging
 import os
 from datetime import date
 
@@ -12,6 +13,7 @@ from grid2op.gym_compat.gym_obs_space import GymnasiumObservationSpace
 from src.common.observation_space import BusConnectivityGraphObsSpace, GraphObservationSpace
 from src.rl4pnc.grid2op_env.utils import get_attr_list
 
+logger = logging.getLogger(__name__)
 
 def extend_with_history(obs_attributes: dict, history: int):
     """
@@ -100,7 +102,7 @@ class ObservationConverter:
         """
         # scale observations
         attr_list = get_attr_list(input_attr)
-        print("Observation attributes used are: ", attr_list)
+        logger.debug("Observation attributes used are: ", attr_list)
         gym_obs = self.env_gym.observation_space
         gym_obs = gym_obs.keep_only_attr(attr_list)
 

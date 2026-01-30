@@ -244,7 +244,6 @@ class RllibAgent(HeuristicsAgent):
                                   f"num_nodes={restored_space.num_nodes}, max_num_edges={restored_space.max_num_edges}")
 
         self.obs_keys_order = [key for key in self._rllib_agent.observation_space.spaces.keys()]
-        print("Observations order: ", self.obs_keys_order)
 
         # setup env
         self.gym_wrapper = gym_wrapper
