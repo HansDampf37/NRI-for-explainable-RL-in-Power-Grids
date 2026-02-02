@@ -20,7 +20,7 @@ from torch_geometric.utils import to_dense_batch
 
 from src.common.observation_space import GraphObservationSpace, NODES, EDGE_INDEX, EDGE_MASK
 from src.nri.Sampling import GumbelSoftmax
-from src.nri.utils import fully_connected_edge_index_per_batch
+from src.nri.utils import fully_connected_edge_index_per_batch, fully_connected_edge_index
 from .Encoder import Encoder
 from .RAGNN import RAGNN, BaselineGNN
 from .graphormer.GraphormerEncoder import GraphormerNRIEncoder
@@ -152,29 +152,27 @@ class NRIBasedGNN(nn.Module):
     ):
         super().__init__()
         try:
-            self.edge_probs = Tensor(np.load(edge_probs_path))  # [E, K]
+            edge_probs = Tensor(np.load(edge_probs_path))  # [E, K]
         except FileNotFoundError:
-            self.edge_probs = Tensor(np.load('/home/adrian/Dev/NRI-for-explainable-RL-in-Power-Grids/results/edge_probabilities/edges_averaged_with_forecast_2026-01-08_14-11-58.npy'))  # [E, K]
+            edge_probs = Tensor(np.load('/home/adrian/Dev/NRI-for-explainable-RL-in-Power-Grids/results/edge_probabilities/edges_averaged_with_forecast_2026-01-08_14-11-58.npy'))  # [E, K]
             logger.warning("Warning: edge_probs_path not found. Using default edge probabilities.")
 
-        self.gumbel_softmax = GumbelSoftmax()
-        self.gnn: RAGNN = RAGNN(
+        N = 57  # TODO fix hack
+        self.edge_index = fully_connected_edge_index(N)  # [2, E], dummy edge index
+        probs_to_exist = edge_probs[:, :-1].sum(dim=-1)
+        self.edge_index = self.edge_index[:, probs_to_exist > 0.5]  # keep only edges with high prob of being present
+
+        self.gnn: BaselineGNN = BaselineGNN(
             x_dim=x_dim,
             hidden_dim=hidden_dim_gnn,
             x_out_dim=x_out_dim,
             num_layers=num_layers_gnn,
-            num_edge_types=self.edge_probs.shape[-1],
             dropout_prob=dropout_prob,
             residual=residual,
-            skip_last=True,
         )
         self.x_out_dim = x_out_dim
 
-    def set_tau(self, tau: float):
-        """Update the temperature parameter of the Gumbel-Softmax sampler."""
-        self.gumbel_softmax.tau = tau
-
-    def forward(self, x: Tensor, batch: Optional[Tensor] = None, **kwargs) -> Tuple[Tensor, Tensor]:
+    def forward(self, x: Tensor, batch: Optional[Tensor] = None, **kwargs) -> Tensor:
         """
         Forward pass.
 
@@ -183,29 +181,20 @@ class NRIBasedGNN(nn.Module):
             batch (Tensor): Batch vector mapping each node to its graph [B*N]. (defaults to every node in the same batch)
 
         Returns:
-            tuple[Tensor, Tensor]:
+            Tensor:
                 predictions (Tensor): Graph-level features [B, x_out_dim].
-                p_z_given_x (Tensor): Soft edge-type posterior probabilities [B, E, K].
         """
         BxN, x_dim = x.shape[-2:]
         batch = batch if batch is not None else torch.zeros(BxN).to(x.device)
-        edge_set = fully_connected_edge_index_per_batch(batch, x.device)
 
         # get posterior
         B = batch.max().item() + 1
-        edge_probs = self.edge_probs.unsqueeze(0).repeat(B, 1, 1).view(-1, self.edge_probs.shape[-1])  # [B*E, K]
-        edge_probs = edge_probs.to(x.device)
-        p_one_hot: Tensor = self.gumbel_softmax.forward(x=edge_probs) # [B*E, K]
+        edge_index = self.edge_index.unsqueeze(-1).repeat(1,1,B).view(2, -1)  # [2, B*E]
 
         # condition gnn on posterior and push x
-        predictions: Tensor = self.gnn.forward(x=x, batch=batch, edge_index=edge_set, edge_type_posterior=p_one_hot)
+        predictions: Tensor = self.gnn.forward(x=x, batch=batch, edge_index=edge_index)
 
-        # transform posterior into batched format.
-        edge_batch = batch[edge_set[0]] # edge is in the same batch as incident nodes
-        batched_p_z_given_x, mask = to_dense_batch(edge_probs, edge_batch)
-        assert torch.all(mask), "Different number of edges across batches is not allowed."
-
-        return predictions, batched_p_z_given_x
+        return predictions
 
 
 class RAFeatureExtractorSB3(BaseFeaturesExtractor):
@@ -514,22 +503,12 @@ class RLlibNRIGNNModel(TorchModelV2, nn.Module):
         batch = torch.arange(B, device=device).repeat_interleave(N)
 
         # NRIGNN to produce graph-level representation [B, gnn_out_dim]
-        gnn_out, self.batched_p_z_given_x = self.nri_gnn(x=x, batch=batch)
+        gnn_out = self.nri_gnn(x=x, batch=batch)
 
         # Pass GNN output through FCN (which expects input_dict format)
         mlp_input_dict = {"obs": gnn_out}
         logits, _ = self.mlp(mlp_input_dict, state, seq_lens)
         return logits, []
-
-    def get_posterior(self) -> Tensor:
-        """
-        Returns the posterior distribution for the most recent forward pass.
-        Note that a forward call has to be performed first before this method can return anything and thus that calling
-        this method does not cause an extra forward pass through the network.
-        :return: Posterior distribution tensor of shape [BATCH, NUM_EDGES, NUM_EDGE_TYPES].
-        """
-        assert self.batched_p_z_given_x is not None, "Posterior not computed yet."
-        return self.batched_p_z_given_x
 
     def value_function(self) -> Tensor:
         # RLlib expects shape [B]
