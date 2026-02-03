@@ -136,9 +136,9 @@ class DegreeDistributionVisualizer(MetricVisualizer[Dict[str, npt.NDArray]]):
         latent_subgraph = np.mean([m['latent_subgraph'] for m in self.metrics_history], axis=0)
         powergrid_full = np.mean([m['powergrid_full'] for m in self.metrics_history], axis=0)
         powergrid_subgraph = np.mean([m['powergrid_subgraph'] for m in self.metrics_history], axis=0)
-        node_mask = self.metrics_history[-1]['node_mask']  # Use last node_mask
-        powergrid_graph = self.metrics_history[-1]['powergrid_graph']  # Use last powergrid
-        posterior = self.metrics_history[-1]['posterior']  # Use last posterior for visualization
+        node_mask = self.metrics_history[0]['node_mask']  # Use first node_mask
+        powergrid_graph = self.metrics_history[0]['powergrid_graph']  # Use first powergrid
+        posterior = self.metrics_history[0]['posterior']  # Use first posterior for visualization
         
         return {
             'latent_full': latent_full,
@@ -326,9 +326,9 @@ class ClusteringCoefficientVisualizer(MetricVisualizer[Dict[str, npt.NDArray]]):
         latent_subgraph = np.mean([m['latent_subgraph'] for m in self.metrics_history], axis=0)
         powergrid_full = np.mean([m['powergrid_full'] for m in self.metrics_history], axis=0)
         powergrid_subgraph = np.mean([m['powergrid_subgraph'] for m in self.metrics_history], axis=0)
-        node_mask = self.metrics_history[-1]['node_mask']
-        powergrid_graph = self.metrics_history[-1]['powergrid_graph']
-        posterior = self.metrics_history[-1]['posterior']
+        node_mask = self.metrics_history[0]['node_mask']
+        powergrid_graph = self.metrics_history[0]['powergrid_graph']
+        posterior = self.metrics_history[0]['posterior']
         
         return {
             'latent_full': latent_full,
@@ -534,9 +534,9 @@ class InnerTreeNodeProbabilityVisualizer(MetricVisualizer[Dict[str, npt.NDArray]
         latent_subgraph = np.mean([m['latent_subgraph'] for m in self.metrics_history], axis=0)
         powergrid_full = np.mean([m['powergrid_full'] for m in self.metrics_history], axis=0)
         powergrid_subgraph = np.mean([m['powergrid_subgraph'] for m in self.metrics_history], axis=0)
-        node_mask = self.metrics_history[-1]['node_mask']
-        powergrid_graph = self.metrics_history[-1]['powergrid_graph']
-        posterior = self.metrics_history[-1]['posterior']
+        node_mask = self.metrics_history[0]['node_mask']
+        powergrid_graph = self.metrics_history[0]['powergrid_graph']
+        posterior = self.metrics_history[0]['posterior']
 
         return {
             'latent_full': latent_full,
@@ -800,8 +800,8 @@ class PosteriorDistributionVisualizer(MetricVisualizer[Tuple[npt.NDArray, npt.ND
     def _summarize_data(self) -> Tuple[npt.NDArray, npt.NDArray]:
         # Stack all posteriors and powerline edges
         all_posteriors = np.stack([m[0] for m in self.metrics_history], axis=0)
-        # Just use the last powerline edges (they should be the same across steps)
-        powerline_edges = self.metrics_history[-1][1] if self.metrics_history else np.array([])
+        # Just use the first powerline edges
+        powerline_edges = self.metrics_history[0][1] if self.metrics_history else np.array([])
         # Compute mean posterior
         mean_posterior = np.mean(all_posteriors, axis=0)
         return mean_posterior, powerline_edges
@@ -867,8 +867,8 @@ class KLDivergenceVisualizer(MetricVisualizer[Tuple[npt.NDArray, npt.NDArray]]):
     def _summarize_data(self) -> Tuple[npt.NDArray, npt.NDArray]:
         # Stack all KL divergences and powerline edges
         all_kls = np.stack([m[0] for m in self.metrics_history], axis=0)
-        # Just use the last powerline edges
-        powerline_edges = self.metrics_history[-1][1] if self.metrics_history else np.array([])
+        # Just use the first powerline edges
+        powerline_edges = self.metrics_history[0][1] if self.metrics_history else np.array([])
         # Compute mean KL
         mean_kl = np.mean(all_kls, axis=0)
         return mean_kl, powerline_edges
@@ -1003,9 +1003,9 @@ class PathLengthVisualizer(MetricVisualizer[Dict[str, npt.NDArray]]):
         latent_subgraph = np.concatenate([m['latent_subgraph'] for m in self.metrics_history])
         powergrid_full = np.concatenate([m['powergrid_full'] for m in self.metrics_history])
         powergrid_subgraph = np.concatenate([m['powergrid_subgraph'] for m in self.metrics_history])
-        node_mask = self.metrics_history[-1]['node_mask']
-        powergrid_graph = self.metrics_history[-1]['powergrid_graph']
-        posterior = self.metrics_history[-1]['posterior']
+        node_mask = self.metrics_history[0]['node_mask']
+        powergrid_graph = self.metrics_history[0]['powergrid_graph']
+        posterior = self.metrics_history[0]['posterior']
 
         return {
             'latent_full': latent_full,
@@ -1530,3 +1530,197 @@ class EdgeNodeTypeVisualizer(MetricVisualizer[Tuple[Dict[NodeTypes, Dict[NodeTyp
                 agg_normalized[src_type][dst_type] /= num_timesteps
 
         return agg_probs, agg_possibilities, agg_normalized
+
+class BetweennessVisualizer(MetricVisualizer[Tuple[npt.NDArray, npt.NDArray]]):
+    """Visualizes edge betweenness centrality of the posterior graph."""
+
+    def _summarize_data(self) -> Dict[str, npt.NDArray]:
+        # Average degrees across all timesteps
+        latent_full = np.mean([m['betweenness_centrality_latent_full'] for m in self.metrics_history], axis=0)
+        latent_subgraph = np.mean([m['betweenness_centrality_latent_sub'] for m in self.metrics_history], axis=0)
+        powergrid_full = np.mean([m['betweenness_centrality_powergrid_full'] for m in self.metrics_history], axis=0)
+        powergrid_subgraph = np.mean([m['betweenness_centrality_powergrid_sub'] for m in self.metrics_history], axis=0)
+        node_mask = self.metrics_history[0]['node_mask']  # Use first node_mask
+        powergrid_graph = self.metrics_history[0]['powergrid_graph']  # Use first powergrid
+        posterior = self.metrics_history[0]['posterior']  # Use first posterior for visualization
+
+        return {
+            'betweenness_centrality_latent_full': latent_full,
+            'betweenness_centrality_latent_sub': latent_subgraph,
+            'betweenness_centrality_powergrid_full': powergrid_full,
+            'betweenness_centrality_powergrid_sub': powergrid_subgraph,
+            'node_mask': node_mask,
+            'powergrid_graph': powergrid_graph,
+            'posterior': posterior
+        }
+
+    def _compute(self, posterior: npt.NDArray, prior: npt.NDArray, samples: npt.NDArray, powergrid_graph: npt.NDArray,
+                 edge_index_fully_connected: npt.NDArray, node_mask: npt.NDArray, observation: BaseObservation) -> T:
+        # compute the betweenness centrality for nodes in the posterior graph
+        num_nodes = len(node_mask)
+
+        # Build powergrid graph (full)
+        G_pg_full = nx.Graph()
+        G_pg_full.add_nodes_from(range(num_nodes))
+        G_pg_full.add_edges_from(powergrid_graph.T.astype(int))
+
+        # Build powergrid subgraph (only nodes in mask)
+        G_pg_sub = nx.Graph()
+        G_pg_sub.add_nodes_from([i for i in range(num_nodes) if node_mask[i]])
+        for src, dst in powergrid_graph.T:
+            if node_mask[src] and node_mask[dst]:
+                G_pg_sub.add_edge(int(src), int(dst))
+
+        bc_pg_sub = nx.betweenness_centrality(G_pg_sub)
+        bc_pg_full = nx.betweenness_centrality(G_pg_full)
+
+        bcs_latent_sub = []
+        bcs_latent_full = []
+        for i, sample in enumerate(samples):
+            # build latent graph (full)
+            G_latent_full = nx.Graph()
+            G_latent_full.add_nodes_from(range(num_nodes))
+            G_latent_full.add_edges_from(sample.T.astype(int))
+
+            G_latent_sub = nx.Graph()
+            G_latent_sub.add_nodes_from([i for i in range(num_nodes) if node_mask[i]])
+            for src, dst in powergrid_graph.T:
+                if node_mask[src] and node_mask[dst]:
+                    G_latent_sub.add_edge(int(src), int(dst))
+
+            bcs_latent_sub.append(nx.betweenness_centrality(G_latent_sub))
+            bcs_latent_full.append(nx.betweenness_centrality(G_latent_full))
+
+        bc_latent_sub = {node: np.mean([bc[node] for bc in bcs_latent_sub]) for node in bcs_latent_sub[0].keys()}
+        bc_latent_full = {node: np.mean([bc[node] for bc in bcs_latent_full]) for node in bcs_latent_full[0].keys()}
+
+        return {
+            "betweenness_centrality_latent_sub": bc_latent_sub,
+            "betweenness_centrality_latent_full": bc_latent_full,
+            "betweenness_centrality_powergrid_sub": bc_pg_sub,
+            "betweenness_centrality_powergrid_full": bc_pg_full,
+            "node_mask": node_mask,
+            "powergrid_graph": powergrid_graph,
+            "posterior": posterior,
+        }
+
+    def _visualize(self, computation_result: T, aggregated: bool = False, show_figure: bool = False) -> Figure:
+        latent_full = computation_result['betweenness_centrality_latent_full']
+        latent_subgraph = computation_result['betweenness_centrality_latent_sub']
+        powergrid_full = computation_result['betweenness_centrality_powergrid_full']
+        powergrid_subgraph = computation_result['betweenness_centrality_powergrid_sub']
+        node_mask = computation_result['node_mask']
+        powergrid_graph = computation_result['powergrid_graph']
+        posterior = computation_result['posterior']
+
+        num_nodes = len(node_mask)
+
+        # Determine global bin range
+        all_betweennesses = np.concatenate([
+            latent_full,
+            latent_subgraph[node_mask],
+            powergrid_full,
+            powergrid_subgraph[node_mask]
+        ])
+        min_betweenness = int(np.floor(all_betweennesses.min()))
+        max_betweenness = int(np.ceil(all_betweennesses.max()))
+        bins = np.arange(min_betweenness, max_betweenness + 2) - 0.5
+
+        # Create 2x3 subplot grid
+        fig, axes = plt.subplots(2, 3, figsize=(18, 12))
+
+        # Get subgraph edge indices for powergrid
+        powergrid_subgraph_edges = []
+        for src, dst in powergrid_graph.T:
+            if node_mask[src] and node_mask[dst]:
+                powergrid_subgraph_edges.append([src, dst])
+        powergrid_subgraph_edges = np.array(powergrid_subgraph_edges).T if powergrid_subgraph_edges else np.zeros(
+            (2, 0))
+
+        # === ROW 1: POWERGRID ANALYSIS ===
+
+        # Column 1: Powergrid full graph histogram
+        axes[0, 0].hist(powergrid_full, bins=bins, color='green', edgecolor='black', alpha=0.7, density=True)
+        axes[0, 0].axvline(np.mean(powergrid_full), color='red', linestyle='--', linewidth=2,
+                           label=f'Mean: {np.mean(powergrid_full):.2f}')
+        axes[0, 0].set_xlabel('Betweenness Centrality')
+        axes[0, 0].set_ylabel('Density')
+        axes[0, 0].set_title('Powergrid (Full Graph) - Betweenness Centrality')
+        axes[0, 0].legend()
+        axes[0, 0].grid(alpha=0.3)
+
+        # Column 2: Powergrid subgraph histogram
+        powergrid_subgraph_filtered = powergrid_subgraph[node_mask]
+        axes[0, 1].hist(powergrid_subgraph_filtered, bins=bins, color='green', edgecolor='black', alpha=0.7,
+                        density=True)
+        axes[0, 1].axvline(np.mean(powergrid_subgraph_filtered), color='red', linestyle='--', linewidth=2,
+                           label=f'Mean: {np.mean(powergrid_subgraph_filtered):.2f}')
+        axes[0, 1].set_xlabel('Betweenness Centrality')
+        axes[0, 1].set_ylabel('Density')
+        axes[0, 1].set_title('Powergrid (Subgraph) - Betweenness Centrality')
+        axes[0, 1].legend()
+        axes[0, 1].grid(alpha=0.3)
+
+        # Column 3: Powergrid subgraph visualization with node labels
+        max_bc_pg_sub = powergrid_subgraph[node_mask].max() if powergrid_subgraph[node_mask].max() > 0 else 1.0
+        node_sizes_pg_sub = {i: (0.03 + 0.7 * (powergrid_subgraph[i] / max_bc_pg_sub)) if node_mask[i] else 0.05
+                             for i in range(num_nodes)}
+        node_labels_pg_sub = {i: f"d={powergrid_subgraph[i]:.1f}" for i in range(num_nodes) if node_mask[i]}
+
+        visualize_graph(PlottingArgs(
+            num_nodes=num_nodes,
+            node_styles=self.node_styles,
+            powerline_edge_index=powergrid_subgraph_edges,
+            latent_edge_probs=None,
+            node_labels=node_labels_pg_sub,
+            node_sizes_override=node_sizes_pg_sub
+        ), ax=axes[0, 2])
+        axes[0, 2].set_title('Powergrid Subgraph with Betweenness Centrality Labels')
+
+        # === ROW 2: LATENT ANALYSIS ===
+
+        # Column 1: Latent full graph histogram
+        axes[1, 0].hist(latent_full, bins=bins, color='skyblue', edgecolor='black', alpha=0.7, density=True)
+        axes[1, 0].axvline(np.mean(latent_full), color='red', linestyle='--', linewidth=2,
+                           label=f'Mean: {np.mean(latent_full):.2f}')
+        axes[1, 0].set_xlabel('Betweenness Centrality')
+        axes[1, 0].set_ylabel('Density')
+        axes[1, 0].set_title('Latent (Full Graph) - Betweenness Centrality')
+        axes[1, 0].legend()
+        axes[1, 0].grid(alpha=0.3)
+
+        # Column 2: Latent subgraph histogram
+        latent_subgraph_filtered = latent_subgraph[node_mask]
+        axes[1, 1].hist(latent_subgraph_filtered, bins=bins, color='skyblue', edgecolor='black', alpha=0.7,
+                        density=True)
+        axes[1, 1].axvline(np.mean(latent_subgraph_filtered), color='red', linestyle='--', linewidth=2,
+                           label=f'Mean: {np.mean(latent_subgraph_filtered):.2f}')
+        axes[1, 1].set_xlabel('Betweenness Centrality')
+        axes[1, 1].set_ylabel('Density')
+        axes[1, 1].set_title('Latent (Subgraph) - Betweenness Centrality')
+        axes[1, 1].legend()
+        axes[1, 1].grid(alpha=0.3)
+
+        # Column 3: Latent subgraph visualization with node labels
+        max_bc_latent_sub = latent_subgraph[node_mask].max() if latent_subgraph[node_mask].max() > 0 else 1.0
+        node_sizes_latent_sub = {i: (0.3 + 0.7 * (latent_subgraph[i] / max_bc_latent_sub)) if node_mask[i] else 0.05
+                                 for i in range(num_nodes)}
+        node_labels_latent_sub = {i: f"d={latent_subgraph[i]:.1f}" for i in range(num_nodes) if node_mask[i]}
+
+        visualize_graph(PlottingArgs(
+            num_nodes=num_nodes,
+            node_styles=self.node_styles,
+            powerline_edge_index=None,
+            latent_edge_probs=posterior,
+            skip_last_edge_type=True,
+            node_labels=node_labels_latent_sub,
+            node_sizes_override=node_sizes_latent_sub
+        ), ax=axes[1, 2])
+        axes[1, 2].set_title('Latent Subgraph with Betweenness Centrality Labels')
+
+        plt.tight_layout()
+
+        if show_figure:
+            plt.show()
+
+        return fig
