@@ -56,16 +56,16 @@ class PosteriorAnalyser:
         self.num_posterior_samples = num_posterior_samples
 
         self.metrics: Dict[str, MetricVisualizer] = {
-            #"Node Degree": DegreeDistributionVisualizer(node_styles=node_styles),
-            #"Clustering Coefficient": ClusteringCoefficientVisualizer(node_styles=node_styles),
-            #"Inner Tree Node Probability": InnerTreeNodeProbabilityVisualizer(node_styles=node_styles),
-            #"Posterior Distribution": PosteriorDistributionVisualizer(node_styles=node_styles),
-            #"KL Divergence": KLDivergenceVisualizer(node_styles=node_styles),
-            #"Entropy vs KL": EntropyVsKLVisualizer(node_styles=node_styles),
-            #"Path Length": PathLengthVisualizer(node_styles=node_styles),
-            #"Symmetry Analysis": SymmetryMetricVisualizer(node_styles=node_styles),
-            #"Connected Node Types": EdgeNodeTypeVisualizer(node_styles=node_styles),
-            #"Steps": StepVisualizer(node_styles=node_styles),
+            "Node Degree": DegreeDistributionVisualizer(node_styles=node_styles),
+            "Clustering Coefficient": ClusteringCoefficientVisualizer(node_styles=node_styles),
+            "Inner Tree Node Probability": InnerTreeNodeProbabilityVisualizer(node_styles=node_styles),
+            "Posterior Distribution": PosteriorDistributionVisualizer(node_styles=node_styles),
+            "KL Divergence": KLDivergenceVisualizer(node_styles=node_styles),
+            "Entropy vs KL": EntropyVsKLVisualizer(node_styles=node_styles),
+            "Path Length": PathLengthVisualizer(node_styles=node_styles),
+            "Symmetry Analysis": SymmetryMetricVisualizer(node_styles=node_styles),
+            "Connected Node Types": EdgeNodeTypeVisualizer(node_styles=node_styles),
+            "Steps": StepVisualizer(node_styles=node_styles),
             "Betweenness Centrality": BetweennessVisualizer(node_styles=node_styles),
         }
 
@@ -353,7 +353,7 @@ def main():
         checkpoint_name=checkpoint_name,
         env_name_override=env_name_override,
         num_episodes=num_episodes,
-        save_dir=Path("results/experiments/2601_compute_metrics"),
+        save_dir=Path("results/experiments/0302_compute_metrics_900"),
         max_total_duration_s=max_total_duration_s
     )
 
