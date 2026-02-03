@@ -20,5 +20,5 @@ sbatch << EOF
 module load devel/miniforge
 conda activate L2RPN
 
-PYTHONPATH=$(pwd) python src/ra_agents/analyze_latent_graphs/visualize_rappo_posterior.py
+PYTHONPATH=$(pwd) python src/experiments/analyze_latent_graphs/visualize_rappo_posterior.py
 EOF
