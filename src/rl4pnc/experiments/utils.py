@@ -394,8 +394,8 @@ def run_training(config: dict[str, Any], setup: dict[str, Any], job_id: str) -> 
         asha = ASHAScheduler(
             time_attr="timesteps_total", # must be monotonic with training iterations
             max_t=setup["nb_timesteps"],  # same unit as time_attr
-            grace_period=max(1, setup["nb_timesteps"] // 10),  # or another warmup in timesteps
-            reduction_factor=3,
+            grace_period=max(1, setup["nb_timesteps"] // 2),  # or another warmup in timesteps
+            reduction_factor=5,
         )
 
     dur = get_duration(setup)
