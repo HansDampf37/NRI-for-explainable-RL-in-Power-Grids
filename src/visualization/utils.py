@@ -45,6 +45,7 @@ class PlottingArgs:
     node_sizes_override: Optional[dict[int, float]] = None  # Dict mapping node_id to size multiplier
     powerline_edge_colors: Optional[List[str]] = None  # Custom colors for powerline edges
     powerline_edge_widths: Optional[List[float]] = None  # Custom widths for powerline edges
+    show_legend: bool = True
 
 
 @dataclass
@@ -395,7 +396,8 @@ def visualize_graph(args: PlottingArgs, ax=None) -> Figure:
                     text.set_zorder(15)
 
         # Create legend (pass ax if provided)
-        _create_legend(args, G, ax)
+        if args.show_legend:
+            _create_legend(args, G, ax)
     else:
         node_collection = nx.draw_networkx_nodes(G, pos, node_color="grey", ax=ax)
         node_collection.set_zorder(10)

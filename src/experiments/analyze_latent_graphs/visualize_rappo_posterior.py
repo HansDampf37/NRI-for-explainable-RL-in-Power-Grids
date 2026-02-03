@@ -24,7 +24,9 @@ from evaluate_rllib_agent import load_config, load_rllib_agent
 from src.common.observation_space import BusConnectivityGraphObsSpace, EDGE_INDEX, EDGE_MASK
 from src.experiments.analyze_latent_graphs.Metrics import (
     MetricVisualizer,
-    PosteriorDistributionVisualizer
+    PosteriorDistributionVisualizer, StepVisualizer, KLDivergenceVisualizer, EntropyVsKLVisualizer,
+    DegreeDistributionVisualizer, ClusteringCoefficientVisualizer, InnerTreeNodeProbabilityVisualizer,
+    PathLengthVisualizer, SymmetryMetricVisualizer, EdgeNodeTypeVisualizer, BetweennessVisualizer
 )
 from src.nri.utils import fully_connected_edge_index, get_priors, get_prior_tensor
 from src.ra_agents.RAFeatureExtractor import RLlibGNNModel, RLlibRAGNNModel, RLlibNRIGNNModel
@@ -54,15 +56,17 @@ class PosteriorAnalyser:
         self.num_posterior_samples = num_posterior_samples
 
         self.metrics: Dict[str, MetricVisualizer] = {
-            # "Node Degree": DegreeDistributionVisualizer(node_styles=node_styles),
-            # "Clustering Coefficient": ClusteringCoefficientVisualizer(node_styles=node_styles),
-            # "Inner Tree Node Probability": InnerTreeNodeProbabilityVisualizer(node_styles=node_styles),
-            "Posterior Distribution": PosteriorDistributionVisualizer(node_styles=node_styles),
-            # "KL Divergence": KLDivergenceVisualizer(node_styles=node_styles),
-            # "Entropy vs KL": EntropyVsKLVisualizer(node_styles=node_styles),
-            # "Path Length": PathLengthVisualizer(node_styles=node_styles),
-            # "Symmetry Analysis": SymmetryMetricVisualizer(node_styles=node_styles),
-            # "Connected Node Types": EdgeNodeTypeVisualizer(node_styles=node_styles),
+            #"Node Degree": DegreeDistributionVisualizer(node_styles=node_styles),
+            #"Clustering Coefficient": ClusteringCoefficientVisualizer(node_styles=node_styles),
+            #"Inner Tree Node Probability": InnerTreeNodeProbabilityVisualizer(node_styles=node_styles),
+            #"Posterior Distribution": PosteriorDistributionVisualizer(node_styles=node_styles),
+            #"KL Divergence": KLDivergenceVisualizer(node_styles=node_styles),
+            #"Entropy vs KL": EntropyVsKLVisualizer(node_styles=node_styles),
+            #"Path Length": PathLengthVisualizer(node_styles=node_styles),
+            #"Symmetry Analysis": SymmetryMetricVisualizer(node_styles=node_styles),
+            #"Connected Node Types": EdgeNodeTypeVisualizer(node_styles=node_styles),
+            #"Steps": StepVisualizer(node_styles=node_styles),
+            "Betweenness Centrality": BetweennessVisualizer(node_styles=node_styles),
         }
 
         self.all_posteriors = []

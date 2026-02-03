@@ -12,8 +12,10 @@ from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.ticker import MultipleLocator
 
+from src.common.observation_space import BusConnectivityGraphObsSpace
+from src.nri.utils import fully_connected_edge_index
 from src.visualization import visualize_graph, PlottingArgs
-from src.visualization.utils import NodeStyle
+from src.visualization.utils import NodeStyle, get_node_styles
 
 T = TypeVar("T")  # generic type for computed metric
 
@@ -1573,6 +1575,8 @@ class BetweennessVisualizer(MetricVisualizer[Tuple[npt.NDArray, npt.NDArray]]):
 
         bc_pg_sub = nx.betweenness_centrality(G_pg_sub)
         bc_pg_full = nx.betweenness_centrality(G_pg_full)
+        bc_pg_sub = [bc_pg_sub[i] if i in bc_pg_sub else 0 for i in range(num_nodes)]
+        bc_pg_full = [bc_pg_full[i] if i in bc_pg_full else 0 for i in range(num_nodes)]
 
         bcs_latent_sub = []
         bcs_latent_full = []
@@ -1584,7 +1588,7 @@ class BetweennessVisualizer(MetricVisualizer[Tuple[npt.NDArray, npt.NDArray]]):
 
             G_latent_sub = nx.Graph()
             G_latent_sub.add_nodes_from([i for i in range(num_nodes) if node_mask[i]])
-            for src, dst in powergrid_graph.T:
+            for src, dst in sample.T:
                 if node_mask[src] and node_mask[dst]:
                     G_latent_sub.add_edge(int(src), int(dst))
 
@@ -1593,12 +1597,14 @@ class BetweennessVisualizer(MetricVisualizer[Tuple[npt.NDArray, npt.NDArray]]):
 
         bc_latent_sub = {node: np.mean([bc[node] for bc in bcs_latent_sub]) for node in bcs_latent_sub[0].keys()}
         bc_latent_full = {node: np.mean([bc[node] for bc in bcs_latent_full]) for node in bcs_latent_full[0].keys()}
+        bc_latent_sub = [bc_latent_sub[i] if i in bc_latent_sub else 0 for i in range(num_nodes)]
+        bc_latent_full = [bc_latent_full[i] if i in bc_latent_full else 0 for i in range(num_nodes)]
 
         return {
-            "betweenness_centrality_latent_sub": bc_latent_sub,
-            "betweenness_centrality_latent_full": bc_latent_full,
-            "betweenness_centrality_powergrid_sub": bc_pg_sub,
-            "betweenness_centrality_powergrid_full": bc_pg_full,
+            "betweenness_centrality_latent_sub": np.array(bc_latent_sub),
+            "betweenness_centrality_latent_full": np.array(bc_latent_full),
+            "betweenness_centrality_powergrid_sub": np.array(bc_pg_sub),
+            "betweenness_centrality_powergrid_full": np.array(bc_pg_full),
             "node_mask": node_mask,
             "powergrid_graph": powergrid_graph,
             "posterior": posterior,
@@ -1615,17 +1621,6 @@ class BetweennessVisualizer(MetricVisualizer[Tuple[npt.NDArray, npt.NDArray]]):
 
         num_nodes = len(node_mask)
 
-        # Determine global bin range
-        all_betweennesses = np.concatenate([
-            latent_full,
-            latent_subgraph[node_mask],
-            powergrid_full,
-            powergrid_subgraph[node_mask]
-        ])
-        min_betweenness = int(np.floor(all_betweennesses.min()))
-        max_betweenness = int(np.ceil(all_betweennesses.max()))
-        bins = np.arange(min_betweenness, max_betweenness + 2) - 0.5
-
         # Create 2x3 subplot grid
         fig, axes = plt.subplots(2, 3, figsize=(18, 12))
 
@@ -1634,13 +1629,12 @@ class BetweennessVisualizer(MetricVisualizer[Tuple[npt.NDArray, npt.NDArray]]):
         for src, dst in powergrid_graph.T:
             if node_mask[src] and node_mask[dst]:
                 powergrid_subgraph_edges.append([src, dst])
-        powergrid_subgraph_edges = np.array(powergrid_subgraph_edges).T if powergrid_subgraph_edges else np.zeros(
-            (2, 0))
+        powergrid_subgraph_edges = np.array(powergrid_subgraph_edges).T if powergrid_subgraph_edges else np.zeros((2, 0))
 
         # === ROW 1: POWERGRID ANALYSIS ===
 
         # Column 1: Powergrid full graph histogram
-        axes[0, 0].hist(powergrid_full, bins=bins, color='green', edgecolor='black', alpha=0.7, density=True)
+        axes[0, 0].hist(powergrid_full, bins=50, color='green', edgecolor='black', alpha=0.7, density=True)
         axes[0, 0].axvline(np.mean(powergrid_full), color='red', linestyle='--', linewidth=2,
                            label=f'Mean: {np.mean(powergrid_full):.2f}')
         axes[0, 0].set_xlabel('Betweenness Centrality')
@@ -1651,7 +1645,7 @@ class BetweennessVisualizer(MetricVisualizer[Tuple[npt.NDArray, npt.NDArray]]):
 
         # Column 2: Powergrid subgraph histogram
         powergrid_subgraph_filtered = powergrid_subgraph[node_mask]
-        axes[0, 1].hist(powergrid_subgraph_filtered, bins=bins, color='green', edgecolor='black', alpha=0.7,
+        axes[0, 1].hist(powergrid_subgraph_filtered, bins=50, color='green', edgecolor='black', alpha=0.7,
                         density=True)
         axes[0, 1].axvline(np.mean(powergrid_subgraph_filtered), color='red', linestyle='--', linewidth=2,
                            label=f'Mean: {np.mean(powergrid_subgraph_filtered):.2f}')
@@ -1665,7 +1659,7 @@ class BetweennessVisualizer(MetricVisualizer[Tuple[npt.NDArray, npt.NDArray]]):
         max_bc_pg_sub = powergrid_subgraph[node_mask].max() if powergrid_subgraph[node_mask].max() > 0 else 1.0
         node_sizes_pg_sub = {i: (0.03 + 0.7 * (powergrid_subgraph[i] / max_bc_pg_sub)) if node_mask[i] else 0.05
                              for i in range(num_nodes)}
-        node_labels_pg_sub = {i: f"d={powergrid_subgraph[i]:.1f}" for i in range(num_nodes) if node_mask[i]}
+        node_labels_pg_sub = {i: f"bc={powergrid_subgraph[i]:.1f}" for i in range(num_nodes) if node_mask[i]}
 
         visualize_graph(PlottingArgs(
             num_nodes=num_nodes,
@@ -1680,7 +1674,7 @@ class BetweennessVisualizer(MetricVisualizer[Tuple[npt.NDArray, npt.NDArray]]):
         # === ROW 2: LATENT ANALYSIS ===
 
         # Column 1: Latent full graph histogram
-        axes[1, 0].hist(latent_full, bins=bins, color='skyblue', edgecolor='black', alpha=0.7, density=True)
+        axes[1, 0].hist(latent_full, bins=50, color='skyblue', edgecolor='black', alpha=0.7, density=True)
         axes[1, 0].axvline(np.mean(latent_full), color='red', linestyle='--', linewidth=2,
                            label=f'Mean: {np.mean(latent_full):.2f}')
         axes[1, 0].set_xlabel('Betweenness Centrality')
@@ -1691,7 +1685,7 @@ class BetweennessVisualizer(MetricVisualizer[Tuple[npt.NDArray, npt.NDArray]]):
 
         # Column 2: Latent subgraph histogram
         latent_subgraph_filtered = latent_subgraph[node_mask]
-        axes[1, 1].hist(latent_subgraph_filtered, bins=bins, color='skyblue', edgecolor='black', alpha=0.7,
+        axes[1, 1].hist(latent_subgraph_filtered, bins=50, color='skyblue', edgecolor='black', alpha=0.7,
                         density=True)
         axes[1, 1].axvline(np.mean(latent_subgraph_filtered), color='red', linestyle='--', linewidth=2,
                            label=f'Mean: {np.mean(latent_subgraph_filtered):.2f}')
@@ -1722,5 +1716,102 @@ class BetweennessVisualizer(MetricVisualizer[Tuple[npt.NDArray, npt.NDArray]]):
 
         if show_figure:
             plt.show()
+
+        return fig
+
+class StepVisualizer(MetricVisualizer):
+    def _summarize_data(self) -> T:
+        return None
+
+    def _compute(self,
+                 posterior: npt.NDArray,
+                 prior: npt.NDArray,
+                 samples: npt.NDArray,
+                 powergrid_graph: npt.NDArray,
+                 edge_index_fully_connected: npt.NDArray,
+                 node_mask: npt.NDArray,
+                 observation: BaseObservation) -> T:
+        return {"posterior": posterior, "powergrid_graph": powergrid_graph, "rhos": observation.rho}
+
+    def _visualize(self, computation_result: T, aggregated: bool = False, show_figure: bool = False) -> Figure:
+        if aggregated:
+            return None
+
+        powerline_edges = computation_result['powergrid_graph']
+        posterior = computation_result['posterior']
+        rhos = computation_result['rhos']
+
+        # Number of unique powerlines (undirected edges)
+        num_powerlines = 20
+        num_edges = powerline_edges.shape[1]
+
+        # Build mapping from powerline index to edge indices in pl_edge_index
+        # Powerlines connect node i (line_or) to node i+n_line (line_ex)
+        # We need to find which edges in pl_edge_index correspond to powerlines
+        powerline_edge_indices = []
+        for pl_idx in range(num_powerlines):
+            line_or_node = pl_idx
+            line_ex_node = pl_idx + num_powerlines
+            # Find edges connecting these nodes (bidirectional)
+            for edge_idx in range(num_edges):
+                src, dst = powerline_edges[:, edge_idx]
+                if (src == line_or_node and dst == line_ex_node) or (src == line_ex_node and dst == line_or_node):
+                    powerline_edge_indices.append(edge_idx)
+                    break  # Found the edge for this powerline
+
+        fig, axs = plt.subplots(1, 2, figsize=(24, 8), constrained_layout=True)
+
+        # Handle case of single agent (ensure axes is 2D)
+        rho_cmap = plt.colormaps['RdYlGn']  # Red (high load) -> Yellow -> Green (low load)
+        neutral_gray = '#808080'  # Gray for non-powerline edges
+        # Create color array for ALL edges, default to gray
+        edge_colors_rho = [neutral_gray] * num_edges
+        # Create width array for ALL edges, default to thin
+        edge_widths_rho = [1.0] * num_edges
+        # Set colors and widths for powerline edges based on rho data
+        for pl_idx, edge_idx in enumerate(powerline_edge_indices):
+            rho = rhos[pl_idx]
+            # Normalize rho to [0, 1] for colormap
+            # rho: 0.0 = no load (green), 1.0 = at limit (red)
+            rho_normalized = min(1.0, max(0.0, rho))  # Clamp to [0, 1]
+            color = rho_cmap(1.0 - rho_normalized)  # Invert: high rho = red (low in colormap)
+            edge_colors_rho[edge_idx] = plt.matplotlib.colors.rgb2hex(color[:3])
+            edge_widths_rho[edge_idx] = 3.0
+
+        plotting_args_rho = PlottingArgs(
+            num_nodes=57,
+            node_styles=self.node_styles,
+            powerline_edge_index=powerline_edges,
+            powerline_edge_colors=edge_colors_rho,
+            powerline_edge_widths=edge_widths_rho,
+            show_legend=False
+        )
+
+        visualize_graph(plotting_args_rho, ax=axs[0])
+        axs[0].set_title(f"Line Congestion Before Failure")
+
+        plotting_args = PlottingArgs(
+            num_nodes=57,
+            node_styles=self.node_styles,
+            powerline_edge_index=powerline_edges,
+            latent_edge_probs=posterior
+        )
+
+        visualize_graph(plotting_args, ax=axs[1])
+        axs[1].set_title(f"Latent Graph Posterior")
+
+        # Add colorbar
+        from matplotlib.cm import ScalarMappable
+        from matplotlib.colors import Normalize
+
+        # Colorbar for rho (row 1) - vertical on the right
+        # We use reversed colormap since we map high rho (1.0) -> red by using (1.0 - rho) with RdYlGn
+        norm_rho = Normalize(vmin=0, vmax=1.5)
+        sm_rho = ScalarMappable(cmap=rho_cmap.reversed(), norm=norm_rho)
+        sm_rho.set_array([])
+        cbar_rho = fig.colorbar(sm_rho, ax=axs[0], orientation='vertical', pad=0.15, aspect=20, fraction=0.02)
+        cbar_rho.set_label('Line Congestion (ρ)', fontsize=10)
+        if show_figure:
+            fig.show()
 
         return fig
