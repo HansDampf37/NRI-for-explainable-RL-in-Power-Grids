@@ -446,7 +446,7 @@ def _create_legend(args: PlottingArgs, G: nx.Graph, ax=None) -> None:
             color=powerline_edge_color[0],
             lw=2,
             linestyle='--',  # Match the dashed style
-            label=f"Power Grid"
+            label=f"Physical Connection"
         )
         edge_legend.insert(0, powerline_legend_entry)
 

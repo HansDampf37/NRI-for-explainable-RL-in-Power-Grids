@@ -1,7 +1,7 @@
 setup:
   max_ep_len: 8064
   duration: ~ # HH:MM or minutes of training before stopping, overwrites nb_timesteps limit if value > 0
-  nb_timesteps: 150_000 # 500.000 with opponent
+  nb_timesteps: 160_000 # 500.000 with opponent
   checkpoint_freq: 5
   verbose: 0
   my_log_level: 2

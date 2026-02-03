@@ -5,9 +5,10 @@ This version shows posterior statistics and graph visualizations.
 Reuses existing infrastructure from evaluate_rllib_agent.py
 """
 import logging
+import time
 import traceback
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -255,7 +256,8 @@ def run_rappo_visualization(
         checkpoint_name: str = "checkpoint_000010",
         env_name_override: str = None,
         num_episodes: int = 1,
-        save_dir: Path = Path("results/visualizations")
+        save_dir: Path = Path("results/visualizations"),
+        max_total_duration_s: Optional[int] = None
 ):
     """Run RAPPO checkpoint with posterior visualization."""
 
@@ -302,6 +304,7 @@ def run_rappo_visualization(
     logger.info("Agent loaded! Starting episodes...\n")
 
     # Run episodes
+    start_time = time.time()
     for episode in range(num_episodes):
         chronic_id = g2op_env.chronics_handler.get_name()
         obs = g2op_env.reset()
@@ -319,6 +322,11 @@ def run_rappo_visualization(
             total_reward += reward
 
         print(f"Episode {episode + 1} ended with total reward: {total_reward} after {g2op_env.nb_time_step}/{g2op_env.max_episode_duration()} steps\n")
+        if max_total_duration_s is not None:
+            elapsed_time = time.time() - start_time
+            if elapsed_time >= max_total_duration_s:
+                logger.info(f"Reached maximum total duration of {max_total_duration_s} seconds. Stopping evaluation.")
+                break
 
     agent.on_evaluation_end()
 
@@ -332,15 +340,17 @@ def main():
     # CONFIGURATION - Edit these parameters
     checkpoint_path = "/home/adrian/Schreibtisch/1901/1901_rappo_with_anneal_different_betas/CustomPPO_0_426b7_2026-01-19_10-28-48"
     checkpoint_name = "checkpoint_000020"
-    env_name_override = "l2rpn_case14_sandbox_val"
+    env_name_override = "l2rpn_case14_sandbox"
+    max_total_duration_s = 8 * 60 * 60  # 8 hours in seconds
 
-    num_episodes = 50  # Number of episodes to run
+    num_episodes = 900  # Number of episodes to run
     run_rappo_visualization(
         checkpoint_path=checkpoint_path,
         checkpoint_name=checkpoint_name,
         env_name_override=env_name_override,
         num_episodes=num_episodes,
         save_dir=Path("results/experiments/2601_compute_metrics"),
+        max_total_duration_s=max_total_duration_s
     )
 
 
