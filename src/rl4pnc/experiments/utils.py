@@ -478,13 +478,15 @@ def run_training(config: dict[str, Any], setup: dict[str, Any], job_id: str) -> 
             }
             with open(os.path.join(result.path, "checkpoint_results.json"), "w") as outfile:
                 json.dump(checkpoints_tojson, outfile)
-
-            print(Style.BOLD + f" *---- Trial {i} finished successfully with evaluation results ---*\n" + Style.END +
-                  tabulate(
-                      [[k] + list(v.values()) for k, v in checkpoints_tojson.items()],
-                      headers=['checkpoint'] + list(result.metrics['evaluation']['custom_metrics'].keys()),
-                      tablefmt='rounded_grid')
-                  )
+            try:
+                print(Style.BOLD + f" *---- Trial {i} finished successfully with evaluation results ---*\n" + Style.END +
+                      tabulate(
+                          [[k] + list(v.values()) for k, v in checkpoints_tojson.items()],
+                          headers=['checkpoint'] + list(result.metrics['evaluation']['custom_metrics'].keys()),
+                          tablefmt='rounded_grid')
+                      )
+            except Exception as e:
+                print("Could not print checkpoint results table: ", e)
         else:
             print(f"Trial failed with error {result.error}.")
 

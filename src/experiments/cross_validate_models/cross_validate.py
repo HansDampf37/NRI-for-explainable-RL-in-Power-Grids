@@ -336,7 +336,7 @@ def visualize_failing_edges(results: List[CrossValidateResult], save_path: Path,
         for pl_idx, edge_idx in enumerate(powerline_edge_indices):
             connection_rate = connection_rates[pl_idx]
             # connection_rate: 1.0 = always connected (green), 0.0 = always disconnected (red)
-            color = connection_cmap(connection_rate)
+            color = connection_cmap((connection_rate - 0.9) / 0.1)  # Map [0.9, 1.0] to [0, 1] for colormap
             edge_colors_connection[edge_idx] = plt.matplotlib.colors.rgb2hex(color[:3])
             edge_widths_connection[edge_idx] = 3.0  # Thicker for powerlines
 
@@ -383,12 +383,12 @@ def visualize_failing_edges(results: List[CrossValidateResult], save_path: Path,
     from matplotlib.colors import Normalize
 
     # Colorbar for connection status (row 0) - vertical on the right
-    norm_connection = Normalize(vmin=0, vmax=1)
+    norm_connection = Normalize(vmin=0.9, vmax=1)
     sm_connection = ScalarMappable(cmap=connection_cmap, norm=norm_connection)
     sm_connection.set_array([])
     cbar_connection = fig.colorbar(sm_connection, ax=axes[0, :].tolist(), orientation='vertical',
                                     pad=0.15, aspect=20, fraction=0.02)
-    cbar_connection.set_label('Average Connection Rate Before Failure\n(0 = Always Disconnected, 1 = Always Connected)', fontsize=10)
+    cbar_connection.set_label('Average Connection Rate Before Failure', fontsize=10)
 
     # Colorbar for rho (row 1) - vertical on the right
     # We use reversed colormap since we map high rho (1.0) -> red by using (1.0 - rho) with RdYlGn
