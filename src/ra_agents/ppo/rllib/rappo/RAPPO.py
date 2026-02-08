@@ -1,5 +1,6 @@
 from typing import Type, Union, List, Dict
 
+import numpy as np
 import torch
 from ray.rllib import SampleBatch
 from ray.rllib.algorithms.ppo import PPOTorchPolicy
@@ -32,8 +33,8 @@ class RAPPOTorchPolicy(PPOTorchPolicy):
             The PPO loss tensor given the input batch.
         """
         # Initialize annealed parameters on first call (lazy initialization)
+        ra_config = self.config.get("relation_awareness", {})
         if not hasattr(self, 'current_beta'):
-            ra_config = self.config.get("relation_awareness", {})
             self.current_beta = ra_config.get("beta_start", 0.0)
             self.target_beta = ra_config.get("beta_end", ra_config.get("beta", 1.0))
             self.current_beta_non_graph_edges = ra_config.get("beta_non_graph_edges_start", 0.0)
@@ -54,12 +55,16 @@ class RAPPOTorchPolicy(PPOTorchPolicy):
             N = self.observation_space.num_nodes if hasattr(self.observation_space, 'num_nodes') else 57
             E = graph_edges_batch.shape[1]
             all_edges = fully_connected_edge_index(N)
-            prior_for_graph_edges, prior_for_non_graph_edges = get_priors(
-                prob_graph_edges_exist=self.config["relation_awareness"]["prior_prob_for_graph_edge"],
-                num_graph_edges=E,
-                num_non_graph_edges=all_edges.shape[1] - E,
-                temperature=self.config["relation_awareness"]["temperature"]
-            )
+            if not ra_config.get("use_per_edge_prior", True):
+                prior_for_graph_edges = torch.from_numpy(np.array(ra_config.get("global_prior", [0.9, 0.1])))
+                prior_for_non_graph_edges = prior_for_graph_edges # same prior for all edges if not using per-edge priors
+            else:
+                prior_for_graph_edges, prior_for_non_graph_edges = get_priors(
+                    prob_graph_edges_exist=self.config["relation_awareness"]["prior_prob_for_graph_edge"],
+                    num_graph_edges=E,
+                    num_non_graph_edges=all_edges.shape[1] - E,
+                    temperature=self.config["relation_awareness"]["temperature"]
+                )
             prior_tensor, graph_edge_mask = get_prior_tensor(
                 graph_edges=graph_edges_batch,
                 all_edges=all_edges,
