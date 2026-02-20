@@ -13,7 +13,7 @@ class Encoder(nn.Module):
     Predicts posterior p(z|x) where x encodes the current observation and z is a distribution over edge types
     for each edge of the fully meshed graph.
     """
-    def __init__(self, x_dim: int, hidden_dim: int, num_edge_types: int = 2, dropout_prob=0.):
+    def __init__(self, x_dim: int, hidden_dim: int, num_edge_types: int = 2, dropout_prob=0., mark_powergrid_edges: bool = False):
         """
         Constructor
         :param x_dim: number of input features for nodes
@@ -22,6 +22,7 @@ class Encoder(nn.Module):
         :param dropout_prob: dropout probability (defaults to 0.)
         """
         super(Encoder, self).__init__()
+        self.mark_powergrid_edges = mark_powergrid_edges
         # learns latent representation of node features
         self.f_emb = MLP(
             input_features=x_dim,
@@ -39,7 +40,7 @@ class Encoder(nn.Module):
         )
         # update node values depending on adjacent edge values
         self.edge2node = Edge2Node(
-            e_dim=hidden_dim + 1,
+            e_dim=hidden_dim + 1 if mark_powergrid_edges else hidden_dim,
             hidden_dim=hidden_dim,
             x_dim=hidden_dim,
             dropout_prob=dropout_prob
@@ -53,7 +54,7 @@ class Encoder(nn.Module):
         )
         # maps to output dimensions
         self.fc_out = MLP(
-            input_features=hidden_dim * 2 + 1,
+            input_features=hidden_dim * 2 + 1 if mark_powergrid_edges else hidden_dim * 2,
             hidden_dim=hidden_dim,
             output_features=num_edge_types,
             dropout_prob=dropout_prob,
@@ -86,11 +87,14 @@ class Encoder(nn.Module):
         e_skip = e
 
         # e -> v
-        e = torch.cat([e, mask], dim=-1)  # [E, hidden + 1]
+        if self.mark_powergrid_edges:
+            e = torch.cat([e, mask], dim=-1)  # [E, hidden + 1]
         x = self.edge2node.forward(e, edge_set)
 
         # v -> e
         e = self.node2edge_2.forward(x, edge_set)
 
-        e = torch.cat([e, e_skip, mask], dim=-1)
+        e = torch.cat([e, e_skip], dim=-1)
+        if self.mark_powergrid_edges:
+            e = torch.cat([e, mask], dim=-1)  # [E, hidden + 1]
         return self.fc_out(e)

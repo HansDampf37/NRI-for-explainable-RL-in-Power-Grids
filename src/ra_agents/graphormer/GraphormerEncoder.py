@@ -19,6 +19,7 @@ class GraphormerNRIEncoder(nn.Module):
                  x_dim: int,
                  hidden_dim: int,
                  num_layers: int,
+                 num_attention_heads: int,
                  num_edge_types: int,
                  max_degree: int,
                  max_path_distance: int):
@@ -26,6 +27,7 @@ class GraphormerNRIEncoder(nn.Module):
         :param x_dim: input dimension of node features
         :param hidden_dim: hidden dimensions of node features
         :param num_layers: number of graphormer layers (including the last layer)
+        :param num_attention_heads: number of attention heads in the graphormer layers (except the last layer)
         :param num_edge_types: number of attention heads
         :param max_degree: max in degree of nodes
         :param max_path_distance: max pairwise distance between two nodes
@@ -37,6 +39,7 @@ class GraphormerNRIEncoder(nn.Module):
         self.hidden_dim = hidden_dim
         self.num_edge_types = num_edge_types
         self.num_layers = num_layers
+        self.num_attention_heads = num_attention_heads
         self.ff_dim = hidden_dim
         self.max_degree = max_degree
         self.max_path_distance = max_path_distance
@@ -62,8 +65,8 @@ class GraphormerNRIEncoder(nn.Module):
         self.graphormer_layers = nn.ModuleList([
             GraphormerEncoderLayer(
                 node_dim=self.hidden_dim,
-                n_heads=self.num_edge_types,
-                ff_dim=self.ff_dim
+                n_heads=self.num_attention_heads,
+                ff_dim=self.ff_dim,
             ) for _ in range(self.num_layers - 1)
         ])
 
