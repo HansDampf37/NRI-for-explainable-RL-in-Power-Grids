@@ -61,7 +61,7 @@ class FiguresDict(TypedDict):
     edge_bars: Dict[int, Figure]
 
 
-def load_and_stack(dir_path: str, prefix: str) -> Tuple[np.ndarray, List[str]]:
+def load_and_stack(dir_path: str, prefix: str, no_interaction_index=1) -> Tuple[np.ndarray, List[str]]:
     """Load multiple .npy files sharing a prefix and stack them along the session axis.
 
     Assumption: Each file contains, per edge, a probability distribution over K edge types
@@ -72,6 +72,7 @@ def load_and_stack(dir_path: str, prefix: str) -> Tuple[np.ndarray, List[str]]:
     Args:
     - dir_path: Directory to search for files.
     - prefix: File prefix; all files "{prefix}*.npy" will be loaded.
+    - no_interaction_index: int; index of the "no interaction" type in the K edge types. Upon loading, the function will reorder the last axis to put this type at index -1 for consistency.
 
     Returns:
     - stacked: np.ndarray with shape (S, ...), typically (S, E, K).
@@ -89,6 +90,10 @@ def load_and_stack(dir_path: str, prefix: str) -> Tuple[np.ndarray, List[str]]:
     if len(shapes) > 1:
         raise ValueError(f'Inconsistent shapes for {prefix}: {shapes}')
     stacked = np.stack(arrays, axis=0)
+    order = list(np.arange(stacked.shape[-1]))
+    order.remove(no_interaction_index)
+    order.append(no_interaction_index)
+    stacked = stacked[..., order]
     return stacked, files
 
 
@@ -510,28 +515,23 @@ def run_analysis(data_dir: str, prefix: str, out_dir: str, top_k: int = 20) -> T
     # Expect stacked shape (S, E, K) but if files each contain (E, K) we have stacked as (S, E, K)
     if stacked.ndim != 3:
         raise ValueError(f'Expected stacked ndarray with ndim==3 (S,E,K), got shape {stacked.shape}')
+
     S, E, K = stacked.shape
     Path(out_dir).mkdir(parents=True, exist_ok=True)
     stats = compute_edge_statistics(stacked)
-    # pairwise session JS
-    pairwise_js = pairwise_js_between_sessions(stacked)
     # plots
-    fig1 = plot_hist_js(stats['js_per_edge'], os.path.join(out_dir, 'hist_js_per_edge.png'))
-    fig2 = plot_max_existence_vs_js_div_scatter(stats['max_exists_probs'], stats['js_per_edge'], os.path.join(out_dir, 'max_existence_vs_js_div_scatter.png'))
-    fig2_5 = plot_max_existence_vs_agreement_fraction(stats['max_exists_probs'], stats['agreement_fraction'], os.path.join(out_dir, 'max_existence_vs_agreement_fraction.png'))
-    fig3 = plot_session_js_heatmap(pairwise_js, os.path.join(out_dir, 'session_js_heatmap.png'))
-    fig4 = plot_agreement_hist(stats['agreement_fraction'], os.path.join(out_dir, 'agreement_fraction_hist.png'))
+    plot_hist_js(stats['js_per_edge'], os.path.join(out_dir, 'hist_js_per_edge.png'))
+    plot_max_existence_vs_js_div_scatter(stats['max_exists_probs'], stats['js_per_edge'], os.path.join(out_dir, 'max_existence_vs_js_div_scatter.png'))
+    plot_max_existence_vs_agreement_fraction(stats['max_exists_probs'], stats['agreement_fraction'], os.path.join(out_dir, 'max_existence_vs_agreement_fraction.png'))
+    plot_session_js_heatmap(pairwise_js_between_sessions(stacked), os.path.join(out_dir, 'session_js_heatmap.png'))
+    plot_agreement_hist(stats['agreement_fraction'], os.path.join(out_dir, 'agreement_fraction_hist.png'))
+    plot_mean_existence_cv_scatter()
+    plt.close('all')
     # choose edges to inspect: highest mean for any type, and highest js
     top_edges_by_mean = np.argsort(-stats['mean_probs'].max(axis=1))[:top_k]
     top_edges_by_js = np.argsort(-stats['js_per_edge'])[:top_k]
     example_edges = np.unique(np.concatenate([top_edges_by_mean[:5], top_edges_by_js[:5]]))
     figs_bars = plot_edge_bar_for_examples(stacked, example_edges, out_dir, files)
-    # Close figures here to avoid leaking when run headless
-    import matplotlib.pyplot as _plt
-    for _f in (fig1, fig2, fig2_5, fig3, fig4):
-        _plt.close(_f)
-    for _f in figs_bars.values():
-        _plt.close(_f)
     # save a small summary and per-edge CSV
     summary = {
         'n_sessions': int(S),
@@ -628,7 +628,7 @@ def main() -> None:
     above for an example invocation.
     """
     parser = argparse.ArgumentParser()
-    parser.add_argument('--results-dir', required=True)
+    parser.add_argument('--data-dir', required=True)
     parser.add_argument('--prefix', required=True)
     parser.add_argument('--out-dir', default='output/edge_consistency')
     parser.add_argument('--top-k', type=int, default=20)
