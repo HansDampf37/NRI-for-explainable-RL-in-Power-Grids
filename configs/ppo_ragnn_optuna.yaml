@@ -1,7 +1,7 @@
 setup:
   max_ep_len: 8064
-  duration: 00:02 # hh:mm
-  nb_timesteps: 100
+  duration: 65:00 # hh:mm
+  nb_timesteps: 160_000
   checkpoint_freq: 5
   verbose: 0
   my_log_level: 2
@@ -62,11 +62,8 @@ training:
     prior_prob_for_graph_edge: !uniform [0.0, 1.0]
     beta_start: !uniform [0.0, 1.0]
     beta_end: !uniform [1.0, 7.0]
-    tau_start: !uniform [1.0, 2.5] # Start with high temperature
-    tau_end: !uniform [0.2, 1.0]  # Anneal to this value
     beta_non_graph_edges_start: !uniform [0.0, 1.0]
     beta_non_graph_edges_end: !uniform [1.0, 2.0]
-    # Legacy parameters
     temperature: !uniform [0.0, 1.0]
   model:
     fcnet_hiddens: [256, 256, 256]  # Downstream MLP after GNN
@@ -86,6 +83,9 @@ training:
         hidden_dim: !choice [32, 64, 128]
         num_attention_heads: !choice [1, 2, 4]
         num_layers: 2
+      sampling:
+        tau_start: !uniform [ 1.0, 2.5 ] # Start with high temperature
+        tau_end: !uniform [ 0.2, 1.0 ]  # Anneal to this value
   _enable_learner_api: False
 
 rl_module:
@@ -137,7 +137,7 @@ evaluation:
   evaluation_interval: 5  # Evaluate every 5 iterations to save time
   evaluation_duration_unit: episodes
   always_attach_evaluation_results: True
-  evaluation_num_workers: 2
+  evaluation_num_workers: 30
   evaluation_config:
     explore: False
     env_config:
@@ -153,4 +153,4 @@ resources:
   num_learner_workers: 1
 
 rollouts:
-  num_rollout_workers: 2
+  num_rollout_workers: 80

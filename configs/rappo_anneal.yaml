@@ -50,11 +50,6 @@ training:
     beta_end: 5.0  # Anneal to this value
     beta_non_graph_edges_start: 0.0
     beta_non_graph_edges_end: 1.0
-    tau_start: 2.0  # Start with high temperature
-    tau_end: &tau_end 0.5  # Anneal to this value
-    # Legacy parameters
-    tau: *tau_end # override if no annealing is used (e.g. final evaluation)
-    beta: 1.0
     temperature: 0.5
   model:
 #    custom_model : linfcn
@@ -65,15 +60,17 @@ training:
       gnn: # this section is only used if model_type == "GNN" or "RAGNN" select model type via cli args
         hidden_dim: 256
         out_dim: 64
-        num_layers: 3
-        edge_probs_path: "/pfs/data6/home/ka/ka_iai/ka_hw6998/dev/NRI-for-explainable-RL-in-Power-Grids/results/edge_probabilities/edges_averaged_with_forecast_2026-01-08_14-11-58.npy"
+        num_layers: 1
       encoder: # this section is only used if model_type == "RAGNN", select model type via cli args
         num_edge_types: 2  # Number of edge types (defaults to 2: edge exists or doesn't exist)
         max_degree: 8 # todo change if bigger envs are considered
         max_path_distance: 55 # todo change if bigger envs are considered
         use_graphormer: True
         hidden_dim: 128
-        num_layers: 3
+        num_layers: 2
+      sampling:
+        tau_start: 2.0  # Start with high temperature
+        tau_end: 0.5  # Anneal to this value
   _enable_learner_api: False
 
 rl_module:

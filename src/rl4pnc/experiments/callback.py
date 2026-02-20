@@ -226,21 +226,25 @@ class AnnealingCallback(DefaultCallbacks):
         if policy is None:
             return
 
-        # Get config
-        ra_config = policy.config.get("relation_awareness", {})
-        tau_start = ra_config.get("tau_start", 1.0)
+        # Get values
+        tau_start = policy.config['model']['custom_model_config']['sampling']['tau_start']
+        beta_start = policy.config['relation_awareness']['beta_start']
+        beta_non_graph_edges_start = policy.config['relation_awareness']['beta_non_graph_edges_start']
 
-        # Set initial tau in model on all workers
-        def set_initial_tau(worker):
+        # Set initial tau and beta in model on all workers
+        def set_initial_values(worker):
             policy = worker.policy_map.get("reinforcement_learning_policy")
+            policy.current_tau = tau_start
+            policy.current_beta = beta_start
+            policy.current_beta_non_graph_edges = beta_non_graph_edges_start
             if policy and hasattr(policy, 'model') and hasattr(policy.model, 'set_tau'):
                 policy.model.set_tau(tau_start)
 
         # Set on local worker
-        set_initial_tau(algorithm.workers.local_worker())
+        set_initial_values(algorithm.workers.local_worker())
 
         # Set on remote workers
-        algorithm.workers.foreach_worker(set_initial_tau)
+        algorithm.workers.foreach_worker(set_initial_values)
 
     @staticmethod
     def cosine_decay_schedule(current_step: int, total_steps: int, start_val: float, end_val: float) -> float:
@@ -338,11 +342,11 @@ class AnnealingCallback(DefaultCallbacks):
             policy = worker.policy_map.get("reinforcement_learning_policy")
             if policy and hasattr(policy, 'current_beta'):
                 # Update policy attributes (for logging)
-                policy.current_beta = new_beta
-                policy.current_beta_non_graph_edges = new_beta_non_graph_edges
                 policy.current_tau = new_tau
 
                 # Update model's GumbelSoftmax tau (for functional effect)
+                policy.current_beta = new_beta
+                policy.current_beta_non_graph_edges = new_beta_non_graph_edges
                 if hasattr(policy, 'model') and hasattr(policy.model, 'set_tau'):
                     policy.model.set_tau(new_tau)
 

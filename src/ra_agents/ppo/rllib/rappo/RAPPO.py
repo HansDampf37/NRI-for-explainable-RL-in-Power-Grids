@@ -33,14 +33,15 @@ class RAPPOTorchPolicy(PPOTorchPolicy):
             The PPO loss tensor given the input batch.
         """
         # Initialize annealed parameters on first call (lazy initialization)
-        ra_config = self.config.get("relation_awareness", {})
+        ra_config = self.config["relation_awareness"]
+        sampling_config = self.config["model"]["custom_model_config"]["sampling"]
         if not hasattr(self, 'current_beta'):
-            self.current_beta = ra_config.get("beta_start", 0.0)
-            self.target_beta = ra_config.get("beta_end", ra_config.get("beta", 1.0))
-            self.current_beta_non_graph_edges = ra_config.get("beta_non_graph_edges_start", 0.0)
-            self.target_beta_non_graph_edges = ra_config.get("beta_non_graph_edges_end", ra_config.get("beta", 1.0))
-            self.current_tau = ra_config.get("tau_start", 1.0)
-            self.target_tau = ra_config.get("tau_end", ra_config.get("temperature", 0.5))
+            self.current_beta = ra_config["beta_end"]
+            self.target_beta = ra_config["beta_end"]
+            self.current_beta_non_graph_edges = ra_config.get("beta_non_graph_edges_end", ra_config["beta_end"])
+            self.target_beta_non_graph_edges = ra_config.get("beta_non_graph_edges_end", ra_config["beta_end"])
+            self.current_tau = sampling_config["tau_end"]
+            self.target_tau = sampling_config["tau_end"]
 
         total_loss = super().loss(model, dist_class, train_batch)
 

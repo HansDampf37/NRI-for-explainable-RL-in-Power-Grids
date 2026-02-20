@@ -51,11 +51,6 @@ training:
     beta_end: 0.0  # Anneal to this value
     beta_non_graph_edges_start: 0.0
     beta_non_graph_edges_end: 0.0
-    tau_start: 1.344  # Start with high temperature
-    tau_end: &tau_end 0.842  # Anneal to this value
-    # Legacy parameters
-    tau: *tau_end # override if no annealing is used (e.g. final evaluation)
-    beta: 0.0
   model:
 #    custom_model : linfcn
     fcnet_hiddens: [256,256,256] # !choice [(128,128,128), (256,256,256), (256, 128, 256)]  # [128,128,128] #
@@ -72,7 +67,10 @@ training:
         max_path_distance: 55 # todo change if bigger envs are considered
         use_graphormer: True
         hidden_dim: 128
-        num_layers: 3
+        num_layers: 2
+      sampling:
+        tau_start: 1.344  # Start with high temperature
+        tau_end: 0.842  # Anneal to this value
   _enable_learner_api: False
 
 rl_module:
