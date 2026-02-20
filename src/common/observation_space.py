@@ -193,8 +193,8 @@ class BusConnectivityGraphObsSpace(GraphObservationSpace):
         voltage_angle = np.concatenate([g2op_obs.theta_or, g2op_obs.theta_ex, g2op_obs.gen_theta, g2op_obs.load_theta])
         current = np.concatenate([g2op_obs.a_or, g2op_obs.a_ex, I_mag])
         rho = np.concatenate([g2op_obs.rho, g2op_obs.rho, np.zeros((g2op_obs.n_gen + g2op_obs.n_load,))])
-        bus_indices = np.concatenate([g2op_obs.line_or_bus, g2op_obs.line_ex_bus, g2op_obs.gen_bus, g2op_obs.load_bus])
-        substation_indices = np.concatenate([g2op_obs.line_or_to_subid, g2op_obs.line_ex_to_subid, g2op_obs.gen_to_subid, g2op_obs.load_to_subid])
+        #bus_indices = np.concatenate([g2op_obs.line_or_bus, g2op_obs.line_ex_bus, g2op_obs.gen_bus, g2op_obs.load_bus])
+        #substation_indices = np.concatenate([g2op_obs.line_or_to_subid, g2op_obs.line_ex_to_subid, g2op_obs.gen_to_subid, g2op_obs.load_to_subid])
 
         features = [
             active_power_forecast,
@@ -205,8 +205,8 @@ class BusConnectivityGraphObsSpace(GraphObservationSpace):
             voltage_angle,
             current,
             rho,
-            bus_indices,
-            substation_indices
+            #bus_indices,
+            #substation_indices
         ]
 
         node_features = np.array(features).transpose()
@@ -248,8 +248,8 @@ class BusConnectivityGraphObsSpace(GraphObservationSpace):
             "voltage_angle",
             "current",
             "rho",
-            "bus_indices",
-            "substation_indices"
+            #"bus_indices",
+            #"substation_indices"
         ]
 
         return feature_names

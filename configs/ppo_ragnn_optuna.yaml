@@ -24,9 +24,7 @@ setup:
       relation_awareness/tau_start: 2.0
       relation_awareness/tau_end: 0.5
       relation_awareness/temperature: 0.5
-      model/custom_model_config/encoder/num_edge_types: 2
       model/custom_model_config/encoder/hidden_dim: 64
-      model/custom_model_config/encoder/num_layers: 2
   post_training_evaluation:
     enabled: True  # Whether to evaluate the best checkpoint after training
     env_name: l2rpn_case14_sandbox_val  # Environment to use for evaluation
@@ -80,12 +78,13 @@ training:
         num_layers: 3  # Use optimal value from GNN optimization
         residual: True
       encoder: # RAGNN encoder settings
-        num_edge_types: !choice [2, 3]  # Number of edge types (2-6)
+        num_edge_types: 2  # Number of edge types (2-6)
         max_degree: 7
         max_path_distance: 9
         use_graphormer: True
         hidden_dim: !choice [32, 64, 128]
-        num_layers: !choice [2, 3]
+        num_attention_heads: !choice [1, 2, 4]
+        num_layers: 2
   _enable_learner_api: False
 
 rl_module:

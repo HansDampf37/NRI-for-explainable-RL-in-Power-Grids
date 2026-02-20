@@ -46,6 +46,7 @@ class RAFeatureExtractor(nn.Module):
     :param hidden_dim (int): Hidden dimension shared by encoder and GNN.
     :param num_edge_types (int): Number of edge types (K).
     :param num_gnn_layers (int): Number of layers in both encoder and GNN.
+    :param num_attention_heads_enc (int): Number of attention heads in the Graphormer encoder (ignored if use_graphormer=False).
     :param x_out_dim (int): Output node feature dimension.
     :param dropout_prob (float): Dropout probability used in both encoder and GNN.
     :param tau (float): Initial temperature for Gumbel-Softmax sampling.
@@ -59,6 +60,7 @@ class RAFeatureExtractor(nn.Module):
         x_dim: int,
         hidden_dim_enc: int,
         num_layers_enc: int,
+        num_attention_heads_enc: int,
         num_edge_types: int,
         hidden_dim_gnn: int,
         num_layers_gnn: int,
@@ -78,6 +80,7 @@ class RAFeatureExtractor(nn.Module):
                 hidden_dim=hidden_dim_enc,
                 num_edge_types=num_edge_types,
                 num_layers=num_layers_enc,
+                num_attention_heads=num_attention_heads_enc,
                 max_degree=max_degree,
                 max_path_distance=max_path_distance,
             )
@@ -381,6 +384,7 @@ class RLlibRAGNNModel(TorchModelV2, nn.Module):
             use_graphormer=kwargs['encoder'].get('use_graphormer', False),
             hidden_dim_enc=kwargs['encoder']['hidden_dim'],
             num_layers_enc=kwargs['encoder']['num_layers'],
+            num_attention_heads_enc=kwargs['encoder'].get('num_attention_heads', kwargs['encoder'].get('num_edge_types'), 1),
             num_edge_types=kwargs['encoder'].get('num_edge_types', 2),
             max_degree=kwargs['encoder'].get('max_degree', None),
             max_path_distance=kwargs['encoder'].get('max_path_distance', None),

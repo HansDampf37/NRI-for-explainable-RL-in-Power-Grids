@@ -14,6 +14,7 @@ class TestRAFeatureExtractor(unittest.TestCase):
         self.x_out_dim = 3
         self.num_edge_types = 4
         self.dropout_prob = 0.2
+        self.num_attention_heads = 2
 
         self.model = RAFeatureExtractor(
             x_dim=self.x_dim,
@@ -23,6 +24,7 @@ class TestRAFeatureExtractor(unittest.TestCase):
             num_edge_types=self.num_edge_types,
             num_layers_gnn=3,
             num_layers_enc=2,
+            num_attention_heads_enc=self.num_attention_heads,
             dropout_prob=self.dropout_prob,
         )
 
