@@ -38,6 +38,8 @@ training:
     enabled: false  # Set to true to enable encoder pretraining
   relation_awareness: # this section is only used if model_type == "RAGNN", select model type via cli args
     use_per_edge_prior: True # whether to use a per-edge prior (if False, global_prior will be used for all edges)
+    prior_prob_for_graph_edge: 0.0 # <- doesnt matter since beta is always 0
+    temperature: 0.0 # <- doesnt matter since beta is always 0
     beta_start: 0.0  # Start beta at 0
     beta_end: 0.0  # Anneal to this value
     beta_non_graph_edges_start: 0.0
