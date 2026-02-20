@@ -10,11 +10,7 @@ setup:
   experiment_name: 0501_compare_gnn_ragnn_mlp
   optimization:
     enable: False
-    score_metric: ~
-    mode: ~
-    n_trials: ~
-    points_to_evaluate: ~
-    load_from: ~  # load previous optimization results from this dir
+    score_metric: evaluation/custom_metrics/grid2op_end_mean
   post_training_evaluation:
     enabled: True  # Whether to evaluate the best checkpoint after training
     env_name: l2rpn_case14_sandbox_test  # Environment to use for evaluation
@@ -39,14 +35,9 @@ training:
   train_batch_size: 1024 #256 # 128 #!choice [256, 512, 1024] #
   batch_mode: complete_episodes
   encoder_pretrain: # this section is only used if model_type == "RAGNN" and callbacks include EncoderPretrainCallback
-    enabled: true  # Set to true to enable encoder pretraining
-    ds_size: 1000
-    batch_size: 32
-    num_epochs: 15
-    learning_rate: 0.005
+    enabled: false  # Set to true to enable encoder pretraining
   relation_awareness: # this section is only used if model_type == "RAGNN", select model type via cli args
     use_per_edge_prior: True # whether to use a per-edge prior (if False, global_prior will be used for all edges)
-    global_prior: [0.9, 0.1] # [prior for graph edge, prior for non-graph edge], only used if use_per_edge_prior is False
     beta_start: 0.0  # Start beta at 0
     beta_end: 0.0  # Anneal to this value
     beta_non_graph_edges_start: 0.0
@@ -68,6 +59,7 @@ training:
         use_graphormer: True
         hidden_dim: 128
         num_layers: 2
+        num_attention_heads: 2
       sampling:
         tau_start: 1.344  # Start with high temperature
         tau_end: 0.842  # Anneal to this value
@@ -84,7 +76,6 @@ callbacks:
   callbacks: !CombinedCallbacks
     - !CustomMetricsCallback
     - !AnnealingCallback
-    - !EncoderPretrainCallback
 
 framework:
   framework: torch
