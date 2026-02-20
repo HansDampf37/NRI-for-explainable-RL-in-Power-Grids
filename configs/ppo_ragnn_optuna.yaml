@@ -79,8 +79,8 @@ training:
         residual: True
       encoder: # RAGNN encoder settings
         num_edge_types: 2  # Number of edge types (2-6)
-        max_degree: 7
-        max_path_distance: 9
+        max_degree: 8
+        max_path_distance: 55
         use_graphormer: True
         hidden_dim: !choice [32, 64, 128]
         num_attention_heads: !choice [1, 2, 4]

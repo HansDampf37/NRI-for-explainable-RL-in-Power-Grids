@@ -74,8 +74,8 @@ training:
         edge_probs_path: /home/adrian/Dev/NRI-for-explainable-RL-in-Power-Grids/results/edge_probabilities/rappo_essence_graph.npy
       encoder: # RAGNN encoder settings
         num_edge_types: !choice [ 2, 3, 4 ]  # Number of edge types (2-6)
-        max_degree: 7
-        max_path_distance: 9
+        max_degree: 8
+        max_path_distance: 55
         use_graphormer: True
         hidden_dim: !choice [ 32, 64, 128, 256 ]
         num_layers: !choice [ 2, 3, 4 ]
