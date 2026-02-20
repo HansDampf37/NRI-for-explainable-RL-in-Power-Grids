@@ -30,7 +30,7 @@ setup:
       model/custom_model_config/gnn/out_dim: 64
   post_training_evaluation:
     enabled: True  # Whether to evaluate the best checkpoint after training
-    env_name: l2rpn_case14_sandbox_val  # Environment to use for evaluation
+    env_name: l2rpn_case14_sandbox_test  # Environment to use for evaluation
     num_episodes: all  # Number of episodes to evaluate (use "all" for all available episodes)
     visualize: False  # Whether to show visualization after evaluation
 debugging:
