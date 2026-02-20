@@ -1,7 +1,7 @@
 setup:
   max_ep_len: 8064
-  duration: 65:00 # hh:mm
-  nb_timesteps: 160_000
+  duration: 00:02 # hh:mm
+  nb_timesteps: 100
   checkpoint_freq: 5
   verbose: 0
   my_log_level: 2
@@ -25,6 +25,9 @@ setup:
       relation_awareness/tau_end: 0.5
       relation_awareness/temperature: 0.5
       model/custom_model_config/encoder/hidden_dim: 64
+      model/custom_model_config/encoder/num_attention_heads: 2
+      model/custom_model_config/gnn/hidden_dim: 256
+      model/custom_model_config/gnn/out_dim: 64
   post_training_evaluation:
     enabled: True  # Whether to evaluate the best checkpoint after training
     env_name: l2rpn_case14_sandbox_val  # Environment to use for evaluation
@@ -64,8 +67,6 @@ training:
     beta_non_graph_edges_start: !uniform [0.0, 1.0]
     beta_non_graph_edges_end: !uniform [1.0, 2.0]
     # Legacy parameters
-    tau: 0.2 # override if no annealing is used (e.g. final evaluation)
-    beta: 1.0
     temperature: !uniform [0.0, 1.0]
   model:
     fcnet_hiddens: [256, 256, 256]  # Downstream MLP after GNN
@@ -73,9 +74,9 @@ training:
     post_fcnet_hiddens: [256, 128]
     custom_model_config:
       gnn: # GNN-specific hyperparameters - WILL BE COPIED FROM OPTIMAL GNN CONFIG LATER
-        hidden_dim: 265  # Use optimal value from GNN optimization
-        out_dim: 64  # Use optimal value from GNN optimization
-        num_layers: 3  # Use optimal value from GNN optimization
+        hidden_dim: !choice [64, 128, 256]  # Use optimal value from GNN optimization
+        out_dim: !choice [64, 128, 256]  # Use optimal value from GNN optimization
+        num_layers: 1  # Use optimal value from GNN optimization
         residual: True
       encoder: # RAGNN encoder settings
         num_edge_types: 2  # Number of edge types (2-6)
@@ -136,7 +137,7 @@ evaluation:
   evaluation_interval: 5  # Evaluate every 5 iterations to save time
   evaluation_duration_unit: episodes
   always_attach_evaluation_results: True
-  evaluation_num_workers: 30
+  evaluation_num_workers: 2
   evaluation_config:
     explore: False
     env_config:
@@ -152,4 +153,4 @@ resources:
   num_learner_workers: 1
 
 rollouts:
-  num_rollout_workers: 80
+  num_rollout_workers: 2

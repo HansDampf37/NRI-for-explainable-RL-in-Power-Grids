@@ -384,7 +384,7 @@ class RLlibRAGNNModel(TorchModelV2, nn.Module):
             use_graphormer=kwargs['encoder'].get('use_graphormer', False),
             hidden_dim_enc=kwargs['encoder']['hidden_dim'],
             num_layers_enc=kwargs['encoder']['num_layers'],
-            num_attention_heads_enc=kwargs['encoder'].get('num_attention_heads', kwargs['encoder'].get('num_edge_types'), 1),
+            num_attention_heads_enc=kwargs['encoder'].get('num_attention_heads', kwargs['encoder'].get('num_edge_types', 1)),
             num_edge_types=kwargs['encoder'].get('num_edge_types', 2),
             max_degree=kwargs['encoder'].get('max_degree', None),
             max_path_distance=kwargs['encoder'].get('max_path_distance', None),
