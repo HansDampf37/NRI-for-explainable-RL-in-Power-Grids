@@ -1,16 +1,17 @@
-experiment_name=1901_rappo_with_anneal_different_betas
+experiment_name=2026_02_21_rappo_with_anneal_different_betas
 export experiment_name
 cd ../../
 
 # Create output directories
 mkdir -p results/experiments/${experiment_name}/out
 
+for seed in 0 1 2 3 4; do
 sbatch << EOF
 #!/bin/bash
 
-#SBATCH --job-name=anneal_ragnn                                           # Name of the job
-#SBATCH --output=results/experiments/${experiment_name}/out/ragnn_ppo.%j.log            # Output file
-#SBATCH --error=results/experiments/${experiment_name}/out/error_ragnn_ppo.%j.log       # Error file
+#SBATCH --job-name=anneal_ragnn_s${seed}                                           # Name of the job
+#SBATCH --output=results/experiments/${experiment_name}/out/ragnn_ppo_s${seed}.%j.log            # Output file
+#SBATCH --error=results/experiments/${experiment_name}/out/error_ragnn_ppo_s${seed}.%j.log       # Error file
 #SBATCH --ntasks=1                                                            # Number of tasks
 #SBATCH --cpus-per-task=111                                                    # Number of CPU cores per task
 #SBATCH --time=20:00:00                                                       # Max wall time (HH:MM:SS)
@@ -20,5 +21,6 @@ sbatch << EOF
 module load devel/miniforge
 conda activate L2RPN
 
-PYTHONPATH=$(pwd) python training_scripts/train_ppo.py -f configs/rappo_anneal.yaml -wd . -s 0 -j 0 --model-type RAGNN --experiment-name ${experiment_name}
+PYTHONPATH=$(pwd) python training_scripts/train_ppo.py -f configs/rappo_anneal.yaml -wd . -s ${seed} -j 0 --model-type RAGNN --experiment-name ${experiment_name}
 EOF
+done
