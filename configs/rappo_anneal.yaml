@@ -1,7 +1,7 @@
 setup:
   max_ep_len: 8064
   duration: ~ # HH:MM or minutes of training before stopping, overwrites nb_timesteps limit if value > 0
-  nb_timesteps: 150_000 # 500.000 with opponent
+  nb_timesteps: 160_000 # 500.000 with opponent
   checkpoint_freq: 5
   verbose: 0
   my_log_level: 2
@@ -10,11 +10,7 @@ setup:
   experiment_name: 0501_compare_gnn_ragnn_mlp
   optimization:
     enable: False
-    score_metric: ~
-    mode: ~
-    n_trials: ~
-    points_to_evaluate: ~
-    load_from: ~  # load previous optimization results from this dir
+    score_metric: evaluation/custom_metrics/grid2op_end_mean
   post_training_evaluation:
     enabled: True  # Whether to evaluate the best checkpoint after training
     env_name: l2rpn_case14_sandbox_test  # Environment to use for evaluation
