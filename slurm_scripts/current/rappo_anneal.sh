@@ -1,4 +1,4 @@
-experiment_name=2026_02_21_rappo_with_anneal_different_betas
+experiment_name=2026_02_21_rappo_with_anneal_reproduce_13_01
 export experiment_name
 cd ../../
 
