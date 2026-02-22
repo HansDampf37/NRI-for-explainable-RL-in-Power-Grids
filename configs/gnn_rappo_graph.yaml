@@ -17,7 +17,7 @@ setup:
     load_from: ~  # load previous optimization results from this dir
   post_training_evaluation:
     enabled: True  # Whether to evaluate the best checkpoint after training
-    env_name: l2rpn_case14_sandbox_val  # Environment to use for evaluation
+    env_name: l2rpn_case14_sandbox_test  # Environment to use for evaluation
     num_episodes: all  # Number of episodes to evaluate (use "all" for all available episodes)
     visualize: False  # Whether to show visualization after evaluation
 debugging:
@@ -48,7 +48,7 @@ training:
         hidden_dim: 256
         out_dim: 64
         num_layers: 3
-        edge_probs_path: "/pfs/data6/home/ka/ka_iai/ka_hw6998/dev/NRI-for-explainable-RL-in-Power-Grids/results/edge_probabilities/rappo_essence_graph.npy"
+        edge_probs_path: "/pfs/data6/home/ka/ka_iai/ka_hw6998/dev/NRI-for-explainable-RL-in-Power-Grids/results/edge_probabilities/rappo_essence_graph_new.npy"
   _enable_learner_api: False
 
 rl_module:
