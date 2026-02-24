@@ -80,11 +80,12 @@ def visualize_agent_survival(datasets: List[AgentMetrics], save_to: Optional[Pat
 
     plt.tight_layout()
 
+    if save_to is not None:
+        save_to.parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(save_to)
+
     if show:
         plt.show()
-
-    if save_to is not None:
-        plt.savefig(save_to)
 
     plt.close()
 

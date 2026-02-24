@@ -393,7 +393,7 @@ class RLlibRAGNNModel(TorchModelV2, nn.Module):
             num_layers_gnn=kwargs['gnn']['num_layers'],
             dropout_prob=kwargs['gnn'].get('dropout_prob', 0.0),
             residual=kwargs['gnn'].get('residual', True),
-            tau=kwargs['sampling'].get('tau_end', kwargs['sampling'].get('tau', 1.0))
+            tau=0.5#kwargs['sampling'].get('tau_end', kwargs['sampling'].get('tau', 1.0))
         )
         # Build downstream MLP head(s)
         # Create a Box space for the GNN output to pass to FCN

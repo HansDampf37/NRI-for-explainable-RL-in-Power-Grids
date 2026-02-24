@@ -5,33 +5,30 @@ This version shows posterior statistics and graph visualizations.
 Reuses existing infrastructure from evaluate_rllib_agent.py
 """
 import logging
-import time
 import traceback
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 import numpy.typing as npt
 import torch
-from grid2op.Action import BaseAction
-from grid2op.Agent import BaseAgent
+from grid2op.Environment import Environment
 from grid2op.Observation import BaseObservation
 from ray.rllib.models import ModelCatalog
 
 from evaluate_rllib_agent import load_config, load_rllib_agent
-from src.common.observation_space import BusConnectivityGraphObsSpace, EDGE_INDEX, EDGE_MASK
+from src.common.observation_space import BusConnectivityGraphObsSpace
 from src.experiments.analyze_latent_graphs.Metrics import (
     MetricVisualizer,
     PosteriorDistributionVisualizer, StepVisualizer, KLDivergenceVisualizer, EntropyVsKLVisualizer,
     DegreeDistributionVisualizer, ClusteringCoefficientVisualizer, InnerTreeNodeProbabilityVisualizer,
     PathLengthVisualizer, SymmetryMetricVisualizer, EdgeNodeTypeVisualizer, BetweennessVisualizer
 )
+from src.experiments.analyze_latent_graphs.agent_analysis_framework import PosteriorAnalyzer, LatentGraphAnalysisAgent
 from src.nri.utils import fully_connected_edge_index, get_priors, get_prior_tensor
 from src.ra_agents.RAFeatureExtractor import RLlibGNNModel, RLlibRAGNNModel, RLlibNRIGNNModel
-from src.rl4pnc.evaluation.evaluation_agents import RllibAgent
-from src.rl4pnc.grid2op_env.observation_converter import ObservationConverter
 from src.visualization import get_node_styles
 from src.visualization.utils import NodeStyle
 
@@ -40,7 +37,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-class PosteriorAnalyser:
+class PosteriorMetrics(PosteriorAnalyzer):
     """Class to analyse and visualize RAPPO posterior distributions."""
 
     def __init__(self, save_dir: Path, node_styles: List[NodeStyle], prior_for_graph_edges: float = 0.9,
@@ -77,7 +74,7 @@ class PosteriorAnalyser:
         self.step_count_total = 0
         self.episode_count = 0
 
-    def on_new_step(self, posterior: npt.NDArray, powergrid_graph: npt.NDArray, observation: BaseObservation):
+    def on_rl_step(self, posterior: npt.NDArray, powergrid_graph: npt.NDArray, observation: BaseObservation, _: Environment):
         self.step_count_this_episode += 1
         self.step_count_total += 1
         prior = self._get_prior(powergrid_graph, self.prior_for_graph_edges, self.temperature, self.num_edge_types)
@@ -197,61 +194,8 @@ class PosteriorAnalyser:
         ).detach().cpu().numpy()
         return prior
 
-
-class LatentGraphAnalysisAgent(BaseAgent):
-    """Wrapper around RllibAgent that displays RAPPO posterior distribution when RL model acts."""
-
-    def __init__(self, rllib_agent: RllibAgent, gym_wrapper: ObservationConverter, analyser: PosteriorAnalyser):
-        """Initialize RAPPOPosteriorAgent."""
-        BaseAgent.__init__(self, rllib_agent.action_space)
-
-        self.rllib_agent = rllib_agent
-        self.analyser = analyser
-        self.gym_wrapper = gym_wrapper
-
-        # Get the policy model for accessing posterior
-        self.policy_model = rllib_agent._rllib_agent.model
-
-        # Get environment and node styles for graph visualization
-        self.g2op_env = gym_wrapper.env_gym.init_env
-
-    def act(self, observation: BaseObservation, reward: float, done: bool = False) -> BaseAction:
-        """Returns action and visualizes posterior when RL model is used."""
-        action = self.rllib_agent.act(observation, reward, done)
-
-        # Check if RL agent will be activated (same logic as RllibAgent)
-        use_rl_component = self.rllib_agent.activate_agent(observation)
-        if use_rl_component:
-            posterior = self._get_posterior()
-            self.rllib_agent.gym_wrapper.update_obs(observation)
-            powergrid_edge_index = self.rllib_agent.gym_wrapper.cur_gym_obs[EDGE_INDEX]
-            edge_mask = self.rllib_agent.gym_wrapper.cur_gym_obs[EDGE_MASK]
-            powergrid_edge_index = torch.from_numpy(powergrid_edge_index[..., edge_mask])
-
-            self.analyser.on_new_step(
-                posterior,
-                powergrid_edge_index.detach().cpu().numpy(),
-                observation
-            )
-
-        return action
-
-    def on_new_episode(self, chronic_id: str):
-        """Notify analyser of new episode."""
-        self.analyser.on_new_episode(chronic_id)
-
-    def on_evaluation_end(self):
-        """Notify analyser of evaluation end."""
-        self.analyser.on_evaluation_end()
-
-    def _get_posterior(self) -> Any:
-        posterior = self.policy_model.get_posterior()  # [B, E, K]
-
-        if posterior.dim() == 3:
-            posterior = posterior[0]  # [E, K]
-
-        posterior_np = posterior.cpu().detach().numpy()
-        return posterior_np
+    def on_heuristic_step(self, powergrid_graph: npt.NDArray, observation: BaseObservation, environment: Environment):
+        pass
 
 
 def run_rappo_visualization(
@@ -295,7 +239,7 @@ def run_rappo_visualization(
     agent = LatentGraphAnalysisAgent(
         rllib_agent=rllib_agent,
         gym_wrapper=gym_wrapper,
-        analyser=PosteriorAnalyser(
+        analyser=PosteriorMetrics(
             save_dir=save_dir,
             node_styles=get_node_styles(g2op_env, BusConnectivityGraphObsSpace),
             prior_for_graph_edges=config.get("relation_awareness", {}).get("prior_prob_for_graph_edge", 0.9),
@@ -306,38 +250,7 @@ def run_rappo_visualization(
     )
 
     logger.info("Agent loaded! Starting episodes...\n")
-
-    # Run episodes
-    start_time = time.time()
-    for episode in range(num_episodes):
-        chronic_id = g2op_env.chronics_handler.get_name()
-        obs = g2op_env.reset()
-        agent.on_new_episode(chronic_id)
-        done = False
-        total_reward = 0
-
-        print(f"\n{'=' * 80}")
-        print(f"EPISODE {episode + 1}/{num_episodes} - Chronic: {chronic_id}")
-        print(f"{'=' * 80}\n")
-
-        while not done:
-            action = agent.act(obs, total_reward, done)
-            obs, reward, done, info = g2op_env.step(action)
-            total_reward += reward
-
-        print(f"Episode {episode + 1} ended with total reward: {total_reward} after {g2op_env.nb_time_step}/{g2op_env.max_episode_duration()} steps\n")
-        if max_total_duration_s is not None:
-            elapsed_time = time.time() - start_time
-            if elapsed_time >= max_total_duration_s:
-                logger.info(f"Reached maximum total duration of {max_total_duration_s} seconds. Stopping evaluation.")
-                break
-
-    agent.on_evaluation_end()
-
-    try:
-        gym_wrapper.env_gym.close()
-    except Exception as e:
-        logger.debug(f"Environment cleanup error (ignored): {e}")
+    agent.analyze(max_total_duration_s, num_episodes)
 
 
 def main():
@@ -347,13 +260,13 @@ def main():
     env_name_override = "l2rpn_case14_sandbox"
     max_total_duration_s = 8 * 60 * 60  # 8 hours in seconds
 
-    num_episodes = 900  # Number of episodes to run
+    num_episodes = 2  # Number of episodes to run
     run_rappo_visualization(
         checkpoint_path=checkpoint_path,
         checkpoint_name=checkpoint_name,
         env_name_override=env_name_override,
         num_episodes=num_episodes,
-        save_dir=Path("results/experiments/0302_compute_metrics_900"),
+        save_dir=Path("results/experiments/2202_compute_metrics_900"),
         max_total_duration_s=max_total_duration_s
     )
 

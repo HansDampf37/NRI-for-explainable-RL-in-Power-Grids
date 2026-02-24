@@ -12,10 +12,8 @@ from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.ticker import MultipleLocator
 
-from src.common.observation_space import BusConnectivityGraphObsSpace
-from src.nri.utils import fully_connected_edge_index
 from src.visualization import visualize_graph, PlottingArgs
-from src.visualization.utils import NodeStyle, get_node_styles
+from src.visualization.utils import NodeStyle
 
 T = TypeVar("T")  # generic type for computed metric
 
