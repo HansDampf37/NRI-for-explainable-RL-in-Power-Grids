@@ -1,6 +1,5 @@
 import logging
 from pathlib import Path
-from typing import Any
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -9,16 +8,19 @@ import numpy.typing as npt
 import seaborn as sns
 from grid2op.Environment import Environment
 from grid2op.Observation import BaseObservation
-from numpy import dtype, ndarray
 from scipy.stats import spearmanr, kendalltau
 from sklearn.feature_selection import mutual_info_regression
 from sklearn.metrics import roc_auc_score, average_precision_score
 
 from evaluate_rllib_agent import load_config, load_rllib_agent
+from src.common.observation_space import BusConnectivityGraphObsSpace, EDGE_INDEX
 from src.experiments.analyze_latent_graphs.MetricAnalyzer import PosteriorAnalyzer
 from src.experiments.analyze_latent_graphs.agent_analysis_framework import LatentGraphAnalysisAgent
+from src.experiments.analyze_latent_graphs.build_coupling_matrices import get_risk_vector
+from src.nri.utils import fully_connected_edge_index
 from src.rl4pnc.evaluation.evaluation_agents import RllibAgent
 from src.rl4pnc.grid2op_env.custom_environment import CustomizedGrid2OpEnvironment
+from src.visualization import visualize_graph, PlottingArgs, get_node_styles
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +51,6 @@ class Hypothesis2verifier(PosteriorAnalyzer):
         min_timesteps_per_edge: int = 5,
         use_abs_coupling_for_metrics: bool = False,
         random_state_mi: int = 0,
-        compare_to_mean_coupling: bool = False,
     ):
         self.topk_frac = float(topk_frac)
         self.strong_label_percentile = float(strong_label_percentile)
@@ -57,23 +58,17 @@ class Hypothesis2verifier(PosteriorAnalyzer):
         self.min_timesteps_per_edge = int(min_timesteps_per_edge)
         self.use_abs_coupling_for_metrics = bool(use_abs_coupling_for_metrics)
         self.random_state_mi = int(random_state_mi)
-        self.compare_to_mean_coupling = bool(compare_to_mean_coupling)
-        self.mean_coupling = np.load(out_dir / "risk_coupling/coupling_mean.npy") if compare_to_mean_coupling else None
         # Results go into a mode-specific subdirectory so both modes can coexist
-        self.outdir = out_dir / ("mean_coupling" if compare_to_mean_coupling else "risk_coupling")
+        self.outdir = out_dir / "risk_coupling"
 
-        # Per-timestep scalars
-        self.spearman_rho = []
-        self.pearson_r = []
-        self.kendall_tau = []
-        self.topk_overlap = []
-        self.roc_auc = []
-        self.avg_precision = []
-        self.mutual_info = []
+        # Accumulated over time: risk vectors r(s_t) of shape [n_nodes] each
+        self._risk_vectors: list[npt.NDArray] = []   # list of [n_nodes]
+        # Accumulated over time: posterior edge-existence probabilities shape [E] each
+        self._posterior_over_time: list[npt.NDArray] = []  # list of [E]
 
-        # For edge-wise temporal correlation
-        self._P_over_time = []  # list of [E] with NaNs for invalid
-        self._C_over_time = []  # list of [E] with NaNs for invalid
+        # Stored on first on_rl_step call for use in generate_plots
+        self._environment: Environment | None = None
+        self._powerline_edge_index: npt.NDArray | None = None
 
         # Optional: episode boundaries (if you want later)
         self._episode_ids = []
@@ -82,12 +77,12 @@ class Hypothesis2verifier(PosteriorAnalyzer):
     @property
     def _coupling_label(self) -> str:
         """Human-readable label for what coupling is being compared against."""
-        return "avg Risk coupling" if self.compare_to_mean_coupling else "Risk coupling"
+        return "Risk coupling"
 
     @property
     def _coupling_short(self) -> str:
         """Short token used in file names."""
-        return "mean_risk_coupling" if self.compare_to_mean_coupling else "risk_coupling"
+        return "risk_coupling"
 
     @staticmethod
     def _nan_pearson(x: np.ndarray, y: np.ndarray) -> float:
@@ -169,67 +164,18 @@ class Hypothesis2verifier(PosteriorAnalyzer):
         observation: BaseObservation,
         environment: Environment,
     ):
-        # Coupling aligned with fully-connected edge ordering
-        if self.compare_to_mean_coupling:
-            coupling = self.mean_coupling
-        else:
-            coupling = get_risk_coupling_index(environment).astype(np.float64)  # [E]
+        # Capture env and powerline edge index once for later graph visualisation
+        if self._environment is None:
+            self._environment = environment
+            obs_space = BusConnectivityGraphObsSpace(grid2op_observation_space=environment.observation_space)
+            self._powerline_edge_index = obs_space.to_gym(environment.current_obs)[EDGE_INDEX]
 
-        posterior_existence = posterior[:, 0].astype(np.float64) # [E]
-        assert coupling.shape == posterior_existence.shape
+        # Accumulate per-node risk vector r(s_t): shape [n_nodes]
+        r = get_risk_vector(environment).astype(np.float64)
+        self._risk_vectors.append(r)
 
-        valid = np.isfinite(coupling) & np.isfinite(posterior_existence)
-
-        # Optional: compare against |coupling|
-        C = np.abs(coupling) if self.use_abs_coupling_for_metrics else coupling
-        P = posterior_existence
-
-        # Store full vectors (NaN for invalid) for edge-wise temporal correlation
-        C_full = np.full_like(C, np.nan, dtype=np.float64)
-        P_full = np.full_like(P, np.nan, dtype=np.float64)
-        C_full[valid] = C[valid]
-        P_full[valid] = P[valid]
-        self._C_over_time.append(C_full)
-        self._P_over_time.append(P_full)
-
-        # Per-timestep metrics on valid subset
-        C_valid = C[valid]
-        P_valid = P[valid]
-
-        if C_valid.size < self.min_samples_per_timestep:
-            # Append NaNs to keep alignment with timesteps
-            self.spearman_rho.append(np.nan)
-            self.pearson_r.append(np.nan)
-            self.kendall_tau.append(np.nan)
-            self.topk_overlap.append(np.nan)
-            self.roc_auc.append(np.nan)
-            self.avg_precision.append(np.nan)
-            self.mutual_info.append(np.nan)
-            self._t_global += 1
-            return
-
-        # Spearman
-        rho = spearmanr(C_valid, P_valid).correlation
-        self.spearman_rho.append(float(rho) if rho is not None else np.nan)
-
-        # Pearson
-        r = self._nan_pearson(C_valid, P_valid)
-        self.pearson_r.append(r)
-
-        # Kendall
-        tau = kendalltau(C_valid, P_valid).correlation
-        self.kendall_tau.append(float(tau) if tau is not None else np.nan)
-
-        # Top-k overlap
-        self.topk_overlap.append(self._topk_overlap(C_valid, P_valid, self.topk_frac))
-
-        # AUC + AP (strong coupling label by percentile)
-        auc, ap = self._auc_metrics(C_valid, P_valid, self.strong_label_percentile)
-        self.roc_auc.append(auc)
-        self.avg_precision.append(ap)
-
-        # Mutual information
-        self.mutual_info.append(self._mi(C_valid, P_valid))
+        # Accumulate posterior edge-existence probability: shape [E]
+        self._posterior_over_time.append(posterior[:, 0].astype(np.float64))
 
         self._t_global += 1
 
@@ -283,113 +229,173 @@ class Hypothesis2verifier(PosteriorAnalyzer):
         plt.show()
 
     def on_evaluation_end(self):
-        # Convert lists -> arrays
-        spearman_rho = np.array(self.spearman_rho, dtype=np.float64)
-        pearson_r = np.array(self.pearson_r, dtype=np.float64)
-        kendall_tau_arr = np.array(self.kendall_tau, dtype=np.float64)
-        topk_overlap_arr = np.array(self.topk_overlap, dtype=np.float64)
-        roc_auc_arr = np.array(self.roc_auc, dtype=np.float64)
-        ap_arr = np.array(self.avg_precision, dtype=np.float64)
-        mi_arr = np.array(self.mutual_info, dtype=np.float64)
+        T = self._t_global
+        if T == 0:
+            print("No timesteps recorded.")
+            return
 
-        num_timesteps = len(spearman_rho)
+        # --- Build C_{ij}^{risk} = spearman_t(r_i(s_t), r_j(s_t)) ---
+        # Spearman rank correlation is used instead of Pearson to capture
+        # non-linear monotonic relationships and be robust to outliers.
+        # R: [T, N]  – each row is the risk vector at one timestep
+        R = np.stack(self._risk_vectors, axis=0).astype(np.float64)  # [T, N]
+        N = R.shape[1]
 
-        # Edge-wise temporal correlation (Pearson across time, per edge)
-        P_T = np.stack(self._P_over_time, axis=0)  # [T, E]
-        C_T = np.stack(self._C_over_time, axis=0)  # [T, E]
-        mean_c = np.nanmean(C_T, axis=0)  # [E]
-        T, E = P_T.shape
+        # Mark constant nodes as invalid (rank correlation undefined for zero-variance series)
+        R_std = R.std(axis=0)  # [N]
+        zero_var = R_std < 1e-12
 
-        edge_corr = np.full(E, np.nan, dtype=np.float64)
-        edge_spearman = np.full(E, np.nan, dtype=np.float64)
-        for e in range(E):
-            p_e = P_T[:, e]
-            c_e = C_T[:, e]
-            m = np.isfinite(p_e) & np.isfinite(c_e)
-            if m.sum() < self.min_timesteps_per_edge:
+        # Pairwise Spearman: C_{ij} = spearmanr(r_i over t, r_j over t)
+        C_node = np.full((N, N), np.nan, dtype=np.float64)
+        for i in range(N):
+            if zero_var[i]:
                 continue
-            pe = p_e[m]
-            ce = c_e[m]
-            if pe.std() < 1e-12 or ce.std() < 1e-12:
-                continue
-            edge_corr[e] = np.corrcoef(pe, ce)[0, 1]
-            rho_e = spearmanr(pe, ce).correlation
-            edge_spearman[e] = float(rho_e) if rho_e is not None else np.nan
+            for j in range(i, N):
+                if zero_var[j]:
+                    continue
+                ri = R[:, i]
+                rj = R[:, j]
+                valid = np.isfinite(ri) & np.isfinite(rj)
+                if valid.sum() < self.min_timesteps_per_edge:
+                    continue
+                rho = spearmanr(ri[valid], rj[valid]).correlation
+                c = float(rho) if rho is not None else np.nan
+                C_node[i, j] = c
+                C_node[j, i] = c
 
-        # Print summaries
-        def summarize(name: str, x: np.ndarray):
-            xf = x[np.isfinite(x)]
-            if xf.size == 0:
-                print(f"{name}: all NaN")
-                return
-            print(f"{name} over t={num_timesteps}: mean={xf.mean():.4f}, std={xf.std():.4f}, median={np.median(xf):.4f}, n_valid={xf.size}")
+        # --- Flatten to fully-connected edge ordering [E] ---
+        edge_index = fully_connected_edge_index(num_nodes=N)
+        src = edge_index[0].cpu().numpy()
+        dst = edge_index[1].cpu().numpy()
+        E = src.shape[0]
+        C_edge = C_node[src, dst]  # [E]  – NaN for pairs with constant nodes
 
-        summarize("Spearman rho", spearman_rho)
-        summarize("Pearson r", pearson_r)
-        summarize("Kendall tau", kendall_tau_arr)
-        summarize(f"Top-{int(self.topk_frac*100)}% overlap", topk_overlap_arr)
-        summarize(f"ROC-AUC (labels: coupling >= p{self.strong_label_percentile})", roc_auc_arr)
-        summarize(f"Avg Precision (labels: coupling >= p{self.strong_label_percentile})", ap_arr)
-        summarize("Mutual information", mi_arr)
+        # Optionally use |C| for metrics
+        C = np.abs(C_edge) if self.use_abs_coupling_for_metrics else C_edge
 
-        edge_corr_f = edge_corr[np.isfinite(edge_corr)]
-        if edge_corr_f.size:
-            print(f"Edge-wise temporal Pearson corr over edges={E}: mean={edge_corr_f.mean():.4f}, std={edge_corr_f.std():.4f}, median={np.median(edge_corr_f):.4f}, n_valid={edge_corr_f.size}")
-        else:
-            print("Edge-wise temporal Pearson corr: all NaN")
+        # --- Time-averaged posterior [E] ---
+        P_T = np.stack(self._posterior_over_time, axis=0)  # [T, E]
+        P_mean = np.nanmean(P_T, axis=0)                    # [E]
 
-        edge_spearman_f = edge_spearman[np.isfinite(edge_spearman)]
-        if edge_spearman_f.size:
-            print(rf"Edge-wise temporal Spearman rho over edges={E}: mean={edge_spearman_f.mean():.4f}, std={edge_spearman_f.std():.4f}, median={np.median(edge_spearman_f):.4f}, n_valid={edge_spearman_f.size}")
-        else:
-            print("Edge-wise temporal Spearman rho: all NaN")
+        valid_mask = np.isfinite(C) & np.isfinite(P_mean)
+        C_valid = C[valid_mask]
+        P_valid = P_mean[valid_mask]
 
-        # Save arrays
+        print(f"\n=== Hypothesis 2: Risk Coupling vs Posterior (T={T}, N={N}, E={E}) ===")
+        print(f"  Valid edge pairs: {valid_mask.sum()} / {E}")
+
+        def _scalar_metrics(c_v: np.ndarray, p_v: np.ndarray):
+            if c_v.size < self.min_samples_per_timestep:
+                return {}
+            results = {}
+            rho = spearmanr(c_v, p_v).correlation
+            results["Spearman rho"] = float(rho) if rho is not None else np.nan
+            results["Pearson r"] = self._nan_pearson(c_v, p_v)
+            tau = kendalltau(c_v, p_v).correlation
+            results["Kendall tau"] = float(tau) if tau is not None else np.nan
+            results[f"Top-{int(self.topk_frac*100)}% overlap"] = self._topk_overlap(c_v, p_v, self.topk_frac)
+            auc, ap = self._auc_metrics(c_v, p_v, self.strong_label_percentile)
+            results[f"ROC-AUC (p{int(self.strong_label_percentile)})"] = auc
+            results[f"Avg Precision (p{int(self.strong_label_percentile)})"] = ap
+            results["Mutual information"] = self._mi(c_v, p_v)
+            return results
+
+        metrics = _scalar_metrics(C_valid, P_valid)
+        for name, val in metrics.items():
+            print(f"  {name}: {val:.4f}" if np.isfinite(val) else f"  {name}: NaN")
+
+        # --- Save ---
         cs = self._coupling_short
-        self._save_array(spearman_rho, self.outdir / f"spearman_{cs}_posterior.npy")
-        self._save_array(pearson_r, self.outdir / f"pearson_{cs}_posterior.npy")
-        self._save_array(kendall_tau_arr, self.outdir / f"kendall_{cs}_posterior.npy")
-        self._save_array(topk_overlap_arr, self.outdir / f"topk_overlap_{int(self.topk_frac*100)}pct.npy")
-        self._save_array(roc_auc_arr, self.outdir / f"roc_auc_strong_{cs}_p{int(self.strong_label_percentile)}.npy")
-        self._save_array(ap_arr, self.outdir / f"avg_precision_strong_{cs}_p{int(self.strong_label_percentile)}.npy")
-        self._save_array(mi_arr, self.outdir / f"mutual_info_{cs}_posterior.npy")
-        self._save_array(edge_corr, self.outdir / f"edgewise_temporal_pearson_{cs}_posterior.npy")
-        self._save_array(edge_spearman, self.outdir / f"edgewise_temporal_spearman_{cs}_posterior.npy")
-        self._save_array(P_T, self.outdir / "posterior_over_time.npy")
-        self._save_array(C_T, self.outdir / "coupling_over_time.npy")
-        self._save_array(mean_c, self.outdir / "coupling_mean.npy")
+        self.outdir.mkdir(parents=True, exist_ok=True)
+        self._save_array(R,       self.outdir / "risk_vectors_over_time.npy")  # [T, N]
+        self._save_array(C_node,  self.outdir / "C_risk_node_matrix.npy")      # [N, N]
+        self._save_array(C_edge,  self.outdir / f"{cs}_edge_vector.npy")       # [E]
+        self._save_array(P_mean,  self.outdir / "posterior_mean_edge.npy")     # [E]
+        self._save_array(P_T,     self.outdir / "posterior_over_time.npy")     # [T, E]
+        metrics_arr = np.array(list(metrics.values()), dtype=np.float64)
+        self._save_array(metrics_arr, self.outdir / "scalar_metrics.npy")
+        np.save(self.outdir / "scalar_metrics_dict.npy", metrics, allow_pickle=True)
 
-        # Save plots (separate figure per metric)
-        self.generate_plots(C_T, P_T, ap_arr, edge_corr, edge_spearman, kendall_tau_arr, mi_arr, pearson_r,
-                            roc_auc_arr, spearman_rho, topk_overlap_arr)
+        # --- Plots ---
+        self.generate_plots(C_edge, P_mean, P_T, metrics)
 
     def repaint(self):
         """
-        Reads all previously saved arrays from outdir and regenerates all plots
-        by calling generate_plots with the loaded data.
+        Reads all previously saved arrays from outdir and regenerates all plots.
         """
         cs = self._coupling_short
-        spearman_rho = np.load(self.outdir / f"spearman_{cs}_posterior.npy")
-        pearson_r = np.load(self.outdir / f"pearson_{cs}_posterior.npy")
-        kendall_tau_arr = np.load(self.outdir / f"kendall_{cs}_posterior.npy")
-        topk_overlap_arr = np.load(self.outdir / f"topk_overlap_{int(self.topk_frac*100)}pct.npy")
-        roc_auc_arr = np.load(self.outdir / f"roc_auc_strong_{cs}_p{int(self.strong_label_percentile)}.npy")
-        ap_arr = np.load(self.outdir / f"avg_precision_strong_{cs}_p{int(self.strong_label_percentile)}.npy")
-        mi_arr = np.load(self.outdir / f"mutual_info_{cs}_posterior.npy")
-        edge_corr = np.load(self.outdir / f"edgewise_temporal_pearson_{cs}_posterior.npy")
-        edge_spearman = np.load(self.outdir / f"edgewise_temporal_spearman_{cs}_posterior.npy")
-        P_T = np.load(self.outdir / "posterior_over_time.npy")
-        C_T = np.load(self.outdir / "coupling_over_time.npy")
+        C_edge  = np.load(self.outdir / f"{cs}_edge_vector.npy")
+        P_mean  = np.load(self.outdir / "posterior_mean_edge.npy")
+        P_T     = np.load(self.outdir / "posterior_over_time.npy")
+        metrics_path = self.outdir / "scalar_metrics_dict.npy"
+        metrics = np.load(metrics_path, allow_pickle=True).item() if metrics_path.exists() else None
+        self.generate_plots(C_edge, P_mean, P_T, metrics=metrics)
 
-        self.generate_plots(C_T, P_T, ap_arr, edge_corr, edge_spearman, kendall_tau_arr, mi_arr, pearson_r,
-                            roc_auc_arr, spearman_rho, topk_overlap_arr)
+    def _visualize_coupling_graph(self, C_edge: npt.NDArray, P_mean: npt.NDArray):
+        """
+        Renders and saves two graph visualisations:
+          1. C_{ij}^{risk} (risk-based coupling, normalised to [0, 1] as edge probability)
+          2. Time-averaged posterior existence probability
 
-    def generate_plots(self, C_T: ndarray[Any, dtype[Any]], P_T: ndarray[Any, dtype[Any]],
-                       ap_arr: ndarray[Any, dtype[Any]], edge_corr: ndarray[Any, dtype[Any]],
-                       edge_spearman: ndarray[Any, dtype[Any]],
-                       kendall_tau_arr: ndarray[Any, dtype[Any]], mi_arr: ndarray[Any, dtype[Any]],
-                       pearson_r: ndarray[Any, dtype[Any]], roc_auc_arr: ndarray[Any, dtype[Any]],
-                       spearman_rho: ndarray[Any, dtype[Any]], topk_overlap_arr: ndarray[Any, dtype[Any]]):
+        :param C_edge: [E] – C_{ij}^{risk} in fully-connected edge ordering
+        :param P_mean: [E] – time-averaged posterior edge-existence probability
+        """
+        env = self._environment
+        obs_space = BusConnectivityGraphObsSpace(grid2op_observation_space=env.observation_space)
+        node_styles = get_node_styles(env, obs_space.__class__)
+        powerline_edge_index = self._powerline_edge_index
+        N = 2 * env.n_line + env.n_gen + env.n_load
+        cs = self._coupling_short
+
+        # Normalise C to [0, 1]; NaN entries become 0 so they render as absent
+        C_finite = np.where(np.isfinite(C_edge), C_edge, np.nan)
+        c_min = np.nanmin(C_finite)
+        c_max = np.nanmax(C_finite)
+        denom = c_max - c_min if (c_max - c_min) > 1e-12 else 1.0
+        C_norm = np.where(np.isfinite(C_finite), (C_finite - c_min) / denom, 0.0)
+
+        # latent_edge_probs: [E, 2] where column 0 = "edge exists" probability
+        coupling_probs = np.stack([C_norm, 1.0 - C_norm], axis=1)
+
+        fig_coupling = visualize_graph(PlottingArgs(
+            num_nodes=N,
+            node_styles=node_styles,
+            latent_edge_probs=coupling_probs,
+            powerline_edge_index=powerline_edge_index,
+        ))
+        fig_coupling.suptitle(r"Risk-based coupling $C_{ij}^{\mathrm{risk}}$ (normalised)", fontsize=14)
+        fig_coupling.savefig(self.outdir / f"graph_{cs}.png", bbox_inches="tight")
+        fig_coupling.savefig(self.outdir / f"graph_{cs}.svg", bbox_inches="tight")
+        plt.show()
+
+        # Posterior graph for direct comparison
+        P_probs = np.stack([P_mean, 1.0 - P_mean], axis=1)
+        fig_posterior = visualize_graph(PlottingArgs(
+            num_nodes=N,
+            node_styles=node_styles,
+            latent_edge_probs=P_probs,
+            powerline_edge_index=powerline_edge_index,
+        ))
+        fig_posterior.suptitle(r"Mean posterior $\bar{q}_\phi(z_{ij})$", fontsize=14)
+        fig_posterior.savefig(self.outdir / "graph_mean_posterior.png", bbox_inches="tight")
+        fig_posterior.savefig(self.outdir / "graph_mean_posterior.svg", bbox_inches="tight")
+        plt.show()
+
+    def generate_plots(
+        self,
+        C_edge: npt.NDArray,    # [E]  – C_{ij}^{risk} in fully-connected edge order
+        P_mean: npt.NDArray,    # [E]  – time-averaged posterior existence probability
+        P_T: npt.NDArray,       # [T, E] – posterior at each timestep (for per-timestep view)
+        metrics: dict | None = None,
+    ):
+        """
+        Produces all result plots for Hypothesis 2 (risk coupling vs posterior).
+
+        :param C_edge: C_{ij}^{risk} flattened to the fully-connected edge ordering [E]
+        :param P_mean: time-averaged posterior edge probability [E]
+        :param P_T: posterior over time [T, E] (used for the conditional-KDE plot)
+        :param metrics: optional dict of scalar metric names → values to annotate plots
+        """
         sns.reset_orig()
         matplotlib.rcParams.update({
             "font.size": 16,
@@ -400,97 +406,47 @@ class Hypothesis2verifier(PosteriorAnalyzer):
             "legend.fontsize": 14,
         })
 
-        C_all = C_T.flatten()
-        P_all = P_T.flatten()
-        valid = np.isfinite(C_all) & np.isfinite(P_all)
-        C_valid = C_all[valid]
-        P_valid = P_all[valid]
-        coupling_1 = C_valid[P_valid > 0.5]
-        coupling_0 = C_valid[P_valid <= 0.5]
         cl = self._coupling_label
         cs = self._coupling_short
-        sns.kdeplot(coupling_1, label=r"High posterior node pairs")
-        sns.kdeplot(coupling_0, label=r"Low posterior node pairs")
-        if self.compare_to_mean_coupling:
-            plt.xlabel(f"{cl} " + r"$\bar{C}_{ij}^{risk}$")
-        else:
-            plt.xlabel(f"{cl} " + r"$C_{ij}^{risk}$")
+
+        # --- KDE: C_{ij}^{risk} conditioned on high/low time-averaged posterior ---
+        valid = np.isfinite(C_edge) & np.isfinite(P_mean)
+        C_v = C_edge[valid]
+        P_v = P_mean[valid]
+        coupling_1 = C_v[P_v > 0.5]
+        coupling_0 = C_v[P_v <= 0.5]
+        plt.figure()
+        sns.kdeplot(coupling_1, label="High avg posterior node pairs")
+        sns.kdeplot(coupling_0, label="Low avg posterior node pairs")
+        plt.xlabel(f"{cl} " + r"$C_{ij}^{\mathrm{risk}}$")
         plt.ylabel("Density")
-        if self.compare_to_mean_coupling:
-            plt.title(r"Average $\bar{C}_{ij}^{risk}$ conditioned on posterior")
-        else:
-            plt.title(r"$C_{ij}^{risk}$ conditioned on posterior")
+        plt.title(r"$C_{ij}^{\mathrm{risk}}$ conditioned on posterior")
         plt.legend()
         plt.tight_layout()
         plt.savefig(self.outdir / f"kde_{cs}_conditioned_on_posterior_binary.png")
         plt.savefig(self.outdir / f"kde_{cs}_conditioned_on_posterior_binary.svg")
         plt.show()
-        self._save_hist(
-            spearman_rho,
-            title=f"Spearman: {cl} vs posterior",
-            xlabel=r"Spearman $\rho$",
-            outpath=self.outdir / "hist_spearman_rho.png",
-        )
-        self._save_hist(
-            pearson_r,
-            title=f"Pearson: {cl} vs posterior",
-            xlabel="Pearson r",
-            outpath=self.outdir / "hist_pearson_r.png",
-        )
-        self._save_hist(
-            kendall_tau_arr,
-            title=f"Kendall tau: {cl} vs posterior",
-            xlabel="Kendall tau",
-            outpath=self.outdir / "hist_kendall_tau.png",
-        )
-        self._save_hist(
-            topk_overlap_arr,
-            title=f"Top-k overlap: {cl} vs posterior",
-            xlabel=f"Top-{int(self.topk_frac * 100)}% overlap fraction",
-            outpath=self.outdir / f"hist_topk_overlap_{int(self.topk_frac * 100)}pct.png",
-            vline=self.topk_frac,
-            vline_label=f"Random baseline ({self.topk_frac:.0%})",
-        )
-        self._save_hist(
-            roc_auc_arr,
-            title=f"ROC-AUC: posterior predicts strong {cl} (>= p{int(self.strong_label_percentile)})",
-            xlabel="ROC-AUC",
-            outpath=self.outdir / f"hist_roc_auc_p{int(self.strong_label_percentile)}.png",
-        )
-        self._save_hist(
-            ap_arr,
-            title=f"Avg Precision: posterior predicts strong {cl} (>= p{int(self.strong_label_percentile)})",
-            xlabel="Average Precision",
-            outpath=self.outdir / f"hist_avg_precision_p{int(self.strong_label_percentile)}.png",
-        )
-        self._save_hist(
-            mi_arr,
-            title=f"Mutual information: posterior vs {cl}",
-            xlabel="MI",
-            outpath=self.outdir / "hist_mutual_info.png",
-        )
-        self._save_hist(
-            edge_corr,
-            title=f"Temporal Pearson: Risk coupling vs posterior",
-            xlabel="Temporal Pearson r",
-            outpath=self.outdir / "hist_edgewise_temporal_pearson.png",
-        )
-        self._save_hist(
-            edge_spearman,
-            title=f"Edge-wise Spearman correlation over time",
-            xlabel=r"Temporal Spearman $\rho$",
-            outpath=self.outdir / "hist_edgewise_temporal_spearman.png",
-        )
-        #self._save_scatter(
-        #    values=(P_T.flatten(), C_T.flatten()),
-        #    title=f"Scatter: posterior existence vs {cl} (all timesteps and edges)",
-        #    xlabel="Posterior existence probability",
-        #    ylabel=cl.capitalize(),
-        #    outpath=self.outdir / "scatter_posterior_vs_coupling.png",
-        #)
 
-        # Print where saved
+        # --- Scatter: C_{ij}^{risk} vs mean posterior ---
+        self._save_scatter(
+            values=(P_v, C_v),
+            title=f"Scatter: mean posterior vs {cl}",
+            xlabel="Mean posterior existence probability",
+            ylabel=r"$C_{ij}^{\mathrm{risk}}$",
+            outpath=self.outdir / f"scatter_posterior_vs_{cs}.png",
+        )
+
+        if metrics:
+            for name, val in metrics.items():
+                val_str = f"{val:.4f}" if np.isfinite(val) else "NaN"
+                print(f"  {name}: {val_str}")
+
+        # --- Graph visualisation of C_{ij}^{risk} ---
+        if self._environment is not None and self._powerline_edge_index is not None:
+            self._visualize_coupling_graph(C_edge, P_mean)
+
         print(f"Saved metrics and plots to: {self.outdir.absolute()}")
+
 
 
 def _setup(checkpoint_path: str, checkpoint_name: str, env_name_override: str) -> tuple[RllibAgent, Environment, CustomizedGrid2OpEnvironment]:
@@ -524,15 +480,15 @@ def _setup(checkpoint_path: str, checkpoint_name: str, env_name_override: str) -
 
 
 def main():
-    plt.show()
-    checkpoint_path = "/home/adrian/Schreibtisch/1901/1901_rappo_with_anneal_different_betas/CustomPPO_0_426b7_2026-01-19_10-28-48"
-    checkpoint_name = "checkpoint_000020"
-    env_name_override = "l2rpn_case14_sandbox_test"
+    #checkpoint_path = "/home/adrian/Schreibtisch/1901/1901_rappo_with_anneal_different_betas/CustomPPO_0_426b7_2026-01-19_10-28-48"
+    #checkpoint_name = "checkpoint_000020"
+    #env_name_override = "l2rpn_case14_sandbox_test"
 
-    agent, env, gym_env = _setup(checkpoint_path, checkpoint_name, env_name_override)
-    analysis_agent = LatentGraphAnalysisAgent(agent, gym_env, Hypothesis2verifier(compare_to_mean_coupling=False))
-    logger.info("Agent loaded! Starting episodes...\n")
-    analysis_agent.analyze(num_episodes=50)
+    #agent, env, gym_env = _setup(checkpoint_path, checkpoint_name, env_name_override)
+    #analysis_agent = LatentGraphAnalysisAgent(agent, gym_env, Hypothesis2verifier())
+    #logger.info("Agent loaded! Starting episodes...\n")
+    #analysis_agent.analyze(num_episodes=50)
+    Hypothesis2verifier().repaint()
 
 
 if __name__ == "__main__":

@@ -172,16 +172,76 @@ def get_PTDF_based_coupling_index(env: Environment) -> npt.NDArray:
     c_vec = C_nodes[src, dst] # shape [n_edges]
     return c_vec
 
-def get_risk_coupling_matrix(env: Environment) -> npt.NDArray:
+def compute_node_risk_vector(obs: BaseObservation, PTDF: np.ndarray) -> np.ndarray:
     """
-    TODO
-    """
-    raise NotImplementedError("Risk coupling matrix is not implemented yet.")
+    Computes the risk vector r(s_t) of shape (n_nodes,) for the current observation.
 
-def get_risk_coupling_index(env: Environment) -> npt.NDArray:
-    C_nodes = get_risk_coupling_matrix(env)
-    edge_index_fully_connected = fully_connected_edge_index(num_nodes=C_nodes.shape[0])
-    src = edge_index_fully_connected[0].cpu().numpy()
-    dst = edge_index_fully_connected[1].cpu().numpy()
-    c_vec = C_nodes[src, dst]  # shape [n_edges]
-    return c_vec
+    Node ordering:
+      [line_or(0..n_line-1), line_ex(0..n_line-1), gen(0..n_gen-1), load(0..n_load-1)]
+
+    For line endpoint nodes i (origin or extremity of line l(i)):
+        r_i = rho_{l(i)}
+
+    For generator/load nodes i connected to bus b(i):
+        r_i = sum_l  PTDF[l, b(i)] * rho_l
+
+    For disconnected nodes (topo_vect == -1): r_i = 0.0
+
+    :param obs: current grid2op observation
+    :param PTDF: Power Transfer Distribution Factor matrix, shape [n_branches, 2*n_sub]
+    :return: risk vector r, shape (n_nodes,)
+    """
+    n_line = obs.n_line
+    n_gen  = obs.n_gen
+    n_load = obs.n_load
+    n_nodes = 2 * n_line + n_gen + n_load
+
+    rho = obs.rho  # (n_line,) relative line load
+
+    r = np.zeros(n_nodes, dtype=np.float64)
+
+    # --- Line origin nodes ---
+    for l in range(n_line):
+        if obs.topo_vect[obs.line_or_pos_topo_vect[l]] != -1:
+            r[l] = rho[l]
+
+    # --- Line extremity nodes ---
+    for l in range(n_line):
+        if obs.topo_vect[obs.line_ex_pos_topo_vect[l]] != -1:
+            r[n_line + l] = rho[l]
+
+    # --- Generator and load nodes (PTDF-weighted risk) ---
+    node_to_bus = build_node_to_bus_mapping(obs)  # (n_nodes,)
+
+    for g in range(n_gen):
+        idx = 2 * n_line + g
+        b = node_to_bus[idx]
+        if b >= 0:
+            r[idx] = float(PTDF[:, b] @ rho)
+
+    for d in range(n_load):
+        idx = 2 * n_line + n_gen + d
+        b = node_to_bus[idx]
+        if b >= 0:
+            r[idx] = float(PTDF[:, b] @ rho)
+
+    return r
+
+
+def get_risk_vector(env: Environment) -> npt.NDArray:
+    """
+    Returns the per-node risk vector r(s_t) of shape [n_nodes] for the current timestep.
+
+    The risk of node i in state s_t is:
+        r_i(s_t) = rho_{l(i)}                        if i is a line endpoint of line l(i)
+        r_i(s_t) = sum_l  PTDF[l, b(i)] * rho_l      if i is a generator- or load-bus node
+
+    C_{ij}^{risk} = corr_t(r_i(s_t), r_j(s_t)) is then computed in the verifier by
+    accumulating these vectors over time and computing pairwise Pearson correlations.
+
+    :param env: the grid2op environment (must have a current observation)
+    :return: r(s_t) of shape [n_nodes]
+    """
+    PTDF = get_ptdf_from_env(env)
+    obs  = env.current_obs
+    return compute_node_risk_vector(obs, PTDF)
