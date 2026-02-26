@@ -24,14 +24,14 @@ class AgentSpec:
         self.policy_name = policy_name
         self.load_path = load_path
 
-def load_agent_from_spec(agent_spec: AgentSpec) -> Tuple[BaseAgent, Environment, CustomizedGrid2OpEnvironment]:
+def load_agent_from_spec(agent_spec: AgentSpec, env_name: str = "l2rpn_case14_sandbox_val") -> Tuple[BaseAgent, Environment, CustomizedGrid2OpEnvironment]:
     params = load_config(agent_spec.load_path)
     env_config = params["evaluation_config"]["env_config"]
     return load_rllib_agent(
         checkpoint_path=agent_spec.load_path,
         policy_name=agent_spec.policy_name,
         checkpoint_name=agent_spec.checkpoint_name,
-        env_name="l2rpn_case14_sandbox_val",
+        env_name=env_name,
         env_config=env_config
     )
 
@@ -181,108 +181,77 @@ def save_cross_validate_results(results: List[CrossValidateResult], save_path: P
         json.dump(json_results, f, indent=4)
 
 
-def visualize_cross_validation_results(results: List[CrossValidateResult], save_path: Path, show: bool = False):
+# ---------------------------------------------------------------------------
+# Data-computation helpers
+# ---------------------------------------------------------------------------
+
+def compute_cross_validation_data(results: List[CrossValidateResult], save_dir: Path) -> Tuple[np.ndarray, List[str], List[str]]:
     """
-    Visualize the cross-validation results as a heatmap.
-    :param results: the cross-validation results
-    :param save_path: where to save the figure
-    :param show: whether to display the figure
+    Compute the cross-validation heatmap data from *results* and persist it.
+
+    Saved files
+    -----------
+    cv_map.npy          – 2-D float array (failing_agents × backup_agents), NaN where no pair exists
+    cv_agent_labels.npy – structured array with fields ``failing`` and ``backup`` (agent name lists)
+
+    :param results: list of cross-validation results
+    :param save_dir: directory in which to save the .npy files
+    :return: ``(cv_map, all_failing_agents, all_backup_agents)``
     """
-    import numpy as np
-    import matplotlib.pyplot as plt
+    all_failing_agents = sorted({r.failing_agent.name for r in results})
+    all_backup_agents = sorted({r.backup_agent.name for r in results})
 
-    # Stable ordering
-    all_failing_agents = sorted(
-        {r.failing_agent.name for r in results}
-    )
-    all_backup_agents = sorted(
-        {r.backup_agent.name for r in results}
-    )
-
-    cv_map = np.full(
-        (len(all_failing_agents), len(all_backup_agents)),
-        np.nan,
-        dtype=float,
-    )
-
+    cv_map = np.full((len(all_failing_agents), len(all_backup_agents)), np.nan, dtype=float)
     for result in results:
         i = all_failing_agents.index(result.failing_agent.name)
         j = all_backup_agents.index(result.backup_agent.name)
-        cv_map[i, j] = np.mean(list([additional_steps for additional_steps in result.additional_timesteps.values() if additional_steps is not None]))
+        valid = [s for s in result.additional_timesteps.values() if s is not None]
+        cv_map[i, j] = np.mean(valid) if valid else np.nan
 
-    fig, ax = plt.subplots(figsize=(6, 4))
+    save_dir.mkdir(parents=True, exist_ok=True)
+    np.save(save_dir / "cv_map.npy", cv_map)
+    np.save(save_dir / "cv_failing_agents.npy", np.array(all_failing_agents))
+    np.save(save_dir / "cv_backup_agents.npy", np.array(all_backup_agents))
+    logger.info("Saved cross-validation data to %s", save_dir)
 
-    im = ax.imshow(cv_map, cmap="viridis")
-
-    # Axis labels
-    ax.set_xticks(np.arange(len(all_backup_agents)))
-    ax.set_yticks(np.arange(len(all_failing_agents)))
-    ax.set_xticklabels(all_backup_agents)
-    ax.set_yticklabels(all_failing_agents)
-
-    ax.set_xlabel("Backup Model")
-    ax.set_ylabel("Failing Model")
-
-    plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
-
-    # Annotate cells
-    for i in range(cv_map.shape[0]):
-        for j in range(cv_map.shape[1]):
-            if not np.isnan(cv_map[i, j]):
-                ax.text(
-                    j, i,
-                    f"{cv_map[i, j]:.1f}",
-                    ha="center", va="center",
-                    color="white" if cv_map[i, j] < np.nanmean(cv_map) else "black"
-                )
-
-    # Colorbar
-    cbar = plt.colorbar(im, ax=ax)
-    cbar.set_label("Avg. Additional Timesteps")
-
-    ax.set_title("Cross-Validation Results")
-
-    plt.tight_layout()
-    plt.savefig(save_path)
-
-    if show:
-        plt.show()
-
-    plt.close(fig)
+    return cv_map, all_failing_agents, all_backup_agents
 
 
-def visualize_failing_edges(results: List[CrossValidateResult], save_path: Path, show: bool = False):
+def compute_failing_edges_data(results: List[CrossValidateResult], save_dir: Path) -> Tuple[Dict[str, np.ndarray], Dict[str, np.ndarray], np.ndarray, np.ndarray]:
     """
-    Visualize the failing and overloaded edges (powerlines) from the cross-validation results.
+    Compute per-agent mean connection rates and rho values from *results* and persist them.
 
-    The obvious hypothesis is that powerlines that are disconnected after failure are the cause of the failure.
+    Saved files (one pair per agent, named after the agent)
+    --------------------------------------------------------
+    failing_edges_agent_names.npy          – 1-D array of agent names (ordering)
+    failing_edges_connection_<agent>.npy   – mean connection rate per powerline  (shape: n_line)
+    failing_edges_rho_<agent>.npy          – mean rho per powerline              (shape: n_line)
+    failing_edges_pl_edge_index.npy        – powerline edge-index array          (shape: 2 × n_edges)
+    failing_edges_powerline_edge_indices.npy – mapping powerline → edge index    (shape: n_line)
 
-    :param results: the cross-validation results
-    :param save_path: the path to save the image
-    :param show: whether to display the image
+    :param results: list of cross-validation results
+    :param save_dir: directory in which to save the .npy files
+    :return: ``(lines_connected_before, rhos_before_failure, pl_edge_index, powerline_edge_indices)``
     """
-    # Filter out results where agents completed successfully (no failures to analyze)
+    import grid2op
+
     results_with_failures = [r for r in results if r.connected_lines_before_failure]
-
     if not results_with_failures:
-        logger.warning("No failures found in cross-validation results. Cannot visualize failing edges.")
-        return
+        logger.warning("No failures found – cannot compute failing-edge data.")
+        return {}, {}, np.array([]), np.array([])
 
-    lines_connected_before = {
-        result.failing_agent.name: np.array([
-            vals for vals in result.connected_lines_before_failure.values() if vals is not None]
+    lines_connected_before: Dict[str, np.ndarray] = {
+        result.failing_agent.name: np.array(
+            [v for v in result.connected_lines_before_failure.values() if v is not None]
         ).mean(axis=0)
         for result in results_with_failures
     }
-    rhos_before_failure = {
-        result.failing_agent.name: np.array([
-            vals for vals in result.rhos_before_failure.values() if vals is not None
-        ]).mean(axis=0)
+    rhos_before_failure: Dict[str, np.ndarray] = {
+        result.failing_agent.name: np.array(
+            [v for v in result.rhos_before_failure.values() if v is not None]
+        ).mean(axis=0)
         for result in results_with_failures
     }
-
-    import grid2op
-    import matplotlib.pyplot as plt
 
     env = grid2op.make("l2rpn_case14_sandbox_val")
     obs_space = BusConnectivityGraphObsSpace(env.observation_space)
@@ -291,142 +260,325 @@ def visualize_failing_edges(results: List[CrossValidateResult], save_path: Path,
     pl_edge_index = gym_obs[EDGE_INDEX]
     edge_mask = gym_obs['edge_mask']
 
-    # Number of unique powerlines (undirected edges)
     num_powerlines = env.n_line
+    num_edges = int(edge_mask.sum())
 
-    # Count actual edges (respecting edge_mask)
-    num_edges = edge_mask.sum()
-
-    # Build mapping from powerline index to edge indices in pl_edge_index
-    # Powerlines connect node i (line_or) to node i+n_line (line_ex)
-    # We need to find which edges in pl_edge_index correspond to powerlines
-    powerline_edge_indices = []
+    powerline_edge_indices: List[int] = []
     for pl_idx in range(num_powerlines):
         line_or_node = pl_idx
         line_ex_node = pl_idx + num_powerlines
-        # Find edges connecting these nodes (bidirectional)
         for edge_idx in range(num_edges):
             src, dst = pl_edge_index[:, edge_idx]
             if (src == line_or_node and dst == line_ex_node) or (src == line_ex_node and dst == line_or_node):
                 powerline_edge_indices.append(edge_idx)
-                break  # Found the edge for this powerline
+                break
 
-    # Create 2-row subplots for each agent (row 1: connections, row 2: rho)
-    num_agents = len(lines_connected_before)
-    fig, axes = plt.subplots(2, num_agents, figsize=(12 * num_agents, 16), constrained_layout=True)
+    powerline_edge_indices_arr = np.array(powerline_edge_indices)
 
-    # Handle case of single agent (ensure axes is 2D)
-    if num_agents == 1:
-        axes = axes.reshape(2, 1)
+    save_dir.mkdir(parents=True, exist_ok=True)
+    agent_names = list(lines_connected_before.keys())
+    np.save(save_dir / "failing_edges_agent_names.npy", np.array(agent_names))
+    np.save(save_dir / "failing_edges_pl_edge_index.npy", pl_edge_index)
+    np.save(save_dir / "failing_edges_powerline_edge_indices.npy", powerline_edge_indices_arr)
+    for agent_name in agent_names:
+        safe = agent_name.replace(" ", "_")
+        np.save(save_dir / f"failing_edges_connection_{safe}.npy", lines_connected_before[agent_name])
+        np.save(save_dir / f"failing_edges_rho_{safe}.npy", rhos_before_failure[agent_name])
+    logger.info("Saved failing-edges data to %s", save_dir)
 
-    connection_cmap = plt.colormaps['RdYlGn']  # Red (disconnected) -> Yellow -> Green (connected)
-    rho_cmap = plt.colormaps['RdYlGn']  # Red (high load) -> Yellow -> Green (low load)
-    neutral_gray = '#808080'  # Gray for non-powerline edges
+    return lines_connected_before, rhos_before_failure, pl_edge_index, powerline_edge_indices_arr
 
-    for idx, (agent_name, connection_rates) in enumerate(lines_connected_before.items()):
-        rhos = rhos_before_failure[agent_name]
 
-        # --- First row: Connection status by color ---
-        # Create color array for ALL edges, default to gray
-        edge_colors_connection = [neutral_gray] * num_edges
-        # Create width array for ALL edges, default to thin
-        edge_widths_connection = [1.0] * num_edges
+# ---------------------------------------------------------------------------
+# Pure-paint helpers (accept pre-computed arrays, no agents/envs needed)
+# ---------------------------------------------------------------------------
 
-        # Set colors and widths for powerline edges based on connection data
-        for pl_idx, edge_idx in enumerate(powerline_edge_indices):
-            connection_rate = connection_rates[pl_idx]
-            # connection_rate: 1.0 = always connected (green), 0.0 = always disconnected (red)
-            color = connection_cmap((connection_rate - 0.9) / 0.1)  # Map [0.9, 1.0] to [0, 1] for colormap
-            edge_colors_connection[edge_idx] = plt.matplotlib.colors.rgb2hex(color[:3])
-            edge_widths_connection[edge_idx] = 3.0  # Thicker for powerlines
+def paint_cross_validation_results(
+    cv_map: np.ndarray,
+    all_failing_agents: List[str],
+    all_backup_agents: List[str],
+    save_path: Path,
+    show: bool = False,
+):
+    """
+    Render the cross-validation heatmap from pre-computed data and save it.
 
-        plotting_args_connection = PlottingArgs(
-            num_nodes=57,
-            node_styles=get_node_styles(env, BusConnectivityGraphObsSpace),
-            powerline_edge_index=pl_edge_index,
-            powerline_edge_colors=edge_colors_connection,
-            powerline_edge_widths=edge_widths_connection,
-        )
+    :param cv_map: 2-D float array (failing_agents × backup_agents)
+    :param all_failing_agents: ordered list of failing-agent names (row labels)
+    :param all_backup_agents: ordered list of backup-agent names (column labels)
+    :param save_path: where to save the figure
+    :param show: whether to display the figure interactively
+    """
+    import matplotlib.pyplot as plt
 
-        visualize_graph(plotting_args_connection, ax=axes[0, idx])
-        axes[0, idx].set_title(f"{agent_name}\nLine Connection Before Failure")
+    fig, ax = plt.subplots(figsize=(6, 4))
+    im = ax.imshow(cv_map, cmap="viridis")
 
-        # --- Second row: Rho (load) by color ---
-        # Create color array for ALL edges, default to gray
-        edge_colors_rho = [neutral_gray] * num_edges
-        # Create width array for ALL edges, default to thin
-        edge_widths_rho = [1.0] * num_edges
+    ax.set_xticks(np.arange(len(all_backup_agents)))
+    ax.set_yticks(np.arange(len(all_failing_agents)))
+    ax.set_xticklabels(all_backup_agents)
+    ax.set_yticklabels(all_failing_agents)
+    ax.set_xlabel("Backup Model")
+    ax.set_ylabel("Failing Model")
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
 
-        # Set colors and widths for powerline edges based on rho data
-        for pl_idx, edge_idx in enumerate(powerline_edge_indices):
-            rho = rhos[pl_idx]
-            # Normalize rho to [0, 1] for colormap
-            # rho: 0.0 = no load (green), 1.0 = at limit (red)
-            rho_normalized = min(1.0, max(0.0, rho))  # Clamp to [0, 1]
-            color = rho_cmap(1.0 - rho_normalized)  # Invert: high rho = red (low in colormap)
-            edge_colors_rho[edge_idx] = plt.matplotlib.colors.rgb2hex(color[:3])
-            edge_widths_rho[edge_idx] = 3.0  # Thicker for powerlines
+    for i in range(cv_map.shape[0]):
+        for j in range(cv_map.shape[1]):
+            if not np.isnan(cv_map[i, j]):
+                ax.text(
+                    j, i, f"{cv_map[i, j]:.1f}",
+                    ha="center", va="center",
+                    color="white" if cv_map[i, j] < np.nanmean(cv_map) else "black",
+                )
 
-        plotting_args_rho = PlottingArgs(
-            num_nodes=57,
-            node_styles=get_node_styles(env, BusConnectivityGraphObsSpace),
-            powerline_edge_index=pl_edge_index,
-            powerline_edge_colors=edge_colors_rho,
-            powerline_edge_widths=edge_widths_rho,
-        )
+    cbar = plt.colorbar(im, ax=ax)
+    cbar.set_label("Avg. Additional Timesteps")
+    ax.set_title("Cross-Validation Results")
+    plt.tight_layout()
 
-        visualize_graph(plotting_args_rho, ax=axes[1, idx])
-        axes[1, idx].set_title(f"{agent_name}\nLine Congestion Before Failure")
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(save_path)
+    if show:
+        plt.show()
+    plt.close(fig)
 
-    # Add colorbars for each row (only once, outside the loop)
+
+def paint_failing_edges_connectivity(
+    lines_connected_before: Dict[str, np.ndarray],
+    pl_edge_index: np.ndarray,
+    powerline_edge_indices: np.ndarray,
+    save_path: Path,
+    show: bool = False,
+):
+    """
+    Render one figure showing the **line connection rate** before failure for each agent.
+
+    :param lines_connected_before: mapping agent_name → mean connection-rate array (shape: n_line)
+    :param pl_edge_index: powerline edge-index array (shape: 2 × n_edges)
+    :param powerline_edge_indices: mapping powerline index → edge index in pl_edge_index
+    :param save_path: where to save the figure
+    :param show: whether to display the figure interactively
+    """
+    import grid2op
+    import matplotlib.pyplot as plt
     from matplotlib.cm import ScalarMappable
     from matplotlib.colors import Normalize
 
-    # Colorbar for connection status (row 0) - vertical on the right
-    norm_connection = Normalize(vmin=0.9, vmax=1)
-    sm_connection = ScalarMappable(cmap=connection_cmap, norm=norm_connection)
-    sm_connection.set_array([])
-    cbar_connection = fig.colorbar(sm_connection, ax=axes[0, :].tolist(), orientation='vertical',
-                                    pad=0.15, aspect=20, fraction=0.02)
-    cbar_connection.set_label('Average Connection Rate Before Failure', fontsize=10)
+    env = grid2op.make("l2rpn_case14_sandbox_val")
+    num_edges = pl_edge_index.shape[1]
+    connection_cmap = plt.colormaps['RdYlGn']
+    neutral_gray = '#808080'
 
-    # Colorbar for rho (row 1) - vertical on the right
-    # We use reversed colormap since we map high rho (1.0) -> red by using (1.0 - rho) with RdYlGn
-    norm_rho = Normalize(vmin=0, vmax=1)
-    sm_rho = ScalarMappable(cmap=rho_cmap.reversed(), norm=norm_rho)
-    sm_rho.set_array([])
-    cbar_rho = fig.colorbar(sm_rho, ax=axes[1, :].tolist(), orientation='vertical',
-                            pad=0.15, aspect=20, fraction=0.02)
-    cbar_rho.set_label('Average Line Congestion (ρ) Before Failure\n(0 = Low Load, 1 = High Load/Overload)', fontsize=10)
+    num_agents = len(lines_connected_before)
+    fig, axes = plt.subplots(1, num_agents, figsize=(12 * num_agents, 8), constrained_layout=True)
+    if num_agents == 1:
+        axes = np.array([axes])
+
+    for idx, (agent_name, connection_rates) in enumerate(lines_connected_before.items()):
+        edge_colors = [neutral_gray] * num_edges
+        edge_widths = [1.0] * num_edges
+
+        for pl_idx, edge_idx in enumerate(powerline_edge_indices):
+            connection_rate = connection_rates[pl_idx]
+            color = connection_cmap((connection_rate - 0.9) / 0.1)
+            edge_colors[edge_idx] = plt.matplotlib.colors.rgb2hex(color[:3])
+            edge_widths[edge_idx] = 3.0
+
+        plotting_args = PlottingArgs(
+            num_nodes=57,
+            node_styles=get_node_styles(env, BusConnectivityGraphObsSpace),
+            powerline_edge_index=pl_edge_index,
+            powerline_edge_colors=edge_colors,
+            powerline_edge_widths=edge_widths,
+        )
+        visualize_graph(plotting_args, ax=axes[idx])
+        axes[idx].set_title(f"{agent_name}\nLine Connection Before Failure")
+
+    norm = Normalize(vmin=0.9, vmax=1.0)
+    sm = ScalarMappable(cmap=connection_cmap, norm=norm)
+    sm.set_array([])
+    cbar = fig.colorbar(sm, ax=axes.tolist(), orientation='vertical', pad=0.02, aspect=30, fraction=0.02)
+    cbar.set_label('Average Connection Rate Before Failure', fontsize=10)
 
     save_path.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(save_path, dpi=150, bbox_inches='tight')
-
     if show:
         plt.show()
-
     plt.close(fig)
 
+
+def paint_failing_edges_rho(
+    rhos_before_failure: Dict[str, np.ndarray],
+    pl_edge_index: np.ndarray,
+    powerline_edge_indices: np.ndarray,
+    save_path: Path,
+    show: bool = False,
+):
+    """
+    Render one figure showing the **line congestion (rho)** before failure for each agent.
+
+    :param rhos_before_failure: mapping agent_name → mean rho array (shape: n_line)
+    :param pl_edge_index: powerline edge-index array (shape: 2 × n_edges)
+    :param powerline_edge_indices: mapping powerline index → edge index in pl_edge_index
+    :param save_path: where to save the figure
+    :param show: whether to display the figure interactively
+    """
+    import grid2op
+    import matplotlib.pyplot as plt
+    from matplotlib.cm import ScalarMappable
+    from matplotlib.colors import Normalize
+
+    env = grid2op.make("l2rpn_case14_sandbox_val")
+    num_edges = pl_edge_index.shape[1]
+    rho_cmap = plt.colormaps['RdYlGn']
+    neutral_gray = '#808080'
+
+    num_agents = len(rhos_before_failure)
+    fig, axes = plt.subplots(1, num_agents, figsize=(12 * num_agents, 8), constrained_layout=True)
+    if num_agents == 1:
+        axes = np.array([axes])
+
+    for idx, (agent_name, rhos) in enumerate(rhos_before_failure.items()):
+        edge_colors = [neutral_gray] * num_edges
+        edge_widths = [1.0] * num_edges
+
+        for pl_idx, edge_idx in enumerate(powerline_edge_indices):
+            rho = rhos[pl_idx]
+            rho_normalized = min(1.0, max(0.0, rho))
+            color = rho_cmap(1.0 - rho_normalized)
+            edge_colors[edge_idx] = plt.matplotlib.colors.rgb2hex(color[:3])
+            edge_widths[edge_idx] = 3.0
+
+        plotting_args = PlottingArgs(
+            num_nodes=57,
+            node_styles=get_node_styles(env, BusConnectivityGraphObsSpace),
+            powerline_edge_index=pl_edge_index,
+            powerline_edge_colors=edge_colors,
+            powerline_edge_widths=edge_widths,
+        )
+        visualize_graph(plotting_args, ax=axes[idx])
+        axes[idx].set_title(f"{agent_name}\nLine Congestion Before Failure")
+
+    norm = Normalize(vmin=0, vmax=1)
+    sm = ScalarMappable(cmap=rho_cmap.reversed(), norm=norm)
+    sm.set_array([])
+    cbar = fig.colorbar(sm, ax=axes.tolist(), orientation='vertical', pad=0.02, aspect=30, fraction=0.02)
+    cbar.set_label('Average Line Congestion (ρ) Before Failure\n(0 = Low Load, 1 = High Load/Overload)', fontsize=10)
+
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(save_path, dpi=150, bbox_inches='tight')
+    if show:
+        plt.show()
+    plt.close(fig)
+
+
+# ---------------------------------------------------------------------------
+# High-level wrappers (kept for convenience / backward-compatibility)
+# ---------------------------------------------------------------------------
+
+def visualize_cross_validation_results(results: List[CrossValidateResult], save_path: Path, show: bool = False):
+    """Compute cross-validation data and paint the heatmap in one step."""
+    data_dir = save_path.parent
+    cv_map, failing_agents, backup_agents = compute_cross_validation_data(results, data_dir)
+    paint_cross_validation_results(cv_map, failing_agents, backup_agents, save_path, show=show)
+
+
+def visualize_failing_edges(
+    results: List[CrossValidateResult],
+    save_path_connectivity: Path,
+    save_path_rho: Path,
+    show: bool = False,
+):
+    """Compute failing-edge data and paint both figures in one step."""
+    data_dir = save_path_connectivity.parent
+    lines_connected_before, rhos_before_failure, pl_edge_index, powerline_edge_indices = (
+        compute_failing_edges_data(results, data_dir)
+    )
+    if not lines_connected_before:
+        return
+    paint_failing_edges_connectivity(lines_connected_before, pl_edge_index, powerline_edge_indices, save_path_connectivity, show=show)
+    paint_failing_edges_rho(rhos_before_failure, pl_edge_index, powerline_edge_indices, save_path_rho, show=show)
+
+
+# ---------------------------------------------------------------------------
+# Repaint helpers – load saved .npy files and recreate figures
+# ---------------------------------------------------------------------------
+
+def repaint_cross_validation_results(data_dir: Path, save_path: Path, show: bool = False):
+    """
+    Load pre-computed cross-validation data from *data_dir* and repaint the heatmap.
+
+    :param data_dir: directory containing ``cv_map.npy``, ``cv_failing_agents.npy``, ``cv_backup_agents.npy``
+    :param save_path: where to save the figure
+    :param show: whether to display the figure interactively
+    """
+    cv_map = np.load(data_dir / "cv_map.npy")
+    all_failing_agents = np.load(data_dir / "cv_failing_agents.npy", allow_pickle=True).tolist()
+    all_backup_agents = np.load(data_dir / "cv_backup_agents.npy", allow_pickle=True).tolist()
+    paint_cross_validation_results(cv_map, all_failing_agents, all_backup_agents, save_path, show=show)
+
+
+def repaint_failing_edges(
+    data_dir: Path,
+    save_path_connectivity: Path,
+    save_path_rho: Path,
+    show: bool = False,
+):
+    """
+    Load pre-computed failing-edge data from *data_dir* and repaint both figures.
+
+    :param data_dir: directory containing the ``failing_edges_*.npy`` files
+    :param save_path_connectivity: where to save the connectivity figure
+    :param save_path_rho: where to save the rho/congestion figure
+    :param show: whether to display the figures interactively
+    """
+    agent_names: List[str] = np.load(data_dir / "failing_edges_agent_names.npy", allow_pickle=True).tolist()
+    pl_edge_index = np.load(data_dir / "failing_edges_pl_edge_index.npy")
+    powerline_edge_indices = np.load(data_dir / "failing_edges_powerline_edge_indices.npy")
+
+    lines_connected_before: Dict[str, np.ndarray] = {}
+    rhos_before_failure: Dict[str, np.ndarray] = {}
+    for agent_name in agent_names:
+        safe = agent_name.replace(" ", "_")
+        lines_connected_before[agent_name] = np.load(data_dir / f"failing_edges_connection_{safe}.npy")
+        rhos_before_failure[agent_name] = np.load(data_dir / f"failing_edges_rho_{safe}.npy")
+
+    paint_failing_edges_connectivity(lines_connected_before, pl_edge_index, powerline_edge_indices, save_path_connectivity, show=show)
+    paint_failing_edges_rho(rhos_before_failure, pl_edge_index, powerline_edge_indices, save_path_rho, show=show)
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
 
 def main():
     """
     Cross-validate multiple models against each other and save the results.
-    1. Define model specifications (RAPPO, MLP, GNN, NRIGNN).
-    2. For each pair of models, perform cross-validation if they are different.
-    3. Save the results to a JSON file.
+
+    Step 1 – gather data:
+        Runs the agents, computes summary statistics, and saves everything to
+        JSON + .npy files under *results_dir*.
+
+    Step 2 – paint figures:
+        Loads the saved .npy files and creates the figures.  You can re-run
+        this step independently via the ``repaint_*`` helpers.
     """
     model1 = AgentSpec(name="RAPPO", load_path="/home/adrian/Schreibtisch/1901/1901_rappo_with_anneal_different_betas/CustomPPO_0_426b7_2026-01-19_10-28-48/", checkpoint_name="checkpoint_000020")
     model2 = AgentSpec(name="MLP", load_path="/home/adrian/Schreibtisch/1901/1901_rainbow_baselines/CustomPPO_0_98414_2026-01-19_18-23-39_MLP/", checkpoint_name="checkpoint_000019")
     model3 = AgentSpec(name="GNN", load_path="/home/adrian/Schreibtisch/1901/1901_baselines/CustomPPO_0_4cbd2_2026-01-19_14-39-38_GNN/", checkpoint_name="checkpoint_000023")
-    model4 = AgentSpec(name="NRIGNN", load_path="/home/adrian/Schreibtisch/1901/1901_baselines/CustomPPO_0_4eebd_2026-01-19_14-39-41_NRI/", checkpoint_name="checkpoint_000024")
 
-    save_results_to = Path("results/experiments/2601_compute_metrics/cross_validate_models.json")
-    save_figure_to = Path("results/experiments/2601_compute_metrics/cross_validate_models.svg")
-    save_figure2_to = Path("results/experiments/2601_compute_metrics/failing_edges.svg")
+    results_dir = Path("results/experiments/2601_compute_metrics")
+    save_results_to = results_dir / "cross_validate_models.json"
+    save_heatmap_to = results_dir / "cross_validate_models.svg"
+    save_connectivity_to = results_dir / "failing_edges_connectivity.svg"
+    save_rho_to = results_dir / "failing_edges_rho.svg"
 
-    models = [model1, model2, model3] #, model2, model3, model4]
+    models = [model1, model2, model3]  # model4 excluded for now
     pairs = [(m1, m2) for m1, m2 in product(models, models) if m1.name != m2.name]
 
+    # ------------------------------------------------------------------
+    # Step 1: gather data
+    # ------------------------------------------------------------------
     results: List[CrossValidateResult] = []
     with ProcessPoolExecutor() as ex:
         futures = [ex.submit(cross_validate, m1, m2) for (m1, m2) in pairs]
@@ -436,8 +588,14 @@ def main():
             print(f"Cross-validation between {result.failing_agent.name} and {result.backup_agent.name}: {result.additional_timesteps}")
 
     save_cross_validate_results(results, save_path=save_results_to)
-    visualize_cross_validation_results(results, save_path=save_figure_to)
-    visualize_failing_edges(results, save_path=save_figure2_to)
+    compute_cross_validation_data(results, save_dir=results_dir)
+    compute_failing_edges_data(results, save_dir=results_dir)
+
+    # ------------------------------------------------------------------
+    # Step 2: paint figures (can be re-run independently via repaint_*)
+    # ------------------------------------------------------------------
+    repaint_cross_validation_results(results_dir, save_path=save_heatmap_to)
+    repaint_failing_edges(results_dir, save_path_connectivity=save_connectivity_to, save_path_rho=save_rho_to)
 
 
 if __name__ == "__main__":

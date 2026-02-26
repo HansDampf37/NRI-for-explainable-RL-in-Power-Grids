@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import seaborn as sns
+from grid2op.Action import BaseAction
 from grid2op.Environment import Environment
 from grid2op.Observation import BaseObservation
 from scipy.stats import spearmanr, kendalltau
@@ -63,8 +64,9 @@ class Hypothesis2verifier(PosteriorAnalyzer):
 
         # Accumulated over time: risk vectors r(s_t) of shape [n_nodes] each
         self._risk_vectors: list[npt.NDArray] = []   # list of [n_nodes]
-        # Accumulated over time: posterior edge-existence probabilities shape [E] each
+        # Accumulated over time: posterior and prior edge-existence probabilities shape [E] each
         self._posterior_over_time: list[npt.NDArray] = []  # list of [E]
+        self._prior_over_time: list[npt.NDArray] = []      # list of [E]  (baseline)
 
         # Stored on first on_rl_step call for use in generate_plots
         self._environment: Environment | None = None
@@ -160,9 +162,11 @@ class Hypothesis2verifier(PosteriorAnalyzer):
     def on_rl_step(
         self,
         posterior: npt.NDArray,
+        prior: npt.NDArray,
         powergrid_graph: npt.NDArray,
         observation: BaseObservation,
         environment: Environment,
+        action: BaseAction,
     ):
         # Capture env and powerline edge index once for later graph visualisation
         if self._environment is None:
@@ -174,8 +178,9 @@ class Hypothesis2verifier(PosteriorAnalyzer):
         r = get_risk_vector(environment).astype(np.float64)
         self._risk_vectors.append(r)
 
-        # Accumulate posterior edge-existence probability: shape [E]
+        # Accumulate posterior and prior edge-existence probability: shape [E]
         self._posterior_over_time.append(posterior[:, 0].astype(np.float64))
+        self._prior_over_time.append(prior[:, 0].astype(np.float64))
 
         self._t_global += 1
 
@@ -235,17 +240,12 @@ class Hypothesis2verifier(PosteriorAnalyzer):
             return
 
         # --- Build C_{ij}^{risk} = spearman_t(r_i(s_t), r_j(s_t)) ---
-        # Spearman rank correlation is used instead of Pearson to capture
-        # non-linear monotonic relationships and be robust to outliers.
-        # R: [T, N]  – each row is the risk vector at one timestep
         R = np.stack(self._risk_vectors, axis=0).astype(np.float64)  # [T, N]
         N = R.shape[1]
 
-        # Mark constant nodes as invalid (rank correlation undefined for zero-variance series)
-        R_std = R.std(axis=0)  # [N]
+        R_std = R.std(axis=0)
         zero_var = R_std < 1e-12
 
-        # Pairwise Spearman: C_{ij} = spearmanr(r_i over t, r_j over t)
         C_node = np.full((N, N), np.nan, dtype=np.float64)
         for i in range(N):
             if zero_var[i]:
@@ -253,8 +253,7 @@ class Hypothesis2verifier(PosteriorAnalyzer):
             for j in range(i, N):
                 if zero_var[j]:
                     continue
-                ri = R[:, i]
-                rj = R[:, j]
+                ri, rj = R[:, i], R[:, j]
                 valid = np.isfinite(ri) & np.isfinite(rj)
                 if valid.sum() < self.min_timesteps_per_edge:
                     continue
@@ -263,28 +262,22 @@ class Hypothesis2verifier(PosteriorAnalyzer):
                 C_node[i, j] = c
                 C_node[j, i] = c
 
-        # --- Flatten to fully-connected edge ordering [E] ---
         edge_index = fully_connected_edge_index(num_nodes=N)
         src = edge_index[0].cpu().numpy()
         dst = edge_index[1].cpu().numpy()
         E = src.shape[0]
-        C_edge = C_node[src, dst]  # [E]  – NaN for pairs with constant nodes
-
-        # Optionally use |C| for metrics
+        C_edge = C_node[src, dst]
         C = np.abs(C_edge) if self.use_abs_coupling_for_metrics else C_edge
 
-        # --- Time-averaged posterior [E] ---
-        P_T = np.stack(self._posterior_over_time, axis=0)  # [T, E]
-        P_mean = np.nanmean(P_T, axis=0)                    # [E]
+        # --- Time-averaged posterior and prior [E] ---
+        P_T  = np.stack(self._posterior_over_time, axis=0)  # [T, E]
+        PR_T = np.stack(self._prior_over_time, axis=0)      # [T, E]
+        P_mean  = np.nanmean(P_T,  axis=0)                  # [E]
+        PR_mean = np.nanmean(PR_T, axis=0)                  # [E]
 
-        valid_mask = np.isfinite(C) & np.isfinite(P_mean)
-        C_valid = C[valid_mask]
-        P_valid = P_mean[valid_mask]
+        print(f"\n=== Hypothesis 2: Risk Coupling vs Posterior/Prior (T={T}, N={N}, E={E}) ===")
 
-        print(f"\n=== Hypothesis 2: Risk Coupling vs Posterior (T={T}, N={N}, E={E}) ===")
-        print(f"  Valid edge pairs: {valid_mask.sum()} / {E}")
-
-        def _scalar_metrics(c_v: np.ndarray, p_v: np.ndarray):
+        def _scalar_metrics(c_v: np.ndarray, p_v: np.ndarray) -> dict:
             if c_v.size < self.min_samples_per_timestep:
                 return {}
             results = {}
@@ -300,45 +293,95 @@ class Hypothesis2verifier(PosteriorAnalyzer):
             results["Mutual information"] = self._mi(c_v, p_v)
             return results
 
-        metrics = _scalar_metrics(C_valid, P_valid)
-        for name, val in metrics.items():
-            print(f"  {name}: {val:.4f}" if np.isfinite(val) else f"  {name}: NaN")
+        valid_post = np.isfinite(C) & np.isfinite(P_mean)
+        metrics_post = _scalar_metrics(C[valid_post], P_mean[valid_post])
+        valid_prior = np.isfinite(C) & np.isfinite(PR_mean)
+        metrics_prior = _scalar_metrics(C[valid_prior], PR_mean[valid_prior])
+
+        # Derived distributions: edges removed p(1-q) and added q(1-p)
+        removed_mean = PR_mean * (1.0 - P_mean)   # p(1-q): [E]
+        added_mean   = P_mean  * (1.0 - PR_mean)  # q(1-p): [E]
+        valid_removed = np.isfinite(C) & np.isfinite(removed_mean)
+        metrics_removed = _scalar_metrics(C[valid_removed], removed_mean[valid_removed])
+        valid_added = np.isfinite(C) & np.isfinite(added_mean)
+        metrics_added = _scalar_metrics(C[valid_added], added_mean[valid_added])
+
+        self.print_summary(metrics_post, metrics_prior, metrics_removed, metrics_added)
 
         # --- Save ---
         cs = self._coupling_short
         self.outdir.mkdir(parents=True, exist_ok=True)
-        self._save_array(R,       self.outdir / "risk_vectors_over_time.npy")  # [T, N]
-        self._save_array(C_node,  self.outdir / "C_risk_node_matrix.npy")      # [N, N]
-        self._save_array(C_edge,  self.outdir / f"{cs}_edge_vector.npy")       # [E]
-        self._save_array(P_mean,  self.outdir / "posterior_mean_edge.npy")     # [E]
-        self._save_array(P_T,     self.outdir / "posterior_over_time.npy")     # [T, E]
-        metrics_arr = np.array(list(metrics.values()), dtype=np.float64)
-        self._save_array(metrics_arr, self.outdir / "scalar_metrics.npy")
-        np.save(self.outdir / "scalar_metrics_dict.npy", metrics, allow_pickle=True)
+        self._save_array(R,        self.outdir / "risk_vectors_over_time.npy")
+        self._save_array(C_node,   self.outdir / "C_risk_node_matrix.npy")
+        self._save_array(C_edge,   self.outdir / f"{cs}_edge_vector.npy")
+        self._save_array(P_mean,   self.outdir / "posterior_mean_edge.npy")
+        self._save_array(PR_mean,  self.outdir / "prior_mean_edge.npy")
+        self._save_array(P_T,      self.outdir / "posterior_over_time.npy")
+        self._save_array(PR_T,     self.outdir / "prior_over_time.npy")
+        np.save(self.outdir / "scalar_metrics_posterior.npy", metrics_post, allow_pickle=True)
+        np.save(self.outdir / "scalar_metrics_prior.npy",     metrics_prior, allow_pickle=True)
+        np.save(self.outdir / "scalar_metrics_removed.npy",   metrics_removed, allow_pickle=True)
+        np.save(self.outdir / "scalar_metrics_added.npy",     metrics_added, allow_pickle=True)
 
-        # --- Plots ---
-        self.generate_plots(C_edge, P_mean, P_T, metrics)
+        self.generate_plots(C_edge, P_mean, PR_mean, P_T, PR_T, metrics_post, metrics_prior,
+                            metrics_removed, metrics_added)
+
+    @staticmethod
+    def print_summary(metrics_post: dict, metrics_prior: dict,
+                      metrics_removed: dict | None = None, metrics_added: dict | None = None):
+        all_dicts = [d for d in [metrics_post, metrics_prior, metrics_removed, metrics_added] if d]
+        metric_names = list(dict.fromkeys(k for d in all_dicts for k in d.keys()))
+        col_w = max((len(n) for n in metric_names), default=20) + 2
+        print(f"\n=== Hypothesis 2: Risk Coupling ===")
+        header = (f"\n  {'Metric':<{col_w}}  {'Posterior':>18}  {'Prior (baseline)':>18}"
+                  f"  {'Removed p(1-q)':>18}  {'Added q(1-p)':>18}")
+        print(header)
+        print("  " + "-" * (col_w + 80))
+        for name in metric_names:
+            def _fmt(d, k):
+                v = d.get(k, float("nan")) if d else float("nan")
+                return f"{v:>18.4f}" if np.isfinite(v) else f"{'NaN':>18}"
+            print(f"  {name:<{col_w}}"
+                  f"{_fmt(metrics_post, name)}{_fmt(metrics_prior, name)}"
+                  f"{_fmt(metrics_removed, name)}{_fmt(metrics_added, name)}")
+
+    def print_summary_from_saved(self):
+        """Loads saved metric dicts and prints the summary table without regenerating plots."""
+        m_post    = np.load(self.outdir / "scalar_metrics_posterior.npy", allow_pickle=True).item()
+        m_prior   = np.load(self.outdir / "scalar_metrics_prior.npy",     allow_pickle=True).item()
+        def _try_load_dict(path):
+            return np.load(path, allow_pickle=True).item() if path.exists() else None
+        m_removed = _try_load_dict(self.outdir / "scalar_metrics_removed.npy")
+        m_added   = _try_load_dict(self.outdir / "scalar_metrics_added.npy")
+        self.print_summary(m_post, m_prior, m_removed, m_added)
 
     def repaint(self):
-        """
-        Reads all previously saved arrays from outdir and regenerates all plots.
-        """
+        """Reads all previously saved arrays from outdir and regenerates all plots."""
         cs = self._coupling_short
         C_edge  = np.load(self.outdir / f"{cs}_edge_vector.npy")
         P_mean  = np.load(self.outdir / "posterior_mean_edge.npy")
+        PR_mean = np.load(self.outdir / "prior_mean_edge.npy")
         P_T     = np.load(self.outdir / "posterior_over_time.npy")
-        metrics_path = self.outdir / "scalar_metrics_dict.npy"
-        metrics = np.load(metrics_path, allow_pickle=True).item() if metrics_path.exists() else None
-        self.generate_plots(C_edge, P_mean, P_T, metrics=metrics)
+        PR_T    = np.load(self.outdir / "prior_over_time.npy")
+        m_post  = np.load(self.outdir / "scalar_metrics_posterior.npy", allow_pickle=True).item()
+        m_prior = np.load(self.outdir / "scalar_metrics_prior.npy",     allow_pickle=True).item()
+        def _try_load_dict(path):
+            return np.load(path, allow_pickle=True).item() if path.exists() else None
+        m_removed = _try_load_dict(self.outdir / "scalar_metrics_removed.npy")
+        m_added   = _try_load_dict(self.outdir / "scalar_metrics_added.npy")
+        self.generate_plots(C_edge, P_mean, PR_mean, P_T, PR_T, m_post, m_prior, m_removed, m_added)
 
-    def _visualize_coupling_graph(self, C_edge: npt.NDArray, P_mean: npt.NDArray):
+    def _visualize_coupling_graph(
+        self,
+        C_edge: npt.NDArray,
+        P_mean: npt.NDArray,
+        PR_mean: npt.NDArray,
+    ):
         """
-        Renders and saves two graph visualisations:
-          1. C_{ij}^{risk} (risk-based coupling, normalised to [0, 1] as edge probability)
+        Renders and saves three graph visualisations:
+          1. C_{ij}^{risk} (risk-based coupling, normalised)
           2. Time-averaged posterior existence probability
-
-        :param C_edge: [E] – C_{ij}^{risk} in fully-connected edge ordering
-        :param P_mean: [E] – time-averaged posterior edge-existence probability
+          3. Time-averaged prior existence probability  (baseline)
         """
         env = self._environment
         obs_space = BusConnectivityGraphObsSpace(grid2op_observation_space=env.observation_space)
@@ -347,55 +390,45 @@ class Hypothesis2verifier(PosteriorAnalyzer):
         N = 2 * env.n_line + env.n_gen + env.n_load
         cs = self._coupling_short
 
-        # Normalise C to [0, 1]; NaN entries become 0 so they render as absent
         C_finite = np.where(np.isfinite(C_edge), C_edge, np.nan)
-        c_min = np.nanmin(C_finite)
-        c_max = np.nanmax(C_finite)
+        c_min, c_max = np.nanmin(C_finite), np.nanmax(C_finite)
         denom = c_max - c_min if (c_max - c_min) > 1e-12 else 1.0
         C_norm = np.where(np.isfinite(C_finite), (C_finite - c_min) / denom, 0.0)
 
-        # latent_edge_probs: [E, 2] where column 0 = "edge exists" probability
-        coupling_probs = np.stack([C_norm, 1.0 - C_norm], axis=1)
-
-        fig_coupling = visualize_graph(PlottingArgs(
-            num_nodes=N,
-            node_styles=node_styles,
-            latent_edge_probs=coupling_probs,
-            powerline_edge_index=powerline_edge_index,
-        ))
-        fig_coupling.suptitle(r"Risk-based coupling $C_{ij}^{\mathrm{risk}}$ (normalised)", fontsize=14)
-        fig_coupling.savefig(self.outdir / f"graph_{cs}.png", bbox_inches="tight")
-        fig_coupling.savefig(self.outdir / f"graph_{cs}.svg", bbox_inches="tight")
-        plt.show()
-
-        # Posterior graph for direct comparison
-        P_probs = np.stack([P_mean, 1.0 - P_mean], axis=1)
-        fig_posterior = visualize_graph(PlottingArgs(
-            num_nodes=N,
-            node_styles=node_styles,
-            latent_edge_probs=P_probs,
-            powerline_edge_index=powerline_edge_index,
-        ))
-        fig_posterior.suptitle(r"Mean posterior $\bar{q}_\phi(z_{ij})$", fontsize=14)
-        fig_posterior.savefig(self.outdir / "graph_mean_posterior.png", bbox_inches="tight")
-        fig_posterior.savefig(self.outdir / "graph_mean_posterior.svg", bbox_inches="tight")
-        plt.show()
+        for probs, title, fname in [
+            (np.stack([C_norm, 1.0 - C_norm], axis=1),
+             r"Risk-based coupling $C_{ij}^{\mathrm{risk}}$ (normalised)",
+             f"graph_{cs}.png"),
+            (np.stack([P_mean, 1.0 - P_mean], axis=1),
+             r"Mean posterior $\bar{q}_\phi(z_{ij})$",
+             "graph_mean_posterior.png"),
+            (np.stack([PR_mean, 1.0 - PR_mean], axis=1),
+             r"Mean prior $\bar{p}_\phi(z_{ij})$ (baseline)",
+             "graph_mean_prior.png"),
+        ]:
+            fig = visualize_graph(PlottingArgs(
+                num_nodes=N,
+                node_styles=node_styles,
+                latent_edge_probs=probs,
+                powerline_edge_index=powerline_edge_index,
+            ))
+            #fig.suptitle(title, fontsize=14)
+            fig.savefig(self.outdir / fname, bbox_inches="tight")
+            fig.savefig(self.outdir / (Path(fname).stem + ".svg"), bbox_inches="tight")
+            plt.show()
 
     def generate_plots(
         self,
-        C_edge: npt.NDArray,    # [E]  – C_{ij}^{risk} in fully-connected edge order
-        P_mean: npt.NDArray,    # [E]  – time-averaged posterior existence probability
-        P_T: npt.NDArray,       # [T, E] – posterior at each timestep (for per-timestep view)
-        metrics: dict | None = None,
+        C_edge: npt.NDArray,      # [E]  – C_{ij}^{risk}
+        P_mean: npt.NDArray,      # [E]  – mean posterior
+        PR_mean: npt.NDArray,     # [E]  – mean prior  (baseline)
+        P_T: npt.NDArray,         # [T, E] – posterior over time
+        PR_T: npt.NDArray,        # [T, E] – prior over time  (baseline)
+        metrics_post: dict | None = None,
+        metrics_prior: dict | None = None,
+        metrics_removed: dict | None = None,
+        metrics_added: dict | None = None,
     ):
-        """
-        Produces all result plots for Hypothesis 2 (risk coupling vs posterior).
-
-        :param C_edge: C_{ij}^{risk} flattened to the fully-connected edge ordering [E]
-        :param P_mean: time-averaged posterior edge probability [E]
-        :param P_T: posterior over time [T, E] (used for the conditional-KDE plot)
-        :param metrics: optional dict of scalar metric names → values to annotate plots
-        """
         sns.reset_orig()
         matplotlib.rcParams.update({
             "font.size": 16,
@@ -409,87 +442,71 @@ class Hypothesis2verifier(PosteriorAnalyzer):
         cl = self._coupling_label
         cs = self._coupling_short
 
-        # --- KDE: C_{ij}^{risk} conditioned on high/low time-averaged posterior ---
-        valid = np.isfinite(C_edge) & np.isfinite(P_mean)
-        C_v = C_edge[valid]
-        P_v = P_mean[valid]
-        coupling_1 = C_v[P_v > 0.5]
-        coupling_0 = C_v[P_v <= 0.5]
-        plt.figure()
-        sns.kdeplot(coupling_1, label="High avg posterior node pairs")
-        sns.kdeplot(coupling_0, label="Low avg posterior node pairs")
-        plt.xlabel(f"{cl} " + r"$C_{ij}^{\mathrm{risk}}$")
-        plt.ylabel("Density")
-        plt.title(r"$C_{ij}^{\mathrm{risk}}$ conditioned on posterior")
-        plt.legend()
-        plt.tight_layout()
-        plt.savefig(self.outdir / f"kde_{cs}_conditioned_on_posterior_binary.png")
-        plt.savefig(self.outdir / f"kde_{cs}_conditioned_on_posterior_binary.svg")
+        # Derived mean distributions
+        removed_mean = PR_mean * (1.0 - P_mean)   # p(1-q): [E]
+        added_mean   = P_mean  * (1.0 - PR_mean)  # q(1-p): [E]
+
+        # --- KDE: coupling conditioned on high/low posterior (left) and prior (right) ---
+        fig, axes = plt.subplots(1, 2, figsize=(12, 4), sharex=True, sharey=True)
+        for ax, mean_val, suffix in [
+            (axes[0], P_mean,  "posterior"),
+            (axes[1], PR_mean, "prior"),
+        ]:
+            valid = np.isfinite(C_edge) & np.isfinite(mean_val)
+            C_v, X_v = C_edge[valid], mean_val[valid]
+            sns.kdeplot(C_v[X_v > 0.5],  label=f"High {suffix} node pairs", ax=ax)
+            sns.kdeplot(C_v[X_v <= 0.5], label=f"Low {suffix} node pairs",  ax=ax)
+            ax.set_xlabel(r"$C_{ij}^{\mathrm{risk}}$")
+            ax.set_ylabel("Density")
+            ax.set_title(f"{cl} vs {suffix}")
+            ax.legend()
+        #fig.suptitle(r"$C_{ij}^{\mathrm{risk}}$", y=0.88)
+        plt.tight_layout(rect=[0, 0, 1, 0.95])
+        plt.savefig(self.outdir / f"kde_{cs}_conditioned_on_posterior_prior.png")
+        plt.savefig(self.outdir / f"kde_{cs}_conditioned_on_posterior_prior.svg")
         plt.show()
 
-        # --- Scatter: C_{ij}^{risk} vs mean posterior ---
-        self._save_scatter(
-            values=(P_v, C_v),
-            title=f"Scatter: mean posterior vs {cl}",
-            xlabel="Mean posterior existence probability",
-            ylabel=r"$C_{ij}^{\mathrm{risk}}$",
-            outpath=self.outdir / f"scatter_posterior_vs_{cs}.png",
-        )
+        # --- KDE: coupling conditioned on high/low for removed and added ---
+        fig, axes = plt.subplots(1, 2, figsize=(12, 4), sharex=True, sharey=True)
+        for ax, mean_val, suffix in [
+            (axes[0], removed_mean, r"removed $p(1-q)$"),
+            (axes[1], added_mean,   r"added $q(1-p)$"),
+        ]:
+            valid = np.isfinite(C_edge) & np.isfinite(mean_val)
+            C_v, X_v = C_edge[valid], mean_val[valid]
+            med = np.median(X_v) if X_v.size > 0 else 0.5
+            sns.kdeplot(C_v[X_v > med],  label=f"High {suffix} node pairs", ax=ax)
+            sns.kdeplot(C_v[X_v <= med], label=f"Low {suffix} node pairs",  ax=ax)
+            ax.set_xlabel(r"$C_{ij}^{\mathrm{risk}}$")
+            ax.set_ylabel("Density")
+            ax.set_title(f"{cl} vs {suffix}")
+            ax.legend()
+        #fig.suptitle(r"$C_{ij}^{\mathrm{risk}}$", y=0.88)
+        plt.tight_layout(rect=[0, 0, 1, 0.95])
+        plt.savefig(self.outdir / f"kde_{cs}_conditioned_on_removed_added.png")
+        plt.savefig(self.outdir / f"kde_{cs}_conditioned_on_removed_added.svg")
+        plt.show()
 
-        if metrics:
-            for name, val in metrics.items():
-                val_str = f"{val:.4f}" if np.isfinite(val) else "NaN"
-                print(f"  {name}: {val_str}")
+        # --- Scatter: mean edge probability vs coupling (posterior / prior / removed / added) ---
+        for mean_val, suffix in [
+            (P_mean,       "posterior"),
+            (PR_mean,      "prior"),
+            (removed_mean, "removed_p1mq"),
+            (added_mean,   "added_q1mp"),
+        ]:
+            valid = np.isfinite(C_edge) & np.isfinite(mean_val)
+            C_v, X_v = C_edge[valid], mean_val[valid]
+            label_suffix = suffix.replace("_", " ")
+            self._save_scatter(
+                values=(X_v, C_v),
+                title=f"Scatter: {cl} vs {label_suffix}",
+                xlabel=f"Mean {label_suffix} existence probability",
+                ylabel=r"$C_{ij}^{\mathrm{risk}}$",
+                outpath=self.outdir / f"scatter_{suffix}_vs_{cs}.png",
+            )
 
-        # --- Graph visualisation of C_{ij}^{risk} ---
+        # --- Graph visualisation ---
         if self._environment is not None and self._powerline_edge_index is not None:
-            self._visualize_coupling_graph(C_edge, P_mean)
+            self._visualize_coupling_graph(C_edge, P_mean, PR_mean)
 
         print(f"Saved metrics and plots to: {self.outdir.absolute()}")
-
-
-
-def _setup(checkpoint_path: str, checkpoint_name: str, env_name_override: str) -> tuple[RllibAgent, Environment, CustomizedGrid2OpEnvironment]:
-    """
-    Returns an agent, env, and env-gym-wrapper given the
-    :param checkpoint_path: path under which all checkpoints of a training sessions are stored
-    :param checkpoint_name: the specific checkpoint for example checkpoint_000010
-    :param env_name_override: the env to use (override to run agent on validation or test env)
-    :return: rllib_agent, g2op_env, gym_wrapper
-    """
-    config = load_config(checkpoint_path)
-    env_config = config["evaluation_config"]["env_config"]
-    if env_name_override:
-        env_config["env_name"] = env_name_override
-
-    env_name = env_config["env_name"]
-
-    logger.info(f"Loading RAPPO from: {checkpoint_path}")
-    logger.info(f"Checkpoint: {checkpoint_name}")
-    logger.info(f"Environment: {env_name}")
-
-    # Use existing load_rllib_agent function
-    rllib_agent, g2op_env, gym_wrapper = load_rllib_agent(
-        checkpoint_path=checkpoint_path,
-        policy_name="reinforcement_learning_policy",
-        checkpoint_name=checkpoint_name,
-        env_name=env_name,
-        env_config=env_config
-    )
-    return rllib_agent, g2op_env, gym_wrapper
-
-
-def main():
-    #checkpoint_path = "/home/adrian/Schreibtisch/1901/1901_rappo_with_anneal_different_betas/CustomPPO_0_426b7_2026-01-19_10-28-48"
-    #checkpoint_name = "checkpoint_000020"
-    #env_name_override = "l2rpn_case14_sandbox_test"
-
-    #agent, env, gym_env = _setup(checkpoint_path, checkpoint_name, env_name_override)
-    #analysis_agent = LatentGraphAnalysisAgent(agent, gym_env, Hypothesis2verifier())
-    #logger.info("Agent loaded! Starting episodes...\n")
-    #analysis_agent.analyze(num_episodes=50)
-    Hypothesis2verifier().repaint()
-
-
-if __name__ == "__main__":
-    main()

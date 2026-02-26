@@ -14,6 +14,7 @@ import networkx as nx
 import numpy as np
 import numpy.typing as npt
 import torch
+from grid2op.Action import BaseAction
 from grid2op.Environment import Environment
 from grid2op.Observation import BaseObservation
 from ray.rllib.models import ModelCatalog
@@ -74,7 +75,7 @@ class PosteriorMetrics(PosteriorAnalyzer):
         self.step_count_total = 0
         self.episode_count = 0
 
-    def on_rl_step(self, posterior: npt.NDArray, powergrid_graph: npt.NDArray, observation: BaseObservation, _: Environment):
+    def on_rl_step(self, posterior: npt.NDArray, prior: npt.NDArray, powergrid_graph: npt.NDArray, observation: BaseObservation, _: Environment, action: BaseAction):
         self.step_count_this_episode += 1
         self.step_count_total += 1
         prior = self._get_prior(powergrid_graph, self.prior_for_graph_edges, self.temperature, self.num_edge_types)

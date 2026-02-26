@@ -2,7 +2,7 @@ import abc
 import logging
 import time
 from abc import abstractmethod
-from typing import Any
+from typing import Any, List
 
 import numpy.typing as npt
 import torch
@@ -13,6 +13,7 @@ from grid2op.Observation import BaseObservation
 from tqdm import tqdm
 
 from src.common.observation_space import EDGE_INDEX, EDGE_MASK
+from src.nri.utils import get_priors, get_prior_tensor, fully_connected_edge_index
 from src.rl4pnc.evaluation.evaluation_agents import RllibAgent
 from src.rl4pnc.grid2op_env.observation_converter import ObservationConverter
 
@@ -22,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 class PosteriorAnalyzer(abc.ABC):
     @abstractmethod
-    def on_rl_step(self, posterior: npt.NDArray, powergrid_graph: npt.NDArray, observation: BaseObservation, environment: Environment):
+    def on_rl_step(self, posterior: npt.NDArray, prior: npt.NDArray, powergrid_graph: npt.NDArray, observation: BaseObservation, environment: Environment, action: BaseAction):
         pass
 
     @abstractmethod
@@ -41,12 +42,12 @@ class PosteriorAnalyzer(abc.ABC):
 class LatentGraphAnalysisAgent(BaseAgent):
     """Wrapper around RllibAgent that invokes an analysis component when agent acts."""
 
-    def __init__(self, rllib_agent: RllibAgent, gym_wrapper: ObservationConverter, analyser: PosteriorAnalyzer):
+    def __init__(self, rllib_agent: RllibAgent, gym_wrapper: ObservationConverter, analysers: List[PosteriorAnalyzer]):
         """Initialize Agent."""
         BaseAgent.__init__(self, rllib_agent.action_space)
 
         self.rllib_agent = rllib_agent
-        self.analyser = analyser
+        self.analysers = analysers
         self.gym_wrapper = gym_wrapper
 
         # Get the policy model for accessing posterior
@@ -70,29 +71,33 @@ class LatentGraphAnalysisAgent(BaseAgent):
 
         # invoke analyzer
         if use_rl_component:
+            pg_edge_index = powergrid_edge_index.detach().cpu().numpy()
             posterior = self._get_posterior()
-            self.analyser.on_rl_step(
+            prior = self._get_prior(pg_edge_index)
+            [analyser.on_rl_step(
                 posterior,
-                powergrid_edge_index.detach().cpu().numpy(),
+                prior,
+                pg_edge_index,
                 observation,
                 self.g2op_env,
-            )
+                action,
+            ) for analyser in self.analysers]
         else:
-            self.analyser.on_heuristic_step(
+            [analyser.on_heuristic_step(
                 powergrid_edge_index.detach().cpu().numpy(),
                 observation,
                 self.g2op_env
-            )
+            ) for analyser in self.analysers]
 
         return action
 
     def on_new_episode(self, chronic_id: str):
         """Notify analyser of new episode."""
-        self.analyser.on_new_episode(chronic_id)
+        [analyser.on_new_episode(chronic_id) for analyser in self.analysers]
 
     def on_evaluation_end(self):
         """Notify analyser of evaluation end."""
-        self.analyser.on_evaluation_end()
+        [analyser.on_evaluation_end() for analyser in self.analysers]
 
     def _get_posterior(self) -> Any:
         posterior = self.policy_model.get_posterior()  # [B, E, K]
@@ -141,3 +146,24 @@ class LatentGraphAnalysisAgent(BaseAgent):
             self.gym_wrapper.env_gym.close()
         except Exception as e:
             logger.debug(f"Environment cleanup error (ignored): {e}")
+
+    def _get_prior(self, powergrid_edge_index: npt.NDArray) -> npt.NDArray:
+        config = self.rllib_agent._rllib_agent.config["relation_awareness"]
+        N = 57 # todo
+        E = powergrid_edge_index.shape[1]
+        all_edges = fully_connected_edge_index(N)
+        prior_for_graph_edges, prior_for_non_graph_edges = get_priors(
+            prob_graph_edges_exist=config["prior_prob_for_graph_edge"],
+            num_graph_edges=E,
+            num_non_graph_edges=all_edges.shape[1] - E,
+            temperature=config["temperature"]
+        )
+        prior_tensor, graph_edge_mask = get_prior_tensor(
+            graph_edges=torch.from_numpy(powergrid_edge_index),
+            all_edges=all_edges,
+            prior_for_graph_edges=prior_for_graph_edges,
+            prior_for_non_graph_edges=prior_for_non_graph_edges,
+            num_edge_types=self.rllib_agent._rllib_agent.config["model"]["custom_model_config"]["encoder"]["num_edge_types"],
+            return_mask=True,
+        )
+        return prior_tensor.cpu().numpy()

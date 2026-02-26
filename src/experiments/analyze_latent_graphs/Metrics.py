@@ -127,6 +127,16 @@ class MetricVisualizer(abc.ABC, Generic[T]):
         with open(path, "wb") as f:
             pickle.dump(data, f)
 
+    def load_data(self, path: Path) -> T:
+        """
+        Loads summarized data from a file.
+        :param path: the path to load the data from
+        :return: the loaded data of type T
+        """
+        with open(path, "rb") as f:
+            data = pickle.load(f)
+        return data
+
 class DegreeDistributionVisualizer(MetricVisualizer[Dict[str, npt.NDArray]]):
     """Visualizes per-node degree distributions for latent and powergrid graphs (full and subgraph)."""
     
