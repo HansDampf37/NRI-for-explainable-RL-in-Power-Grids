@@ -23,4 +23,4 @@ scipy~=1.16.2
 stable_baselines3~=2.7.0
 l2rpn_baselines~=0.8.0
 tensorboardX~=2.6.4
-optuna~=4.6.0
+optuna~=4.6.0tabulate

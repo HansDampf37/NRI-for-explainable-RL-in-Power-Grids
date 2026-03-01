@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
 
-import matplotlib
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
@@ -12,20 +12,15 @@ from grid2op.Observation import BaseObservation
 from scipy.stats import spearmanr, kendalltau
 from sklearn.feature_selection import mutual_info_regression
 from sklearn.metrics import roc_auc_score, average_precision_score
+from tabulate import tabulate
 
-from evaluate_rllib_agent import load_config, load_rllib_agent
 from src.common.observation_space import BusConnectivityGraphObsSpace, EDGE_INDEX
 from src.experiments.analyze_latent_graphs.MetricAnalyzer import PosteriorAnalyzer
-from src.experiments.analyze_latent_graphs.agent_analysis_framework import LatentGraphAnalysisAgent
 from src.experiments.analyze_latent_graphs.build_coupling_matrices import (
-    get_risk_vector,
-    build_node_to_bus_mapping,
     get_ptdf_from_env,
     compute_node_risk_vector,
 )
 from src.nri.utils import fully_connected_edge_index
-from src.rl4pnc.evaluation.evaluation_agents import RllibAgent
-from src.rl4pnc.grid2op_env.custom_environment import CustomizedGrid2OpEnvironment
 from src.visualization import visualize_graph, PlottingArgs, get_node_styles
 
 logger = logging.getLogger(__name__)
@@ -376,10 +371,11 @@ class Hypothesis3verifier(PosteriorAnalyzer):
         self, powergrid_graph: npt.NDArray, observation: BaseObservation, environment: Environment
     ):
         # Reset pending state: we cannot compute Δr across an RL→heuristic boundary
-        self._prev_risk = None
-        self._prev_posterior = None
-        self._prev_prior = None
-        self._prev_V = None
+        #self._prev_risk = None
+        #self._prev_posterior = None
+        #self._prev_prior = None
+        #self._prev_V = None
+        pass
 
     def on_new_episode(self, chronic_id: str):
         # Reset carry-over state at episode boundaries
@@ -515,19 +511,6 @@ class Hypothesis3verifier(PosteriorAnalyzer):
         metric_names = list(dict.fromkeys(
             list(k for d in all_global for k in d.keys())
         ))
-        col_w = max((len(n) for n in metric_names), default=20) + 2
-
-        def _fv(d, k):
-            if d is None:
-                return f"{'N/A':>18}"
-            v = d.get(k, float("nan"))
-            return f"{v:>18.4f}" if np.isfinite(v) else f"{'NaN':>18}"
-
-        def _dist_mean(arr):
-            if arr is None:
-                return f"{'N/A':>18}"
-            f = arr[np.isfinite(arr)]
-            return f"{float(np.nanmean(f)):>18.4f}" if f.size else f"{'NaN':>18}"
 
         dist_arrs = {
             "Spearman rho":        (spearman_rho,    prior_spearman_rho,    removed_spearman_rho,    added_spearman_rho),
@@ -539,23 +522,40 @@ class Hypothesis3verifier(PosteriorAnalyzer):
             "Mutual information":  (mi_arr,           prior_mi_arr,           removed_mi_arr,           added_mi_arr),
         }
 
-        print(f"\n=== Hypothesis 3: Action-Effect Coupling ===")
-        print(f"\n  {'Metric':<{col_w}}  "
-              f"{'Per-step post':>18}  {'Per-step prior':>18}  "
-              f"{'Per-step removed':>18}  {'Per-step added':>18}  "
-              f"{'Global post':>18}  {'Global prior':>18}  "
-              f"{'Global removed':>18}  {'Global added':>18}  "
-              f"{'Agg post':>18}  {'Agg prior':>18}  "
-              f"{'Agg removed':>18}  {'Agg added':>18}")
-        print("  " + "-" * (col_w + 240))
+        headers = [
+            "Metric",
+            "Per-step post", "Per-step prior", "Per-step removed", "Per-step added",
+            "Global post", "Global prior", "Global removed", "Global added",
+            "Agg post", "Agg prior", "Agg removed", "Agg added",
+        ]
+
+        def _fv_plain(d, k):
+            if d is None:
+                return "N/A"
+            v = d.get(k, float("nan"))
+            return f"{v:.4f}" if np.isfinite(v) else "NaN"
+
+        def _dist_mean_plain(arr):
+            if arr is None:
+                return "N/A"
+            f = arr[np.isfinite(arr)]
+            return f"{float(np.nanmean(f)):.4f}" if f.size else "NaN"
+
+        rows = []
         for name in metric_names:
             dp, dpr, drem, dadd = dist_arrs.get(name, (None, None, None, None))
-            print(f"  {name:<{col_w}}"
-                  f"{_dist_mean(dp)}{_dist_mean(dpr)}{_dist_mean(drem)}{_dist_mean(dadd)}"
-                  f"{_fv(global_post, name)}{_fv(global_prior, name)}"
-                  f"{_fv(global_removed, name)}{_fv(global_added, name)}"
-                  f"{_fv(agg_post, name)}{_fv(agg_prior, name)}"
-                  f"{_fv(agg_removed, name)}{_fv(agg_added, name)}")
+            rows.append([
+                name,
+                _dist_mean_plain(dp), _dist_mean_plain(dpr),
+                _dist_mean_plain(drem), _dist_mean_plain(dadd),
+                _fv_plain(global_post, name), _fv_plain(global_prior, name),
+                _fv_plain(global_removed, name), _fv_plain(global_added, name),
+                _fv_plain(agg_post, name), _fv_plain(agg_prior, name),
+                _fv_plain(agg_removed, name), _fv_plain(agg_added, name),
+            ])
+
+        print(f"\n=== Hypothesis 3: Action-Effect Coupling ===\n")
+        print(tabulate(rows, headers=headers, tablefmt="rounded_outline", floatfmt=".4f"))
 
     def on_evaluation_end(self):
         n_action_steps = len(self._C_over_time)
@@ -890,55 +890,127 @@ class Hypothesis3verifier(PosteriorAnalyzer):
     # Graph visualisation
     # ------------------------------------------------------------------
 
+    def _shrink_axis_box(self, ax, left=0.0, right=0.0, bottom=0.0, top=0.0):
+        """
+        Shrink an axis *inside its allocated gridspec cell* by fractions of its size.
+        Fractions are relative to the current axis width/height.
+        """
+        pos = ax.get_position()
+        new_x0 = pos.x0 + pos.width * left
+        new_y0 = pos.y0 + pos.height * bottom
+        new_w = pos.width * (1.0 - left - right)
+        new_h = pos.height * (1.0 - bottom - top)
+        ax.set_position([new_x0, new_y0, new_w, new_h])
+
     def _visualize_coupling_graph(
-        self,
-        C_mean: npt.NDArray,
-        P_mean: npt.NDArray,
-        PR_mean: npt.NDArray,
-        node_counts: npt.NDArray | None = None,
+            self,
+            C_mean,
+            P_mean,
+            PR_mean,
+            node_counts=None,
+            timesteps_total=1,
     ):
         env = self._environment
         obs_space = BusConnectivityGraphObsSpace(grid2op_observation_space=env.observation_space)
         node_styles = get_node_styles(env, obs_space.__class__)
         N = 2 * env.n_line + env.n_gen + env.n_load
 
-        node_sizes_override: dict[int, float] | None = None
-        if node_counts is not None and node_counts.shape[0] == N:
-            max_count = node_counts.max()
-            if max_count > 0:
-                node_sizes_override = {
-                    i: 1.0 + 3.0 * float(node_counts[i]) / float(max_count)
-                    for i in range(N)
-                }
+        have_counts = node_counts is not None and node_counts.shape[0] == N
+        denom = float(max(int(timesteps_total), 1))
 
-        def _norm(v: npt.NDArray) -> npt.NDArray:
-            v = np.where(np.isfinite(v), v, np.nan)
-            lo, hi = np.nanmin(v), np.nanmax(v)
-            denom = hi - lo if (hi - lo) > 1e-12 else 1.0
-            return np.where(np.isfinite(v), (v - lo) / denom, 0.0)
+        # --- Percent counts (do NOT mutate node_counts) ---
+        counts_pct = None
+        if have_counts:
+            counts_pct = (node_counts.astype(np.float64) / denom) * 100.0
 
-        size_note = " (node size = reconfiguration frequency)" if node_sizes_override else ""
+        # --- Shared colormap / normalization ---
+        cmap = plt.cm.get_cmap("coolwarm")
+        zero_color = (0.85, 0.85, 0.85, 1.0)
+
+        if have_counts:
+            vmax = float(max(counts_pct.max(), 1e-12))  # avoid zero vmax
+        else:
+            vmax = 1.0
+        norm = mpl.colors.Normalize(vmin=0.0, vmax=vmax)
+
+        # --- Apply colors to graph nodes from percent counts ---
+        if have_counts:
+            for i, c in enumerate(counts_pct):
+                node_styles[i].color = zero_color if c <= 0.0 else cmap(norm(c))
+
         for probs, title, fname in [
-            (np.stack([_norm(C_mean), 1.0 - _norm(C_mean)], axis=1),
-             r"Mean effect coupling $\bar{C}_{ij}^{\mathrm{effect}}$" + size_note,
+            (np.stack([C_mean, 1.0 - C_mean], axis=1),
+             r"Mean effect coupling $\bar{C}_{ij}^{\mathrm{effect}}$",
              "graph_C_effect_mean.png"),
             (np.stack([P_mean, 1.0 - P_mean], axis=1),
-             r"Mean posterior $\bar{q}_\phi(z_{ij})$" + size_note,
+             r"Mean posterior $\bar{q}_\phi(z_{ij})$",
              "graph_mean_posterior.png"),
             (np.stack([PR_mean, 1.0 - PR_mean], axis=1),
-             r"Mean prior $\bar{p}_\phi(z_{ij})$ (baseline)" + size_note,
+             r"Mean prior $\bar{p}_\phi(z_{ij})$ (baseline)",
              "graph_mean_prior.png"),
         ]:
-            fig = visualize_graph(PlottingArgs(
-                num_nodes=N,
-                node_styles=node_styles,
-                latent_edge_probs=probs,
-                powerline_edge_index=self._powerline_edge_index,
-                node_sizes_override=node_sizes_override,
-            ))
-            fig.suptitle(title, fontsize=13)
-            fig.savefig(self.outdir / fname, bbox_inches="tight")
-            fig.savefig(self.outdir / (Path(fname).stem + ".svg"), bbox_inches="tight")
+            # Layout (turn off constrained_layout because we manually position/shrink axes)
+            fig = plt.figure(figsize=(12, 4), constrained_layout=False)
+            gs = fig.add_gridspec(
+                nrows=1, ncols=3,
+                width_ratios=[2.5, 1.5, 0.10],
+                wspace=0.25,  # <-- ensures ylabel doesn't clip/overlap the graph
+            )
+
+            ax_graph = fig.add_subplot(gs[0, 0])
+            ax_hist = fig.add_subplot(gs[0, 1])
+            cax = fig.add_subplot(gs[0, 2])
+
+            # Global title centered over everything
+            st = fig.suptitle("Node reconfiguration frequency (%) across time", x=0.5, y=0.98, ha="center")
+
+            # Draw graph
+            visualize_graph(
+                PlottingArgs(
+                    num_nodes=N,
+                    node_styles=node_styles,
+                    latent_edge_probs=probs,
+                    powerline_edge_index=self._powerline_edge_index,
+                    show_legend=False,
+                ),
+                ax=ax_graph,
+            )
+
+            # Shrink axes to mimic the graph's internal padding
+            self._shrink_axis_box(ax_hist, left=0.03, right=0.03, bottom=0.06, top=0.06)
+            self._shrink_axis_box(cax, left=0.0, right=0.0, bottom=0.06, top=0.06)
+
+            # --- IMPORTANT: make colorbar match histogram height exactly ---
+            hist_pos = ax_hist.get_position()
+            cax_pos = cax.get_position()
+            cax.set_position([cax_pos.x0, hist_pos.y0, cax_pos.width, hist_pos.height])
+
+            # Histogram
+            if have_counts and counts_pct.size > 0:
+                x = np.arange(N)
+                bar_colors = [zero_color if c <= 0.0 else cmap(norm(c)) for c in counts_pct]
+                ax_hist.bar(x, counts_pct, color=bar_colors, edgecolor="none")
+
+                ax_hist.set_xlabel("Node index")
+                ax_hist.set_ylabel("Reconfiguration frequency", labelpad=8)  # small pad
+                ax_hist.set_xlim(-0.5, N - 0.5)
+                ax_hist.margins(x=0.02, y=0.05)
+                ax_hist.set_ylim(0.0, vmax)
+
+            # Colorbar
+            if have_counts:
+                sm = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
+                sm.set_array([])
+                cb = fig.colorbar(sm, cax=cax)
+                cb.set_label("Reconfiguration frequency")
+
+            # Leave room for suptitle
+            fig.subplots_adjust(top=0.86)
+
+            # Save (include suptitle reliably when using tight bbox)
+            fig.savefig(self.outdir / fname, bbox_inches="tight", pad_inches=0.05, bbox_extra_artists=[st])
+            fig.savefig(self.outdir / (Path(fname).stem + ".svg"), bbox_inches="tight", pad_inches=0.05,
+                        bbox_extra_artists=[st])
             plt.show()
 
     # ------------------------------------------------------------------
@@ -990,7 +1062,7 @@ class Hypothesis3verifier(PosteriorAnalyzer):
         added_mi_arr: npt.NDArray | None = None,
     ):
         sns.reset_orig()
-        matplotlib.rcParams.update({
+        mpl.rcParams.update({
             "font.size": 16,
             "axes.titlesize": 18,
             "axes.labelsize": 16,
@@ -1031,7 +1103,6 @@ class Hypothesis3verifier(PosteriorAnalyzer):
                 ax.set_title(f"{cl} vs {vs_label}")
                 ax.set_xlabel(xlabel)
                 ax.set_ylabel("Count")
-            fig.suptitle(metric, y=0.88)
             plt.tight_layout(rect=[0, 0, 1, 0.95])
             plt.savefig(outpath.parent / (outpath.stem + ".png"))
             plt.savefig(outpath.parent / (outpath.stem + ".svg"))
@@ -1061,13 +1132,34 @@ class Hypothesis3verifier(PosteriorAnalyzer):
                 ax.set_title(vs_label)
                 ax.set_xlabel(xlabel)
                 ax.set_ylabel("Count")
-            fig.suptitle(metric, y=0.98)
             plt.tight_layout(rect=[0, 0, 1, 0.95])
             stem = outpath.stem + "_4way"
             plt.savefig(outpath.parent / (stem + ".png"))
             plt.savefig(outpath.parent / (stem + ".svg"))
             plt.show()
 
+        # ---- Graph visualisation ----
+        if self._environment is None or self._powerline_edge_index is None:
+            import grid2op
+            from src.common.observation_space import BusConnectivityGraphObsSpace, EDGE_INDEX
+            self._environment = grid2op.make("l2rpn_case14_sandbox")
+            obs_space = BusConnectivityGraphObsSpace(grid2op_observation_space=self._environment.observation_space)
+            self._powerline_edge_index = obs_space.to_gym(self._environment.reset())[EDGE_INDEX]
+
+        self._visualize_coupling_graph(C_mean, P_mean, PR_mean, node_counts, timesteps_total = C_T.shape[0])
+
+        if node_counts is not None and node_counts.size > 0:
+            plt.figure(figsize=(max(8, len(node_counts) // 3), 4))
+            plt.bar(range(len(node_counts)), node_counts)
+            plt.xlabel("Node index")
+            plt.ylabel("Reconfiguration count")
+            plt.title(r"Per-node reconfiguration frequency ($V(a_t)$ membership count)")
+            plt.tight_layout()
+            plt.savefig(self.outdir / "bar_node_reconfiguration_counts.png")
+            plt.savefig(self.outdir / "bar_node_reconfiguration_counts.svg")
+            plt.show()
+
+        return  # skip remaining plots for now
         # ---- KDE: mean C conditioned on posterior (left) and prior (right) ----
         fig, axes = plt.subplots(1, 2, figsize=(10, 4), sharex=True, sharey=True)
         for ax, mean_val, suffix in [
@@ -1083,7 +1175,7 @@ class Hypothesis3verifier(PosteriorAnalyzer):
             ax.set_ylabel("Density")
             ax.set_title(f"{cl} vs {suffix}")
             ax.legend()
-        fig.suptitle(r"$\bar{C}_{ij}^{\mathrm{effect}}$", y=0.98)
+        #fig.suptitle(r"$\bar{C}_{ij}^{\mathrm{effect}}$", y=0.98)
         plt.tight_layout(rect=[0, 0, 1, 0.95])
         plt.savefig(self.outdir / "kde_C_effect_conditioned_on_posterior_prior.png")
         plt.savefig(self.outdir / "kde_C_effect_conditioned_on_posterior_prior.svg")
@@ -1105,7 +1197,7 @@ class Hypothesis3verifier(PosteriorAnalyzer):
             ax.set_ylabel("Density")
             ax.set_title(f"{cl} vs {suffix}")
             ax.legend()
-        fig.suptitle(r"$\bar{C}_{ij}^{\mathrm{effect}}$ – removed/added", y=0.98)
+        #fig.suptitle(r"$\bar{C}_{ij}^{\mathrm{effect}}$ – removed/added", y=0.98)
         plt.tight_layout(rect=[0, 0, 1, 0.95])
         plt.savefig(self.outdir / "kde_C_effect_conditioned_on_removed_added.png")
         plt.savefig(self.outdir / "kde_C_effect_conditioned_on_removed_added.svg")
@@ -1143,7 +1235,7 @@ class Hypothesis3verifier(PosteriorAnalyzer):
             ax.set_ylabel("Density")
             ax.set_title(f"{cl} vs {suffix}")
             ax.legend()
-        fig.suptitle(r"Aggregated $\tilde{C}_{ij}^{\mathrm{effect}}$", y=0.98)
+        #fig.suptitle(r"Aggregated $\tilde{C}_{ij}^{\mathrm{effect}}$", y=0.98)
         plt.tight_layout(rect=[0, 0, 1, 0.95])
         plt.savefig(self.outdir / "kde_C_effect_agg_conditioned_on_posterior_prior.png")
         plt.savefig(self.outdir / "kde_C_effect_agg_conditioned_on_posterior_prior.svg")
@@ -1164,7 +1256,7 @@ class Hypothesis3verifier(PosteriorAnalyzer):
             ax.set_ylabel("Density")
             ax.set_title(f"{cl} vs {suffix}")
             ax.legend()
-        fig.suptitle(r"Aggregated $\tilde{C}_{ij}^{\mathrm{effect}}$ – removed/added", y=0.98)
+        #fig.suptitle(r"Aggregated $\tilde{C}_{ij}^{\mathrm{effect}}$ – removed/added", y=0.98)
         plt.tight_layout(rect=[0, 0, 1, 0.95])
         plt.savefig(self.outdir / "kde_C_effect_agg_conditioned_on_removed_added.png")
         plt.savefig(self.outdir / "kde_C_effect_agg_conditioned_on_removed_added.svg")
@@ -1235,21 +1327,5 @@ class Hypothesis3verifier(PosteriorAnalyzer):
         _hist4(mi_arr, prior_mi_arr, removed_mi_arr, added_mi_arr,
                metric="Mutual information", xlabel="MI",
                outpath=self.outdir / "hist_mutual_info.png")
-
-        # ---- Bar chart: per-node reconfiguration frequency ----
-        if node_counts is not None and node_counts.size > 0:
-            plt.figure(figsize=(max(8, len(node_counts) // 3), 4))
-            plt.bar(range(len(node_counts)), node_counts)
-            plt.xlabel("Node index")
-            plt.ylabel("Reconfiguration count")
-            plt.title("Per-node reconfiguration frequency (V(a_t) membership count)")
-            plt.tight_layout()
-            plt.savefig(self.outdir / "bar_node_reconfiguration_counts.png")
-            plt.savefig(self.outdir / "bar_node_reconfiguration_counts.svg")
-            plt.show()
-
-        # ---- Graph visualisation (only when live env is available) ----
-        if self._environment is not None and self._powerline_edge_index is not None:
-            self._visualize_coupling_graph(C_mean, P_mean, PR_mean, node_counts)
 
         print(f"Saved metrics and plots to: {self.outdir.absolute()}")

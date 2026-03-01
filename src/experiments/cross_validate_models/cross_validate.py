@@ -1,8 +1,10 @@
 import logging
+from itertools import product
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 
 import numpy as np
+import numpy.typing as npt
 from grid2op.Agent import BaseAgent
 from grid2op.Environment import Environment
 from tqdm import tqdm
@@ -10,9 +12,6 @@ from tqdm import tqdm
 from evaluate_rllib_agent import load_rllib_agent, load_config
 from src.common.observation_space import BusConnectivityGraphObsSpace, EDGE_INDEX
 from src.rl4pnc.grid2op_env.custom_environment import CustomizedGrid2OpEnvironment
-from concurrent.futures import ProcessPoolExecutor, as_completed
-from itertools import product
-
 from src.visualization import visualize_graph, PlottingArgs, get_node_styles
 
 logger = logging.getLogger(__name__)
@@ -59,7 +58,7 @@ class CrossValidateResult:
         self.rhos_before_failure: Dict[str, List[int]] = {}
 
 
-def run_until_failure(agent: BaseAgent, g2op_env: Environment, backup_env: Environment, result: CrossValidateResult) -> Tuple[bool, str]:
+def run_until_failure(agent: BaseAgent, g2op_env: Environment, backup_env: Environment, result: CrossValidateResult) -> bool:
     """
     Runs the specified agent on the next chronic until it fails.
     The backup environment is stepped alongside to keep them in sync. After this method the backup environment is at
@@ -138,7 +137,7 @@ def cross_validate(failing_agent_spec: AgentSpec, backup_agent_spec: AgentSpec) 
     :return: a cross-validation result object
     """
     # load models and envs
-    failing_agent_load, backup_agent_load = [load_agent_from_spec(agent_spec) for agent_spec in [failing_agent_spec, backup_agent_spec]]
+    failing_agent_load, backup_agent_load = [load_agent_from_spec(agent_spec, "l2rpn_case14_sandbox_test") for agent_spec in [failing_agent_spec, backup_agent_spec]]
     failing_agent, g2op_env, _ = failing_agent_load
     backup_agent, backup_env, _ = backup_agent_load
 
@@ -149,10 +148,24 @@ def cross_validate(failing_agent_spec: AgentSpec, backup_agent_spec: AgentSpec) 
     )
     num_validation_chronics = 50
     for _ in tqdm(range(num_validation_chronics), desc=f"Cross-validating {failing_agent_spec.name} with {backup_agent_spec.name}", unit="chronic"):
-        completed = run_until_failure(failing_agent, g2op_env, backup_env, result)
-        if not completed:
-            # continue env from failing state with backup agent
-            continue_env_with_backup_agent(backup_env, backup_agent, result)
+
+        try:
+            completed = run_until_failure(failing_agent, g2op_env, backup_env, result)
+            try:
+                if not completed:
+                    # continue env from failing state with backup agent
+                    continue_env_with_backup_agent(backup_env, backup_agent, result)
+            except Exception as e:
+                logger.error(
+                    f"Error during backup agent evaluation of {backup_agent_spec.name} on chronic {backup_env.chronics_handler.get_name()}, skip this chronic: {e}")
+                result.backup_agent_completed[backup_env.chronics_handler.get_name()] = None
+                result.additional_timesteps[backup_env.chronics_handler.get_name()] = None
+
+        except Exception as e:
+            logger.error(f"Error during rollout of {failing_agent_spec.name} and on chronic {g2op_env.chronics_handler.get_name()}, skip this chronic: {e}")
+            result.failing_agent_completed[g2op_env.chronics_handler.get_name()] = None
+            result.backup_agent_completed[g2op_env.chronics_handler.get_name()] = None
+            result.additional_timesteps[g2op_env.chronics_handler.get_name()] = None
 
     return result
 
@@ -185,7 +198,7 @@ def save_cross_validate_results(results: List[CrossValidateResult], save_path: P
 # Data-computation helpers
 # ---------------------------------------------------------------------------
 
-def compute_cross_validation_data(results: List[CrossValidateResult], save_dir: Path) -> Tuple[np.ndarray, List[str], List[str]]:
+def compute_cross_validation_data(results: List[CrossValidateResult], save_dir: Path) -> Tuple[npt.NDArray, npt.NDArray, List[str], List[str]]:
     """
     Compute the cross-validation heatmap data from *results* and persist it.
 
@@ -196,20 +209,23 @@ def compute_cross_validation_data(results: List[CrossValidateResult], save_dir: 
 
     :param results: list of cross-validation results
     :param save_dir: directory in which to save the .npy files
-    :return: ``(cv_map, all_failing_agents, all_backup_agents)``
+    :return: ``(cv_map, cv_std, all_failing_agents, all_backup_agents)``
     """
     all_failing_agents = sorted({r.failing_agent.name for r in results})
     all_backup_agents = sorted({r.backup_agent.name for r in results})
 
     cv_map = np.full((len(all_failing_agents), len(all_backup_agents)), np.nan, dtype=float)
+    cv_std = np.full((len(all_failing_agents), len(all_backup_agents)), np.nan, dtype=float)
     for result in results:
         i = all_failing_agents.index(result.failing_agent.name)
         j = all_backup_agents.index(result.backup_agent.name)
         valid = [s for s in result.additional_timesteps.values() if s is not None]
         cv_map[i, j] = np.mean(valid) if valid else np.nan
+        cv_std[i, j] = np.std(valid) if valid else np.nan
 
     save_dir.mkdir(parents=True, exist_ok=True)
     np.save(save_dir / "cv_map.npy", cv_map)
+    np.save(save_dir / "cv_std.npy", cv_std)
     np.save(save_dir / "cv_failing_agents.npy", np.array(all_failing_agents))
     np.save(save_dir / "cv_backup_agents.npy", np.array(all_backup_agents))
     logger.info("Saved cross-validation data to %s", save_dir)
@@ -240,18 +256,27 @@ def compute_failing_edges_data(results: List[CrossValidateResult], save_dir: Pat
         logger.warning("No failures found – cannot compute failing-edge data.")
         return {}, {}, np.array([]), np.array([])
 
-    lines_connected_before: Dict[str, np.ndarray] = {
-        result.failing_agent.name: np.array(
-            [v for v in result.connected_lines_before_failure.values() if v is not None]
-        ).mean(axis=0)
-        for result in results_with_failures
-    }
-    rhos_before_failure: Dict[str, np.ndarray] = {
-        result.failing_agent.name: np.array(
-            [v for v in result.rhos_before_failure.values() if v is not None]
-        ).mean(axis=0)
-        for result in results_with_failures
-    }
+    lines_connected_before: Dict[str, np.ndarray] = {}
+    lines_connected_std: Dict[str, np.ndarray] = {}
+    lines_connected_min: Dict[str, np.ndarray] = {}
+    lines_connected_max: Dict[str, np.ndarray] = {}
+    rhos_before_failure: Dict[str, np.ndarray] = {}
+    rhos_std: Dict[str, np.ndarray] = {}
+    rhos_min: Dict[str, np.ndarray] = {}
+    rhos_max: Dict[str, np.ndarray] = {}
+
+    for result in results_with_failures:
+        name = result.failing_agent.name
+        conn_arr = np.array([v for v in result.connected_lines_before_failure.values() if v is not None])
+        rho_arr = np.array([v for v in result.rhos_before_failure.values() if v is not None])
+        lines_connected_before[name] = conn_arr.mean(axis=0)
+        lines_connected_std[name] = conn_arr.std(axis=0)
+        lines_connected_min[name] = conn_arr.min(axis=0)
+        lines_connected_max[name] = conn_arr.max(axis=0)
+        rhos_before_failure[name] = rho_arr.mean(axis=0)
+        rhos_std[name] = rho_arr.std(axis=0)
+        rhos_min[name] = rho_arr.min(axis=0)
+        rhos_max[name] = rho_arr.max(axis=0)
 
     env = grid2op.make("l2rpn_case14_sandbox_val")
     obs_space = BusConnectivityGraphObsSpace(env.observation_space)
@@ -283,7 +308,13 @@ def compute_failing_edges_data(results: List[CrossValidateResult], save_dir: Pat
     for agent_name in agent_names:
         safe = agent_name.replace(" ", "_")
         np.save(save_dir / f"failing_edges_connection_{safe}.npy", lines_connected_before[agent_name])
+        np.save(save_dir / f"failing_edges_connection_std_{safe}.npy", lines_connected_std[agent_name])
+        np.save(save_dir / f"failing_edges_connection_min_{safe}.npy", lines_connected_min[agent_name])
+        np.save(save_dir / f"failing_edges_connection_max_{safe}.npy", lines_connected_max[agent_name])
         np.save(save_dir / f"failing_edges_rho_{safe}.npy", rhos_before_failure[agent_name])
+        np.save(save_dir / f"failing_edges_rho_std_{safe}.npy", rhos_std[agent_name])
+        np.save(save_dir / f"failing_edges_rho_min_{safe}.npy", rhos_min[agent_name])
+        np.save(save_dir / f"failing_edges_rho_max_{safe}.npy", rhos_max[agent_name])
     logger.info("Saved failing-edges data to %s", save_dir)
 
     return lines_connected_before, rhos_before_failure, pl_edge_index, powerline_edge_indices_arr
@@ -295,6 +326,7 @@ def compute_failing_edges_data(results: List[CrossValidateResult], save_dir: Pat
 
 def paint_cross_validation_results(
     cv_map: np.ndarray,
+    cv_std: Optional[np.ndarray],
     all_failing_agents: List[str],
     all_backup_agents: List[str],
     save_path: Path,
@@ -304,6 +336,7 @@ def paint_cross_validation_results(
     Render the cross-validation heatmap from pre-computed data and save it.
 
     :param cv_map: 2-D float array (failing_agents × backup_agents)
+    :param cv_std: 2-D float array (failing_agents × backup_agents) with stddev values for annotations (can be None)
     :param all_failing_agents: ordered list of failing-agent names (row labels)
     :param all_backup_agents: ordered list of backup-agent names (column labels)
     :param save_path: where to save the figure
@@ -311,7 +344,7 @@ def paint_cross_validation_results(
     """
     import matplotlib.pyplot as plt
 
-    fig, ax = plt.subplots(figsize=(6, 4))
+    fig, ax = plt.subplots(figsize=(5, 4))
     im = ax.imshow(cv_map, cmap="viridis")
 
     ax.set_xticks(np.arange(len(all_backup_agents)))
@@ -325,10 +358,15 @@ def paint_cross_validation_results(
     for i in range(cv_map.shape[0]):
         for j in range(cv_map.shape[1]):
             if not np.isnan(cv_map[i, j]):
+                mean_val = cv_map[i, j]
+                if cv_std is not None and not np.isnan(cv_std[i, j]):
+                    label = f"{mean_val:.1f}\n±{cv_std[i, j]:.1f}"
+                else:
+                    label = f"{mean_val:.1f}"
                 ax.text(
-                    j, i, f"{cv_map[i, j]:.1f}",
+                    j, i, label,
                     ha="center", va="center",
-                    color="white" if cv_map[i, j] < np.nanmean(cv_map) else "black",
+                    color="white" if mean_val < np.nanmean(cv_map) else "black",
                 )
 
     cbar = plt.colorbar(im, ax=ax)
@@ -370,7 +408,7 @@ def paint_failing_edges_connectivity(
     neutral_gray = '#808080'
 
     num_agents = len(lines_connected_before)
-    fig, axes = plt.subplots(1, num_agents, figsize=(12 * num_agents, 8), constrained_layout=True)
+    fig, axes = plt.subplots(1, num_agents, figsize=(6 * num_agents, 4), constrained_layout=True)
     if num_agents == 1:
         axes = np.array([axes])
 
@@ -380,7 +418,7 @@ def paint_failing_edges_connectivity(
 
         for pl_idx, edge_idx in enumerate(powerline_edge_indices):
             connection_rate = connection_rates[pl_idx]
-            color = connection_cmap((connection_rate - 0.9) / 0.1)
+            color = connection_cmap((connection_rate - 0.8) / 0.2)
             edge_colors[edge_idx] = plt.matplotlib.colors.rgb2hex(color[:3])
             edge_widths[edge_idx] = 3.0
 
@@ -390,15 +428,17 @@ def paint_failing_edges_connectivity(
             powerline_edge_index=pl_edge_index,
             powerline_edge_colors=edge_colors,
             powerline_edge_widths=edge_widths,
+            show_legend=False,
         )
         visualize_graph(plotting_args, ax=axes[idx])
-        axes[idx].set_title(f"{agent_name}\nLine Connection Before Failure")
+        axes[idx].set_title(f"{agent_name}", fontsize=30)
 
     norm = Normalize(vmin=0.9, vmax=1.0)
     sm = ScalarMappable(cmap=connection_cmap, norm=norm)
     sm.set_array([])
     cbar = fig.colorbar(sm, ax=axes.tolist(), orientation='vertical', pad=0.02, aspect=30, fraction=0.02)
-    cbar.set_label('Average Connection Rate Before Failure', fontsize=10)
+    cbar.set_label('Mean Connection Rate\nBefore Failure', fontsize=20)
+    cbar.ax.tick_params(labelsize=20)
 
     save_path.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(save_path, dpi=150, bbox_inches='tight')
@@ -434,7 +474,7 @@ def paint_failing_edges_rho(
     neutral_gray = '#808080'
 
     num_agents = len(rhos_before_failure)
-    fig, axes = plt.subplots(1, num_agents, figsize=(12 * num_agents, 8), constrained_layout=True)
+    fig, axes = plt.subplots(1, num_agents, figsize=(6 * num_agents, 4), constrained_layout=True)
     if num_agents == 1:
         axes = np.array([axes])
 
@@ -444,7 +484,7 @@ def paint_failing_edges_rho(
 
         for pl_idx, edge_idx in enumerate(powerline_edge_indices):
             rho = rhos[pl_idx]
-            rho_normalized = min(1.0, max(0.0, rho))
+            rho_normalized = max(0.0, rho)
             color = rho_cmap(1.0 - rho_normalized)
             edge_colors[edge_idx] = plt.matplotlib.colors.rgb2hex(color[:3])
             edge_widths[edge_idx] = 3.0
@@ -455,15 +495,17 @@ def paint_failing_edges_rho(
             powerline_edge_index=pl_edge_index,
             powerline_edge_colors=edge_colors,
             powerline_edge_widths=edge_widths,
+            show_legend=False,
         )
         visualize_graph(plotting_args, ax=axes[idx])
-        axes[idx].set_title(f"{agent_name}\nLine Congestion Before Failure")
+        axes[idx].set_title(f"{agent_name}", fontsize=30)
 
-    norm = Normalize(vmin=0, vmax=1)
+    norm = Normalize(vmin=0, vmax=1.2)
     sm = ScalarMappable(cmap=rho_cmap.reversed(), norm=norm)
     sm.set_array([])
     cbar = fig.colorbar(sm, ax=axes.tolist(), orientation='vertical', pad=0.02, aspect=30, fraction=0.02)
-    cbar.set_label('Average Line Congestion (ρ) Before Failure\n(0 = Low Load, 1 = High Load/Overload)', fontsize=10)
+    cbar.set_label('Mean Line Congestion (ρ)\nBefore Failure', fontsize=20)
+    cbar.ax.tick_params(labelsize=20)
 
     save_path.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(save_path, dpi=150, bbox_inches='tight')
@@ -479,8 +521,8 @@ def paint_failing_edges_rho(
 def visualize_cross_validation_results(results: List[CrossValidateResult], save_path: Path, show: bool = False):
     """Compute cross-validation data and paint the heatmap in one step."""
     data_dir = save_path.parent
-    cv_map, failing_agents, backup_agents = compute_cross_validation_data(results, data_dir)
-    paint_cross_validation_results(cv_map, failing_agents, backup_agents, save_path, show=show)
+    cv_map, cv_std, failing_agents, backup_agents = compute_cross_validation_data(results, data_dir)
+    paint_cross_validation_results(cv_map, cv_std, failing_agents, backup_agents, save_path, show=show)
 
 
 def visualize_failing_edges(
@@ -513,9 +555,48 @@ def repaint_cross_validation_results(data_dir: Path, save_path: Path, show: bool
     :param show: whether to display the figure interactively
     """
     cv_map = np.load(data_dir / "cv_map.npy")
+    cv_std = np.load(data_dir / "cv_std.npy") if (data_dir / "cv_std.npy").exists() else None
     all_failing_agents = np.load(data_dir / "cv_failing_agents.npy", allow_pickle=True).tolist()
     all_backup_agents = np.load(data_dir / "cv_backup_agents.npy", allow_pickle=True).tolist()
-    paint_cross_validation_results(cv_map, all_failing_agents, all_backup_agents, save_path, show=show)
+    paint_cross_validation_results(cv_map, cv_std, all_failing_agents, all_backup_agents, save_path, show=show)
+
+
+def _load_failing_edges_data(data_dir: Path):
+    """Load all failing-edge arrays from *data_dir* and return them as dicts keyed by agent name."""
+    agent_names: List[str] = np.load(data_dir / "failing_edges_agent_names.npy", allow_pickle=True).tolist()
+    pl_edge_index = np.load(data_dir / "failing_edges_pl_edge_index.npy")
+    powerline_edge_indices = np.load(data_dir / "failing_edges_powerline_edge_indices.npy")
+
+    lines_connected_before: Dict[str, np.ndarray] = {}
+    lines_connected_std: Dict[str, np.ndarray] = {}
+    lines_connected_min: Dict[str, np.ndarray] = {}
+    lines_connected_max: Dict[str, np.ndarray] = {}
+    rhos_before_failure: Dict[str, np.ndarray] = {}
+    rhos_std: Dict[str, np.ndarray] = {}
+    rhos_min: Dict[str, np.ndarray] = {}
+    rhos_max: Dict[str, np.ndarray] = {}
+
+    for agent_name in agent_names:
+        safe = agent_name.replace(" ", "_")
+        lines_connected_before[agent_name] = np.load(data_dir / f"failing_edges_connection_{safe}.npy")
+        rhos_before_failure[agent_name] = np.load(data_dir / f"failing_edges_rho_{safe}.npy")
+        # std / min / max are optional (may not exist in older saves)
+        for dst, key in [
+            (lines_connected_std, f"failing_edges_connection_std_{safe}.npy"),
+            (lines_connected_min, f"failing_edges_connection_min_{safe}.npy"),
+            (lines_connected_max, f"failing_edges_connection_max_{safe}.npy"),
+            (rhos_std,            f"failing_edges_rho_std_{safe}.npy"),
+            (rhos_min,            f"failing_edges_rho_min_{safe}.npy"),
+            (rhos_max,            f"failing_edges_rho_max_{safe}.npy"),
+        ]:
+            p = data_dir / key
+            dst[agent_name] = np.load(p) if p.exists() else None
+
+    return (
+        agent_names, pl_edge_index, powerline_edge_indices,
+        lines_connected_before, lines_connected_std, lines_connected_min, lines_connected_max,
+        rhos_before_failure, rhos_std, rhos_min, rhos_max,
+    )
 
 
 def repaint_failing_edges(
@@ -532,19 +613,125 @@ def repaint_failing_edges(
     :param save_path_rho: where to save the rho/congestion figure
     :param show: whether to display the figures interactively
     """
-    agent_names: List[str] = np.load(data_dir / "failing_edges_agent_names.npy", allow_pickle=True).tolist()
-    pl_edge_index = np.load(data_dir / "failing_edges_pl_edge_index.npy")
-    powerline_edge_indices = np.load(data_dir / "failing_edges_powerline_edge_indices.npy")
-
-    lines_connected_before: Dict[str, np.ndarray] = {}
-    rhos_before_failure: Dict[str, np.ndarray] = {}
-    for agent_name in agent_names:
-        safe = agent_name.replace(" ", "_")
-        lines_connected_before[agent_name] = np.load(data_dir / f"failing_edges_connection_{safe}.npy")
-        rhos_before_failure[agent_name] = np.load(data_dir / f"failing_edges_rho_{safe}.npy")
+    loaded = _load_failing_edges_data(data_dir)
+    agent_names, pl_edge_index, powerline_edge_indices = loaded[0], loaded[1], loaded[2]
+    lines_connected_before = loaded[3]
+    rhos_before_failure = loaded[7]
 
     paint_failing_edges_connectivity(lines_connected_before, pl_edge_index, powerline_edge_indices, save_path_connectivity, show=show)
     paint_failing_edges_rho(rhos_before_failure, pl_edge_index, powerline_edge_indices, save_path_rho, show=show)
+
+
+def print_table_rho(data_dir: Path):
+    """
+    Load rho statistics saved by ``compute_failing_edges_data`` and print a
+    per-powerline summary table (mean ± std, min, max) for every agent using
+    *tabulate*.
+
+    :param data_dir: directory containing the ``failing_edges_*.npy`` files
+    """
+    from tabulate import tabulate as _tabulate
+
+    (agent_names, _pl, powerline_edge_indices,
+     _conn, _conn_std, _conn_min, _conn_max,
+     rhos, rhos_std, rhos_min, rhos_max) = _load_failing_edges_data(data_dir)
+
+    n_lines = len(powerline_edge_indices)
+
+    for agent_name in agent_names:
+        mean = rhos[agent_name]
+        std  = rhos_std[agent_name]
+        mn   = rhos_min[agent_name]
+        mx   = rhos_max[agent_name]
+
+        rows = []
+        for pl_idx in range(n_lines):
+            row = [
+                pl_idx,
+                f"{mean[pl_idx]:.4f}",
+                f"{std[pl_idx]:.4f}"  if std  is not None else "N/A",
+                f"{mn[pl_idx]:.4f}"   if mn   is not None else "N/A",
+                f"{mx[pl_idx]:.4f}"   if mx   is not None else "N/A",
+            ]
+            rows.append(row)
+
+        headers = ["Line", "Mean ρ", "Std ρ", "Min ρ", "Max ρ"]
+        print(f"\n=== Rho before failure — agent: {agent_name} ===")
+        print(_tabulate(rows, headers=headers, tablefmt="github"))
+
+
+def print_table_connectivity(data_dir: Path):
+    """
+    Load connectivity statistics saved by ``compute_failing_edges_data`` and
+    print a per-powerline summary table (mean ± std, min, max) for every agent
+    using *tabulate*.
+
+    :param data_dir: directory containing the ``failing_edges_*.npy`` files
+    """
+    from tabulate import tabulate as _tabulate
+
+    (agent_names, _pl, powerline_edge_indices,
+     conn, conn_std, conn_min, conn_max,
+     *_rho_data) = _load_failing_edges_data(data_dir)
+
+    n_lines = len(powerline_edge_indices)
+
+    for agent_name in agent_names:
+        mean = conn[agent_name]
+        std  = conn_std[agent_name]
+        mn   = conn_min[agent_name]
+        mx   = conn_max[agent_name]
+
+        rows = []
+        for pl_idx in range(n_lines):
+            row = [
+                pl_idx,
+                f"{mean[pl_idx]:.4f}",
+                f"{std[pl_idx]:.4f}"  if std  is not None else "N/A",
+                f"{mn[pl_idx]:.4f}"   if mn   is not None else "N/A",
+                f"{mx[pl_idx]:.4f}"   if mx   is not None else "N/A",
+            ]
+            rows.append(row)
+
+        headers = ["Line", "Mean conn.", "Std conn.", "Min conn.", "Max conn."]
+        print(f"\n=== Connectivity before failure — agent: {agent_name} ===")
+        print(_tabulate(rows, headers=headers, tablefmt="github"))
+
+
+def print_table_agent_summary(data_dir: Path):
+    """
+    Print a single summary table with one row per agent.
+    Each row shows the distribution of the per-line means (averaged over time /
+    failing chronics) across all powerlines:
+
+        mean ρ | std ρ | max ρ | mean conn | std conn | min conn
+
+    :param data_dir: directory containing the ``failing_edges_*.npy`` files
+    """
+    from tabulate import tabulate as _tabulate
+
+    (agent_names, _pl, _pwl,
+     conn, conn_std, conn_min, conn_max,
+     rhos, rhos_std, rhos_min, rhos_max) = _load_failing_edges_data(data_dir)
+
+    rows = []
+    for agent_name in agent_names:
+        rho_mean_per_line = rhos[agent_name]       # mean over chronics, per line
+        conn_mean_per_line = conn[agent_name]       # mean over chronics, per line
+
+        rows.append([
+            agent_name,
+            f"{rho_mean_per_line.mean():.4f}",
+            f"{rho_mean_per_line.std():.4f}",
+            f"{rho_mean_per_line.max():.4f}",
+            f"{conn_mean_per_line.mean():.4f}",
+            f"{conn_mean_per_line.std():.4f}",
+            f"{conn_mean_per_line.min():.4f}",
+        ])
+
+    headers = ["Agent", "Mean ρ", "Std ρ", "Max ρ", "Mean conn.", "Std conn.", "Min conn."]
+    print("\n=== Agent summary (distribution of per-line means over failing timesteps) ===")
+    print(_tabulate(rows, headers=headers, tablefmt="github"))
 
 
 # ---------------------------------------------------------------------------
@@ -567,7 +754,7 @@ def main():
     model2 = AgentSpec(name="MLP", load_path="/home/adrian/Schreibtisch/1901/1901_rainbow_baselines/CustomPPO_0_98414_2026-01-19_18-23-39_MLP/", checkpoint_name="checkpoint_000019")
     model3 = AgentSpec(name="GNN", load_path="/home/adrian/Schreibtisch/1901/1901_baselines/CustomPPO_0_4cbd2_2026-01-19_14-39-38_GNN/", checkpoint_name="checkpoint_000023")
 
-    results_dir = Path("results/experiments/2601_compute_metrics")
+    results_dir = Path("results/cross_validation")
     save_results_to = results_dir / "cross_validate_models.json"
     save_heatmap_to = results_dir / "cross_validate_models.svg"
     save_connectivity_to = results_dir / "failing_edges_connectivity.svg"
@@ -579,23 +766,27 @@ def main():
     # ------------------------------------------------------------------
     # Step 1: gather data
     # ------------------------------------------------------------------
-    results: List[CrossValidateResult] = []
-    with ProcessPoolExecutor() as ex:
-        futures = [ex.submit(cross_validate, m1, m2) for (m1, m2) in pairs]
-        for fut in as_completed(futures):
-            result = fut.result()
-            results.append(result)
-            print(f"Cross-validation between {result.failing_agent.name} and {result.backup_agent.name}: {result.additional_timesteps}")
+    #results: List[CrossValidateResult] = []
+    #with ProcessPoolExecutor(max_workers=1) as ex:
+    #    futures = [ex.submit(cross_validate, m1, m2) for (m1, m2) in pairs]
+    #    for fut in as_completed(futures):
+    #        result = fut.result()
+    #        results.append(result)
+    #        print(f"Cross-validation between {result.failing_agent.name} and {result.backup_agent.name}: {result.additional_timesteps}")
 
-    save_cross_validate_results(results, save_path=save_results_to)
-    compute_cross_validation_data(results, save_dir=results_dir)
-    compute_failing_edges_data(results, save_dir=results_dir)
+    #save_cross_validate_results(results, save_path=save_results_to)
+    #compute_cross_validation_data(results, save_dir=results_dir)
+    #compute_failing_edges_data(results, save_dir=results_dir)
 
     # ------------------------------------------------------------------
     # Step 2: paint figures (can be re-run independently via repaint_*)
     # ------------------------------------------------------------------
-    repaint_cross_validation_results(results_dir, save_path=save_heatmap_to)
-    repaint_failing_edges(results_dir, save_path_connectivity=save_connectivity_to, save_path_rho=save_rho_to)
+    print_table_connectivity(results_dir)
+    print_table_rho(results_dir)
+    repaint_cross_validation_results(results_dir, save_path=save_heatmap_to, show=True)
+    repaint_cross_validation_results(results_dir, save_path=save_heatmap_to.with_suffix(".png"), show=False)
+    repaint_failing_edges(results_dir, save_path_connectivity=save_connectivity_to, save_path_rho=save_rho_to, show=True)
+    repaint_failing_edges(results_dir, save_path_connectivity=save_connectivity_to.with_suffix(".png"), save_path_rho=save_rho_to.with_suffix(".png"), show=False)
 
 
 if __name__ == "__main__":

@@ -10,8 +10,8 @@ logger = logging.getLogger(__name__)
 
 if __name__ == "__main__":
     analyzer_to_run = [
-        Hypothesis1verifier(),
-        Hypothesis2verifier(),
+        #Hypothesis1verifier(),
+        #Hypothesis2verifier(),
         Hypothesis3verifier()
     ]
     agent_spec = AgentSpec(
@@ -28,8 +28,9 @@ if __name__ == "__main__":
         analysis_agent = LatentGraphAnalysisAgent(agent, gym_env, analyzer_to_run)
         logger.info("Agent loaded! Starting episodes...\n")
         analysis_agent.analyze(num_episodes=num_episodes)
-    for analyzer in analyzer_to_run:
-        analyzer.repaint()
 
     for analyzer in analyzer_to_run:
         analyzer.print_summary_from_saved()
+
+    for analyzer in analyzer_to_run:
+        analyzer.repaint()
