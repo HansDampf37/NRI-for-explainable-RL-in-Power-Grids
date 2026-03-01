@@ -1159,7 +1159,6 @@ class Hypothesis3verifier(PosteriorAnalyzer):
             plt.savefig(self.outdir / "bar_node_reconfiguration_counts.svg")
             plt.show()
 
-        return  # skip remaining plots for now
         # ---- KDE: mean C conditioned on posterior (left) and prior (right) ----
         fig, axes = plt.subplots(1, 2, figsize=(10, 4), sharex=True, sharey=True)
         for ax, mean_val, suffix in [
