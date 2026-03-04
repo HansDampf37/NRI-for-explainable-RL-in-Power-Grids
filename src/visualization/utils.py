@@ -57,7 +57,8 @@ class GridPlottingArgs:
     line_widths: Optional[List[float]] = None  # e.g. [2.0, 1.0, ...]
     line_styles: Optional[List[str]] = None    # e.g. ["-", "--", ":", "-."]
     node_size: int = 600           # matplotlib scatter size for substation circles
-    node_color: str = "white"  # fill colour of substation circles
+    node_color: str = "white"      # fill colour of substation circles (used when node_colors is None)
+    node_colors: Optional[List] = None  # per-substation fill colours (overrides node_color when set)
     font_size: int = 10            # font size for substation index labels
     font_color: str = "black"      # label colour inside circles
     show_legend: bool = False      # whether to draw a legend
@@ -570,7 +571,7 @@ def visualize_grid(args: GridPlottingArgs, ax=None) -> Optional[Figure]:
         G,
         pos,
         nodelist=list(range(n_sub)),
-        node_color=args.node_color,
+        node_color=args.node_colors if args.node_colors is not None else args.node_color,
         linewidths=1,
         edgecolors="black",
         node_shape="o",

@@ -44,6 +44,11 @@ class CrossValidateResult:
         # Per-node reconfiguration counts accumulated over all evaluated steps [N], set lazily
         self._node_action_counts: Optional[npt.NDArray] = None
         self._total_steps: int = 0
+        # Per-substation action counts and acting-step counter for the spatial distribution
+        # _sub_action_counts[s] = number of steps where substation s was acted on (at most once per step)
+        # _action_steps          = number of steps where *any* non-do-nothing action was taken
+        self._sub_action_counts: Optional[npt.NDArray] = None
+        self._action_steps: int = 0
 
 
 def run_until_failure(agent: BaseAgent, g2op_env: Environment, backup_env: Environment, result: CrossValidateResult) -> bool:
@@ -73,11 +78,30 @@ def run_until_failure(agent: BaseAgent, g2op_env: Environment, backup_env: Envir
         reconfigured = get_reconfigured_nodes(action, obs)
         if reconfigured:
             N = 2 * obs.n_line + obs.n_gen + obs.n_load
+            n_sub = obs.n_sub
             if result._node_action_counts is None:
                 result._node_action_counts = np.zeros(N, dtype=np.int64)
+            if result._sub_action_counts is None:
+                result._sub_action_counts = np.zeros(n_sub, dtype=np.int64)
             for node_idx in reconfigured:
                 if 0 <= node_idx < N:
                     result._node_action_counts[node_idx] += 1
+            # Map reconfigured nodes → substations and count each substation at most once per step
+            touched_subs: set = set()
+            n_line = obs.n_line
+            n_gen  = obs.n_gen
+            for node_idx in reconfigured:
+                if node_idx < n_line:                        # line_or
+                    touched_subs.add(int(obs.line_or_to_subid[node_idx]))
+                elif node_idx < 2 * n_line:                 # line_ex
+                    touched_subs.add(int(obs.line_ex_to_subid[node_idx - n_line]))
+                elif node_idx < 2 * n_line + n_gen:         # gen
+                    touched_subs.add(int(obs.gen_to_subid[node_idx - 2 * n_line]))
+                else:                                        # load
+                    touched_subs.add(int(obs.load_to_subid[node_idx - 2 * n_line - n_gen]))
+            for s in touched_subs:
+                result._sub_action_counts[s] += 1
+            result._action_steps += 1
         result._total_steps += 1
 
         new_obs, reward, done, info = g2op_env.step(action)
@@ -198,39 +222,63 @@ def save_cross_validate_results(results: List[CrossValidateResult], save_path: P
 # Data-computation helpers
 # ---------------------------------------------------------------------------
 
-def compute_cross_validation_data(results: List[CrossValidateResult], save_dir: Path) -> Tuple[npt.NDArray, npt.NDArray, List[str], List[str]]:
+def compute_cross_validation_data(results: List[CrossValidateResult], save_dir: Path) -> Tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, List[str], List[str]]:
     """
     Compute the cross-validation heatmap data from *results* and persist it.
 
     Saved files
     -----------
-    cv_map.npy          – 2-D float array (failing_agents × backup_agents), NaN where no pair exists
-    cv_agent_labels.npy – structured array with fields ``failing`` and ``backup`` (agent name lists)
+    cv_map.npy            – 2-D float array (failing_agents × backup_agents), NaN where no pair exists
+    cv_std.npy            – 2-D float array with per-cell std of additional timesteps
+    cv_n_failures.npy     – 2-D float array with number of failure states per (failing, backup) pair
+    cv_rescue_frac.npy    – 2-D float array: fraction of failure states where backup agent took over
+                            (rescued = backup_agent_completed is not None)
+    cv_failing_agents.npy – 1-D array of failing agent names
+    cv_backup_agents.npy  – 1-D array of backup agent names
 
     :param results: list of cross-validation results
     :param save_dir: directory in which to save the .npy files
-    :return: ``(cv_map, cv_std, all_failing_agents, all_backup_agents)``
+    :return: ``(cv_map, cv_std, cv_n_failures, cv_rescue_frac, all_failing_agents, all_backup_agents)``
     """
     all_failing_agents = sorted({r.failing_agent.name for r in results})
     all_backup_agents = sorted({r.backup_agent.name for r in results})
 
-    cv_map = np.full((len(all_failing_agents), len(all_backup_agents)), np.nan, dtype=float)
-    cv_std = np.full((len(all_failing_agents), len(all_backup_agents)), np.nan, dtype=float)
+    cv_map         = np.full((len(all_failing_agents), len(all_backup_agents)), np.nan, dtype=float)
+    cv_std         = np.full((len(all_failing_agents), len(all_backup_agents)), np.nan, dtype=float)
+    cv_n_failures  = np.full((len(all_failing_agents), len(all_backup_agents)), np.nan, dtype=float)
+    cv_rescue_frac = np.full((len(all_failing_agents), len(all_backup_agents)), np.nan, dtype=float)
+
     for result in results:
         i = all_failing_agents.index(result.failing_agent.name)
         j = all_backup_agents.index(result.backup_agent.name)
+
+        # --- additional-timestep statistics (existing) ---
         valid = [s for s in result.additional_timesteps.values() if s is not None]
         cv_map[i, j] = np.mean(valid) if valid else np.nan
         cv_std[i, j] = np.std(valid) if valid else np.nan
 
+        # --- failure count and rescue fraction (new) ---
+        # A "failure state" is an episode where the failing agent did NOT complete (completed == False).
+        # A failure state is "rescued" when the backup agent managed to take over (backup_agent_completed
+        # is True or False – i.e. not None, meaning it actually ran at least one step).
+        n_failures = sum(1 for v in result.failing_agent_completed.values() if v is False)
+        n_rescued  = sum(
+            1 for chronic_id, completed in result.failing_agent_completed.items()
+            if completed is False and result.backup_agent_completed.get(chronic_id) is not None
+        )
+        cv_n_failures[i, j]  = float(n_failures)
+        cv_rescue_frac[i, j] = (n_rescued / n_failures) if n_failures > 0 else np.nan
+
     save_dir.mkdir(parents=True, exist_ok=True)
-    np.save(save_dir / "cv_map.npy", cv_map)
-    np.save(save_dir / "cv_std.npy", cv_std)
+    np.save(save_dir / "cv_map.npy",         cv_map)
+    np.save(save_dir / "cv_std.npy",         cv_std)
+    np.save(save_dir / "cv_n_failures.npy",  cv_n_failures)
+    np.save(save_dir / "cv_rescue_frac.npy", cv_rescue_frac)
     np.save(save_dir / "cv_failing_agents.npy", np.array(all_failing_agents))
-    np.save(save_dir / "cv_backup_agents.npy", np.array(all_backup_agents))
+    np.save(save_dir / "cv_backup_agents.npy",  np.array(all_backup_agents))
     logger.info("Saved cross-validation data to %s", save_dir)
 
-    return cv_map, all_failing_agents, all_backup_agents
+    return cv_map, cv_std, cv_n_failures, cv_rescue_frac, all_failing_agents, all_backup_agents
 
 
 def compute_failing_edges_data(results: List[CrossValidateResult], save_dir: Path) -> Tuple[Dict[str, np.ndarray], Dict[str, np.ndarray], np.ndarray, np.ndarray]:
@@ -260,10 +308,18 @@ def compute_failing_edges_data(results: List[CrossValidateResult], save_dir: Pat
     lines_connected_std: Dict[str, np.ndarray] = {}
     lines_connected_min: Dict[str, np.ndarray] = {}
     lines_connected_max: Dict[str, np.ndarray] = {}
+    # Global (time × edge) statistics for connectivity
+    conn_global_mean: Dict[str, float] = {}
+    conn_global_std:  Dict[str, float] = {}
+    conn_global_min:  Dict[str, float] = {}
     rhos_before_failure: Dict[str, np.ndarray] = {}
     rhos_std: Dict[str, np.ndarray] = {}
     rhos_min: Dict[str, np.ndarray] = {}
     rhos_max: Dict[str, np.ndarray] = {}
+    # Global (time × edge) statistics for rho
+    rho_global_mean: Dict[str, float] = {}
+    rho_global_std:  Dict[str, float] = {}
+    rho_global_max:  Dict[str, float] = {}
 
     for result in results_with_failures:
         name = result.failing_agent.name
@@ -273,10 +329,19 @@ def compute_failing_edges_data(results: List[CrossValidateResult], save_dir: Pat
         lines_connected_std[name] = conn_arr.std(axis=0)
         lines_connected_min[name] = conn_arr.min(axis=0)
         lines_connected_max[name] = conn_arr.max(axis=0)
+        # Global stats: flatten over both time and edge dimensions simultaneously
+        conn_flat = conn_arr.ravel()
+        conn_global_mean[name] = float(conn_flat.mean())
+        conn_global_std[name]  = float(conn_flat.std())
+        conn_global_min[name]  = float(conn_flat.min())
         rhos_before_failure[name] = rho_arr.mean(axis=0)
         rhos_std[name] = rho_arr.std(axis=0)
         rhos_min[name] = rho_arr.min(axis=0)
         rhos_max[name] = rho_arr.max(axis=0)
+        rho_flat = rho_arr.ravel()
+        rho_global_mean[name] = float(rho_flat.mean())
+        rho_global_std[name]  = float(rho_flat.std())
+        rho_global_max[name]  = float(rho_flat.max())
 
     env = grid2op.make("l2rpn_case14_sandbox_val")
     obs_space = BusConnectivityGraphObsSpace(env.observation_space)
@@ -311,10 +376,18 @@ def compute_failing_edges_data(results: List[CrossValidateResult], save_dir: Pat
         np.save(save_dir / f"failing_edges_connection_std_{safe}.npy", lines_connected_std[agent_name])
         np.save(save_dir / f"failing_edges_connection_min_{safe}.npy", lines_connected_min[agent_name])
         np.save(save_dir / f"failing_edges_connection_max_{safe}.npy", lines_connected_max[agent_name])
+        # Global (time × edge) connectivity scalars
+        np.save(save_dir / f"failing_edges_connection_global_mean_{safe}.npy", np.array(conn_global_mean[agent_name]))
+        np.save(save_dir / f"failing_edges_connection_global_std_{safe}.npy",  np.array(conn_global_std[agent_name]))
+        np.save(save_dir / f"failing_edges_connection_global_min_{safe}.npy",  np.array(conn_global_min[agent_name]))
         np.save(save_dir / f"failing_edges_rho_{safe}.npy", rhos_before_failure[agent_name])
         np.save(save_dir / f"failing_edges_rho_std_{safe}.npy", rhos_std[agent_name])
         np.save(save_dir / f"failing_edges_rho_min_{safe}.npy", rhos_min[agent_name])
         np.save(save_dir / f"failing_edges_rho_max_{safe}.npy", rhos_max[agent_name])
+        # Global (time × edge) rho scalars
+        np.save(save_dir / f"failing_edges_rho_global_mean_{safe}.npy", np.array(rho_global_mean[agent_name]))
+        np.save(save_dir / f"failing_edges_rho_global_std_{safe}.npy",  np.array(rho_global_std[agent_name]))
+        np.save(save_dir / f"failing_edges_rho_global_max_{safe}.npy",  np.array(rho_global_max[agent_name]))
     logger.info("Saved failing-edges data to %s", save_dir)
 
     return lines_connected_before, rhos_before_failure, pl_edge_index, powerline_edge_indices_arr
@@ -329,40 +402,58 @@ def compute_reconfiguration_frequency_data(
     save_dir: Path,
 ) -> Dict[str, npt.NDArray]:
     """
-    Collect per-node reconfiguration counts from each *failing* agent's rollout
-    and normalise them into a frequency (count / total_steps).
+    Collect per-substation action counts from each *failing* agent's rollout and
+    normalise them into an empirical probability distribution over substations.
+
+    For each timestep where a non-do-nothing action was taken, the acting substation
+    is incremented once.  Dividing by the total number of acting steps gives
+    P(action at substation s), which sums to 1 across substations.
 
     Saved files
     -----------
-    reconfig_freq_agent_names.npy       – 1-D array of agent names
-    reconfig_freq_<agent>.npy           – normalised frequency array [N]
-    reconfig_counts_<agent>.npy         – raw integer count array [N]
-    reconfig_total_steps_<agent>.npy    – scalar: total steps evaluated
+    reconfig_freq_agent_names.npy           – 1-D array of agent names
+    reconfig_freq_<agent>.npy               – probability distribution [n_sub]
+    reconfig_sub_counts_<agent>.npy         – raw integer substation count array [n_sub]
+    reconfig_action_steps_<agent>.npy       – scalar: total acting steps
+    reconfig_counts_<agent>.npy             – raw node-level count array [N] (legacy)
+    reconfig_total_steps_<agent>.npy        – scalar: total steps evaluated (legacy)
 
     :param results: list of cross-validation results (one per agent pair)
     :param save_dir: directory in which to save the .npy files
-    :return: mapping agent_name → normalised frequency array [N]
+    :return: mapping agent_name → probability distribution array [n_sub]
     """
-    # Aggregate per *failing* agent (we measured actions taken by the failing agent)
-    agent_counts: Dict[str, npt.NDArray] = {}
-    agent_steps: Dict[str, int] = {}
+    # Aggregate per *failing* agent
+    agent_sub_counts: Dict[str, npt.NDArray] = {}
+    agent_action_steps: Dict[str, int] = {}
+    # Legacy node-level data kept for backward compat
+    agent_node_counts: Dict[str, npt.NDArray] = {}
+    agent_total_steps: Dict[str, int] = {}
 
     for result in results:
         name = result.failing_agent.name
-        if result._node_action_counts is None:
-            continue
-        if name in agent_counts:
-            # Accumulate if the same agent appears in multiple pairs
-            agent_counts[name] = agent_counts[name] + result._node_action_counts
-            agent_steps[name] = agent_steps[name] + result._total_steps
-        else:
-            agent_counts[name] = result._node_action_counts.copy()
-            agent_steps[name] = result._total_steps
+
+        # --- substation-level (new) ---
+        if result._sub_action_counts is not None:
+            if name in agent_sub_counts:
+                agent_sub_counts[name] = agent_sub_counts[name] + result._sub_action_counts
+                agent_action_steps[name] = agent_action_steps[name] + result._action_steps
+            else:
+                agent_sub_counts[name] = result._sub_action_counts.copy()
+                agent_action_steps[name] = result._action_steps
+
+        # --- node-level (legacy) ---
+        if result._node_action_counts is not None:
+            if name in agent_node_counts:
+                agent_node_counts[name] = agent_node_counts[name] + result._node_action_counts
+                agent_total_steps[name] = agent_total_steps[name] + result._total_steps
+            else:
+                agent_node_counts[name] = result._node_action_counts.copy()
+                agent_total_steps[name] = result._total_steps
 
     freq: Dict[str, npt.NDArray] = {}
-    for name, counts in agent_counts.items():
-        steps = max(agent_steps[name], 1)
-        freq[name] = counts.astype(np.float64) / steps
+    for name, sub_counts in agent_sub_counts.items():
+        acting = max(agent_action_steps[name], 1)
+        freq[name] = sub_counts.astype(np.float64) / acting
 
     save_dir.mkdir(parents=True, exist_ok=True)
     agent_names = list(freq.keys())
@@ -370,8 +461,12 @@ def compute_reconfiguration_frequency_data(
     for name in agent_names:
         safe = name.replace(" ", "_")
         np.save(save_dir / f"reconfig_freq_{safe}.npy", freq[name])
-        np.save(save_dir / f"reconfig_counts_{safe}.npy", agent_counts[name])
-        np.save(save_dir / f"reconfig_total_steps_{safe}.npy", np.array(agent_steps[name]))
+        np.save(save_dir / f"reconfig_sub_counts_{safe}.npy", agent_sub_counts[name])
+        np.save(save_dir / f"reconfig_action_steps_{safe}.npy", np.array(agent_action_steps[name]))
+        # legacy files
+        if name in agent_node_counts:
+            np.save(save_dir / f"reconfig_counts_{safe}.npy", agent_node_counts[name])
+            np.save(save_dir / f"reconfig_total_steps_{safe}.npy", np.array(agent_total_steps[name]))
     logger.info("Saved reconfiguration frequency data to %s", save_dir)
 
     return freq
@@ -396,52 +491,34 @@ def _paint_single_agent_reconfig(
     show: bool = False,
 ):
     """
-    Render a combined graph-map + histogram figure for one agent's reconfiguration
-    frequency, mimicking the style of
-    ``Hypothesis3verifier._visualize_coupling_graph``.
+    Render a histogram figure for one agent's reconfiguration frequency.
+
+    The graph visualisation is shown in the combined failing-edges figure
+    (column 2); this standalone figure contains only the bar chart and
+    its colorbar.
     """
-    import grid2op
-
-    env = grid2op.make("l2rpn_case14_sandbox_val")
-    obs_space = BusConnectivityGraphObsSpace(env.observation_space)
-    node_styles = get_node_styles(env, obs_space.__class__)
-
     N = freq.shape[0]
     counts_pct = freq * 100.0          # convert to percent of timesteps
 
-    cmap = mpl.colormaps["managua"]
+    cmap = mpl.colormaps["YlOrRd"]
     zero_color = (0.85, 0.85, 0.85, 1.0)
     vmax = 0.12
     norm = mpl.colors.Normalize(vmin=0.0, vmax=vmax)
 
-    # Colour graph nodes
-    for i, c in enumerate(counts_pct):
-        node_styles[i].color = zero_color if c <= 0.0 else cmap(norm(c))
-
-    fig = plt.figure(figsize=(12, 4), constrained_layout=False)
+    fig = plt.figure(figsize=(7, 4), constrained_layout=False)
     gs = fig.add_gridspec(
-        nrows=1, ncols=3,
-        width_ratios=[2.5, 1.5, 0.10],
-        wspace=0.25,
+        nrows=1, ncols=2,
+        width_ratios=[1.0, 0.05],
+        wspace=0.12,
     )
-    ax_graph = fig.add_subplot(gs[0, 0])
-    ax_hist = fig.add_subplot(gs[0, 1])
-    cax = fig.add_subplot(gs[0, 2])
+    ax_hist = fig.add_subplot(gs[0, 0])
+    cax = fig.add_subplot(gs[0, 1])
 
     st = fig.suptitle(
         f"Node reconfiguration frequency (%) — {agent_name}",
         x=0.5, y=0.98, ha="center",
     )
 
-    visualize_graph(
-        PlottingArgs(
-            num_nodes=N,
-            node_styles=node_styles,
-            powerline_edge_index=pl_edge_index,
-            show_legend=False,
-        ),
-        ax=ax_graph,
-    )
 
     _shrink_axis_box(ax_hist, left=0.03, right=0.03, bottom=0.06, top=0.06)
     _shrink_axis_box(cax, left=0.0, right=0.0, bottom=0.06, top=0.06)
@@ -482,9 +559,10 @@ def paint_reconfiguration_frequency(
     show: bool = False,
 ):
     """
-    Paint per-agent reconfiguration-frequency figures (graph map + histogram).
+    Paint per-agent reconfiguration-frequency histogram figures.
 
-    One ``reconfig_freq_<agent>.png/.svg`` file is created per agent.
+    The graph visualisation is embedded in the combined failing-edges figure.
+    One ``reconfig_freq_<agent>.png/.svg`` file (histogram only) is created per agent.
 
     :param freq: mapping agent_name → normalised frequency array [N]
     :param pl_edge_index: powerline edge-index (shape 2 × n_edges)
@@ -534,20 +612,40 @@ def paint_cross_validation_results(
     all_failing_agents: List[str],
     all_backup_agents: List[str],
     save_path: Path,
+    cv_n_failures: Optional[np.ndarray] = None,
+    cv_rescue_frac: Optional[np.ndarray] = None,
     show: bool = False,
 ):
     """
-    Render the cross-validation heatmap from pre-computed data and save it.
+    Render the cross-validation heatmaps from pre-computed data and save them.
+
+    Two subplots are always drawn side by side:
+      Left  – average additional timesteps gained when the backup takes over
+              (cell annotation: mean ± std)
+      Right – rescue fraction: number of failure states successfully continued by
+              the backup agent / number of failure states from the failing agent
+              (cell annotation: fraction, number of failures shown in parentheses)
 
     :param cv_map: 2-D float array (failing_agents × backup_agents)
-    :param cv_std: 2-D float array (failing_agents × backup_agents) with stddev values for annotations (can be None)
+    :param cv_std: 2-D float array with std of additional timesteps (can be None)
     :param all_failing_agents: ordered list of failing-agent names (row labels)
     :param all_backup_agents: ordered list of backup-agent names (column labels)
     :param save_path: where to save the figure
+    :param cv_n_failures: 2-D float array with number of failure states per cell (can be None)
+    :param cv_rescue_frac: 2-D float array with rescue fraction per cell (can be None)
     :param show: whether to display the figure interactively
     """
 
-    fig, ax = plt.subplots(figsize=(5, 4))
+    has_rescue = cv_rescue_frac is not None
+    ncols = 2 if has_rescue else 1
+    fig, axes = plt.subplots(1, ncols, figsize=(5 * ncols + 1, 4))
+    if ncols == 1:
+        axes = [axes]
+
+    # ------------------------------------------------------------------ #
+    # Left subplot – average additional timesteps                         #
+    # ------------------------------------------------------------------ #
+    ax = axes[0]
     im = ax.imshow(cv_map, cmap="viridis")
 
     ax.set_xticks(np.arange(len(all_backup_agents)))
@@ -574,7 +672,41 @@ def paint_cross_validation_results(
 
     cbar = plt.colorbar(im, ax=ax)
     cbar.set_label("Avg. Additional Timesteps")
-    ax.set_title("Cross-Validation Results")
+    ax.set_title("Avg. Additional Timesteps\n(Failing → Backup)")
+
+    # ------------------------------------------------------------------ #
+    # Right subplot – rescue fraction                                     #
+    # ------------------------------------------------------------------ #
+    if has_rescue:
+        ax2 = axes[1]
+        im2 = ax2.imshow(cv_rescue_frac, cmap="RdYlGn", vmin=0.0, vmax=1.0)
+
+        ax2.set_xticks(np.arange(len(all_backup_agents)))
+        ax2.set_yticks(np.arange(len(all_failing_agents)))
+        ax2.set_xticklabels(all_backup_agents)
+        ax2.set_yticklabels(all_failing_agents)
+        ax2.set_xlabel("Backup Model")
+        ax2.set_ylabel("Failing Model")
+        plt.setp(ax2.get_xticklabels(), rotation=45, ha="right")
+
+        for i in range(cv_rescue_frac.shape[0]):
+            for j in range(cv_rescue_frac.shape[1]):
+                frac = cv_rescue_frac[i, j]
+                if not np.isnan(frac):
+                    n_fail = int(cv_n_failures[i, j]) if cv_n_failures is not None and not np.isnan(cv_n_failures[i, j]) else None
+                    n_rescued = int(round(frac * n_fail)) if n_fail is not None else None
+                    if n_fail is not None and n_rescued is not None:
+                        label = f"{frac:.0%}\n({n_rescued}/{n_fail})"
+                    else:
+                        label = f"{frac:.0%}"
+                    # Use dark text on bright cells (high fraction), light text on dark
+                    text_color = "black" if frac > 0.5 else "white"
+                    ax2.text(j, i, label, ha="center", va="center", color=text_color)
+
+        cbar2 = plt.colorbar(im2, ax=ax2)
+        cbar2.set_label("Rescue Fraction")
+        ax2.set_title("Rescue Fraction\n(rescued failures / total failures)")
+
     plt.tight_layout()
 
     save_path.parent.mkdir(parents=True, exist_ok=True)
@@ -718,6 +850,446 @@ def paint_failing_edges_rho(
     plt.close(fig)
 
 
+# Row labels shown on the left side of the combined figure (one per agent, in order)
+_FAILING_EDGES_ROW_LABELS = ["RAPPO", "GNN baseline", "MLP baseline"]
+
+
+def paint_failing_edges_combined(
+    lines_connected_before: Dict[str, np.ndarray],
+    rhos_before_failure: Dict[str, np.ndarray],
+    pl_edge_index: np.ndarray,
+    powerline_edge_indices: np.ndarray,
+    save_path: Path,
+    freq: Optional[Dict[str, npt.NDArray]] = None,
+    show: bool = False,
+    rho_global_stats: Optional[Dict[str, Dict[str, float]]] = None,
+    conn_global_stats: Optional[Dict[str, Dict[str, float]]] = None,
+):
+    """
+    Render a **combined** figure with agents as rows and metrics as columns.
+
+    Layout (3 rows × 2-3 columns):
+      - Column 0: mean connectivity in failure states
+      - Column 1: mean congestion profile in failure states
+      - Column 2 (optional): spatial action distribution graph (reconfiguration frequency)
+      - Row labels (rotated 90°) on the left: one per agent
+      - Column headers on top
+      - One horizontal colorbar per column at the bottom (columns 0 and 1 only)
+
+    :param lines_connected_before: mapping agent_name → mean connection-rate array (shape: n_line)
+    :param rhos_before_failure: mapping agent_name → mean rho array (shape: n_line)
+    :param pl_edge_index: powerline edge-index array (shape: 2 × n_edges)
+    :param powerline_edge_indices: mapping powerline index → edge index in pl_edge_index
+    :param save_path: where to save the figure
+    :param freq: optional mapping agent_name → normalised reconfiguration frequency [N]; when
+        provided a third column showing the spatial action distribution graph is added.
+    :param show: whether to display the figure interactively
+    """
+    import grid2op
+    import matplotlib.pyplot as plt
+    import matplotlib.gridspec as gridspec
+    import matplotlib.ticker as ticker
+    from matplotlib.cm import ScalarMappable
+    from matplotlib.colors import Normalize
+
+
+    env = grid2op.make("l2rpn_case14_sandbox_val")
+    num_edges = pl_edge_index.shape[1]
+    neutral_gray = '#808080'
+
+    connection_cmap = plt.colormaps['RdYlGn']
+    rho_cmap = plt.colormaps['RdYlGn']
+    reconfig_cmap = mpl.colormaps["YlOrRd"]
+    reconfig_zero_color = (0.85, 0.85, 0.85, 1.0)
+
+    has_freq = freq is not None and len(freq) > 0
+
+    # Agent order: prefer the canonical row-label order, fall back to dict order
+    agent_names_conn = list(lines_connected_before.keys())
+    # Build ordered list aligned to _FAILING_EDGES_ROW_LABELS where possible
+    ordered_agents = []
+    for label in _FAILING_EDGES_ROW_LABELS:
+        # case-insensitive prefix match
+        match = next((a for a in agent_names_conn if a.lower().startswith(label.split()[0].lower())), None)
+        if match is not None and match not in ordered_agents:
+            ordered_agents.append(match)
+    # append any remaining agents not matched by the canonical labels
+    for a in agent_names_conn:
+        if a not in ordered_agents:
+            ordered_agents.append(a)
+
+    # Dynamic connectivity range: vmin = global minimum across all agents
+    all_conn_values = np.concatenate([lines_connected_before[a] for a in ordered_agents if a in lines_connected_before])
+    conn_vmin = float(np.min(all_conn_values))
+    conn_vmax = 1.0
+
+    # Dynamic reconfig range: vmax = global maximum substation probability across all agents.
+    # Handles both new [n_sub] format and legacy [N] node-level format.
+    if has_freq:
+        _n_sub  = env.n_sub
+        _n_line = env.n_line
+        _n_gen  = env.n_gen
+        _n_load = env.n_load
+        reconfig_vmax = 0.0
+        for _f in freq.values():
+            if _f.shape[0] == _n_sub:
+                _sub_max = float(_f.max())
+            else:
+                _sc = np.zeros(_n_sub, dtype=np.float64)
+                for i in range(_n_line):
+                    _sc[env.line_or_to_subid[i]] += _f[i]
+                for i in range(_n_line):
+                    _sc[env.line_ex_to_subid[i]] += _f[_n_line + i]
+                for i in range(_n_gen):
+                    _sc[env.gen_to_subid[i]] += _f[2 * _n_line + i]
+                for i in range(_n_load):
+                    _sc[env.load_to_subid[i]] += _f[2 * _n_line + _n_gen + i]
+                _tot = _sc.sum()
+                _sc = _sc / _tot if _tot > 0 else _sc
+                _sub_max = float(_sc.max())
+            reconfig_vmax = max(reconfig_vmax, _sub_max)
+        if reconfig_vmax == 0.0:
+            reconfig_vmax = 1.0
+    else:
+        reconfig_vmax = 1.0
+
+    # Dynamic rho range: vmax = global maximum rho across all agents and powerlines
+    all_rho_values = np.concatenate([rhos_before_failure[a] for a in ordered_agents if a in rhos_before_failure])
+    rho_vmax = float(np.max(all_rho_values))
+    if rho_vmax == 0.0:
+        rho_vmax = 1.0
+
+    # Font sizes
+    LABEL_FS = 22    # column / row labels
+    CBAR_LABEL_FS = 20  # colorbar axis label
+    CBAR_TICK_FS  = 18  # colorbar tick numbers
+
+    num_agents = len(ordered_agents)
+    col_labels = [
+        "Mean connectivity\nin failure states",
+        "Mean congestion profile\nin failure states",
+    ]
+    if has_freq:
+        col_labels.append("Spatial action distribution")
+    num_cols = len(col_labels)
+    # all columns get a bottom colorbar
+    num_cbar_cols = num_cols
+
+    cell_w, cell_h = 6, 4
+    row_label_w = 1.2   # extra width reserved for row labels
+    cbar_h = 0.55       # height reserved for each colorbar strip at the bottom
+    cbar_label_pad = 0.65  # extra figure-inches below colorbars for tick + label text
+
+    fig_w = row_label_w + num_cols * cell_w
+    fig_h = num_agents * cell_h + cbar_h + cbar_label_pad
+
+    fig = plt.figure(figsize=(fig_w, fig_h))
+
+    # Fractions of total figure height
+    cbar_bottom_frac  = cbar_label_pad / fig_h          # space below cbar axes for label
+    cbar_top_frac     = (cbar_label_pad + cbar_h) / fig_h  # top of cbar axes
+
+    # GridSpec: num_agents graph rows (colorbars live in a separate gs_cbar below)
+    gs = gridspec.GridSpec(
+        num_agents, num_cols,
+        figure=fig,
+        left=row_label_w / fig_w,
+        right=0.98,
+        top=0.93,
+        bottom=cbar_top_frac + 0.01,
+        hspace=0.08,
+        wspace=0.05,
+    )
+    # Colorbar GridSpec spans all columns
+    gs_cbar = gridspec.GridSpec(
+        1, num_cbar_cols,
+        figure=fig,
+        left=row_label_w / fig_w,
+        right=0.98,
+        top=cbar_top_frac - 0.01,
+        bottom=cbar_bottom_frac,
+        hspace=0.0,
+        wspace=0.25,
+    )
+
+    axes = np.empty((num_agents, num_cols), dtype=object)
+    for row in range(num_agents):
+        for col in range(num_cols):
+            axes[row, col] = fig.add_subplot(gs[row, col])
+
+    cbar_axes = [fig.add_subplot(gs_cbar[0, col]) for col in range(num_cbar_cols)]
+
+    # ------------------------------------------------------------------ #
+    # Fill cells  (collect data for combined summary tables below)        #
+    # ------------------------------------------------------------------ #
+    conn_all: Dict[str, np.ndarray] = {}      # agent → connection_rates [n_line]
+    rho_all:  Dict[str, np.ndarray] = {}      # agent → rhos [n_line]
+    sub_freq_all: Dict[str, np.ndarray] = {}  # agent → sub_freq [n_sub]
+
+    for row_idx, agent_name in enumerate(ordered_agents):
+        # --- column 0: connectivity ---
+        if agent_name in lines_connected_before:
+            connection_rates = lines_connected_before[agent_name]
+            conn_all[agent_name] = connection_rates
+
+            edge_colors = [neutral_gray] * num_edges
+            edge_widths = [1.0] * num_edges
+            conn_range = conn_vmax - conn_vmin if conn_vmax > conn_vmin else 1e-6
+            for pl_idx, edge_idx in enumerate(powerline_edge_indices):
+                cr = connection_rates[pl_idx]
+                color = connection_cmap((cr - conn_vmin) / conn_range)
+                edge_colors[edge_idx] = plt.matplotlib.colors.rgb2hex(color[:3])
+                edge_widths[edge_idx] = 3.0
+            plotting_args = GridPlottingArgs(
+                env=env,
+                node_size=700,
+                font_size=14,
+                line_colors=np.array(edge_colors)[powerline_edge_indices],
+                line_widths=np.array(edge_widths)[powerline_edge_indices],
+                show_legend=False,
+            )
+            visualize_grid(plotting_args, ax=axes[row_idx, 0])
+
+        # --- column 1: rho ---
+        if agent_name in rhos_before_failure:
+            rhos = rhos_before_failure[agent_name]
+            rho_all[agent_name] = rhos
+
+            edge_colors = [neutral_gray] * num_edges
+            edge_widths = [4.0] * num_edges
+            for pl_idx, edge_idx in enumerate(powerline_edge_indices):
+                rho = rhos[pl_idx]
+                rho_normalized = max(0.0, rho) / rho_vmax if rho_vmax > 0 else 0.0
+                color = rho_cmap(1.0 - rho_normalized)
+                edge_colors[edge_idx] = plt.matplotlib.colors.rgb2hex(color[:3])
+                edge_widths[edge_idx] = 3.0
+            plotting_args = GridPlottingArgs(
+                env=env,
+                node_size=700,
+                font_size=14,
+                node_color='white',
+                line_colors=np.asarray(edge_colors)[powerline_edge_indices],
+                line_widths=np.asarray(edge_widths)[powerline_edge_indices],
+                show_legend=False,
+            )
+            visualize_grid(plotting_args, ax=axes[row_idx, 1])
+
+        # --- column 2: spatial action distribution (per-substation probability) ---
+        if has_freq and agent_name in freq:
+            n_sub  = env.n_sub
+            n_line = env.n_line
+            n_gen  = env.n_gen
+            n_load = env.n_load
+            raw = freq[agent_name]
+
+            if raw.shape[0] == n_sub:
+                sub_freq = raw
+            else:
+                sub_counts = np.zeros(n_sub, dtype=np.float64)
+                for i in range(n_line):
+                    sub_counts[env.line_or_to_subid[i]] += raw[i]
+                for i in range(n_line):
+                    sub_counts[env.line_ex_to_subid[i]] += raw[n_line + i]
+                for i in range(n_gen):
+                    sub_counts[env.gen_to_subid[i]] += raw[2 * n_line + i]
+                for i in range(n_load):
+                    sub_counts[env.load_to_subid[i]] += raw[2 * n_line + n_gen + i]
+                total = sub_counts.sum()
+                sub_freq = sub_counts / total if total > 0 else sub_counts
+
+            sub_freq_all[agent_name] = sub_freq
+
+            reconfig_norm = mpl.colors.Normalize(vmin=0.0, vmax=reconfig_vmax)
+            sub_colors = [reconfig_cmap(reconfig_norm(sub_freq[s])) for s in range(n_sub)]
+            plotting_args = GridPlottingArgs(
+                env=env,
+                node_size=700,
+                font_size=14,
+                node_colors=sub_colors,
+                font_color='black',
+                show_legend=False,
+            )
+            visualize_grid(plotting_args, ax=axes[row_idx, 2])
+
+    # ------------------------------------------------------------------ #
+    # Combined summary tables                                             #
+    # ------------------------------------------------------------------ #
+    _agents = [a for a in ordered_agents]
+    _COL_W  = 10   # width of each agent / numeric column
+    _ROW_W  = 5    # width of the index column (line / sub)
+    _STAT_W = 9    # width of Mean / Std / Min / Max columns
+
+    def _sep(n_agent_cols: int, extra: int = 3) -> str:
+        return "  " + "-" * (_ROW_W + _COL_W * n_agent_cols + _STAT_W * extra)
+
+    # --- Connectivity ---
+    if conn_all:
+        n_cols = len([a for a in _agents if a in conn_all])
+        print(f"\n{'='*70}")
+        print("  MEAN CONNECTIVITY IN FAILURE STATES  (1.0 = always connected)")
+        _has_cg = conn_global_stats is not None
+        if _has_cg:
+            print(f"  {'Agent':<20}  {'Mean(lines)':>{_STAT_W}}  {'Std(lines)':>{_STAT_W}}  {'Min(lines)':>{_STAT_W}}  {'Mean(t×e)':>{_STAT_W}}  {'Std(t×e)':>{_STAT_W}}  {'Min(t×e)':>{_STAT_W}}")
+            print(f"  {'-'*20}  {'-'*_STAT_W}  {'-'*_STAT_W}  {'-'*_STAT_W}  {'-'*_STAT_W}  {'-'*_STAT_W}  {'-'*_STAT_W}")
+        else:
+            print(f"  {'Agent':<20}  {'Mean':>{_STAT_W}}  {'Std':>{_STAT_W}}  {'Min':>{_STAT_W}}")
+            print(f"  {'-'*20}  {'-'*_STAT_W}  {'-'*_STAT_W}  {'-'*_STAT_W}")
+        for a in _agents:
+            if a not in conn_all:
+                continue
+            v = conn_all[a]
+            if _has_cg:
+                cg = conn_global_stats.get(a, {})
+                gm = cg.get('mean'); gs = cg.get('std'); gn = cg.get('min')
+                fmt = lambda x: f"{x:>{_STAT_W}.3f}" if x is not None else f"{'N/A':>{_STAT_W}}"
+                print(f"  {a:<20}  {v.mean():>{_STAT_W}.3f}  {v.std():>{_STAT_W}.3f}  {v.min():>{_STAT_W}.3f}  {fmt(gm)}  {fmt(gs)}  {fmt(gn)}")
+            else:
+                print(f"  {a:<20}  {v.mean():>{_STAT_W}.3f}  {v.std():>{_STAT_W}.3f}  {v.min():>{_STAT_W}.3f}")
+        print()
+        header = f"  {'Line':>{_ROW_W}}" + "".join(f"{a:>{_COL_W}}" for a in _agents if a in conn_all)
+        print(header)
+        print(_sep(n_cols, 0))
+        n_lines = len(next(iter(conn_all.values())))
+        for pl_idx in range(n_lines):
+            row = f"  {pl_idx:>{_ROW_W}}"
+            for a in _agents:
+                if a in conn_all:
+                    row += f"{conn_all[a][pl_idx]:>{_COL_W}.3f}"
+            print(row)
+
+    # --- Rho ---
+    if rho_all:
+        n_cols = len([a for a in _agents if a in rho_all])
+        print(f"\n{'='*70}")
+        print("  MEAN CONGESTION (ρ) IN FAILURE STATES")
+        _has_rg = rho_global_stats is not None
+        if _has_rg:
+            print(f"  {'Agent':<20}  {'Mean(lines)':>{_STAT_W}}  {'Std(lines)':>{_STAT_W}}  {'Max(lines)':>{_STAT_W}}  {'Mean(t×e)':>{_STAT_W}}  {'Std(t×e)':>{_STAT_W}}  {'Max(t×e)':>{_STAT_W}}")
+            print(f"  {'-'*20}  {'-'*_STAT_W}  {'-'*_STAT_W}  {'-'*_STAT_W}  {'-'*_STAT_W}  {'-'*_STAT_W}  {'-'*_STAT_W}")
+        else:
+            print(f"  {'Agent':<20}  {'Mean':>{_STAT_W}}  {'Std':>{_STAT_W}}  {'Max':>{_STAT_W}}")
+            print(f"  {'-'*20}  {'-'*_STAT_W}  {'-'*_STAT_W}  {'-'*_STAT_W}")
+        for a in _agents:
+            if a not in rho_all:
+                continue
+            v = rho_all[a]
+            if _has_rg:
+                rg = rho_global_stats.get(a, {})
+                gm = rg.get('mean'); gs = rg.get('std'); gx = rg.get('max')
+                fmt = lambda x: f"{x:>{_STAT_W}.3f}" if x is not None else f"{'N/A':>{_STAT_W}}"
+                print(f"  {a:<20}  {v.mean():>{_STAT_W}.3f}  {v.std():>{_STAT_W}.3f}  {v.max():>{_STAT_W}.3f}  {fmt(gm)}  {fmt(gs)}  {fmt(gx)}")
+            else:
+                print(f"  {a:<20}  {v.mean():>{_STAT_W}.3f}  {v.std():>{_STAT_W}.3f}  {v.max():>{_STAT_W}.3f}")
+        print()
+        header = f"  {'Line':>{_ROW_W}}" + "".join(f"{a:>{_COL_W}}" for a in _agents if a in rho_all)
+        print(header)
+        print(_sep(n_cols, 0))
+        n_lines = len(next(iter(rho_all.values())))
+        for pl_idx in range(n_lines):
+            row = f"  {pl_idx:>{_ROW_W}}"
+            for a in _agents:
+                if a in rho_all:
+                    row += f"{rho_all[a][pl_idx]:>{_COL_W}.3f}"
+            print(row)
+
+    # --- Action distribution ---
+    if sub_freq_all:
+        n_cols   = len([a for a in _agents if a in sub_freq_all])
+        n_sub_pr = len(next(iter(sub_freq_all.values())))
+        print(f"\n{'='*70}")
+        print("  SPATIAL ACTION DISTRIBUTION  P(action at substation s)  [sums to 1]")
+        print(f"  {'Agent':<20}  {'Mean*':>{_STAT_W}}  {'Std':>{_STAT_W}}  {'Max':>{_STAT_W}}  {'Sum':>{_STAT_W}}")
+        print(f"  {'(* over acted substations only)':<20}")
+        print(f"  {'-'*20}  {'-'*_STAT_W}  {'-'*_STAT_W}  {'-'*_STAT_W}  {'-'*_STAT_W}")
+        for a in _agents:
+            if a not in sub_freq_all:
+                continue
+            v = sub_freq_all[a]
+            acted = v[v > 0.0]
+            mean_acted = acted.mean() if len(acted) > 0 else 0.0
+            print(f"  {a:<20}  {mean_acted:>{_STAT_W}.3f}  {v.std():>{_STAT_W}.3f}  {v.max():>{_STAT_W}.3f}  {v.sum():>{_STAT_W}.3f}")
+        print()
+        header = f"  {'Sub':>{_ROW_W}}" + "".join(f"{a:>{_COL_W}}" for a in _agents if a in sub_freq_all)
+        print(header)
+        print(_sep(n_cols, 0))
+        for s in range(n_sub_pr):
+            row = f"  {s:>{_ROW_W}}"
+            for a in _agents:
+                if a in sub_freq_all:
+                    row += f"{sub_freq_all[a][s]:>{_COL_W}.3f}"
+            print(row)
+
+    # ------------------------------------------------------------------ #
+    # Column headers (top of first row)                                   #
+    # ------------------------------------------------------------------ #
+    for col_idx, col_label in enumerate(col_labels):
+        axes[0, col_idx].set_title(col_label, fontsize=LABEL_FS, fontweight='bold', pad=10)
+
+    # ------------------------------------------------------------------ #
+    # Row labels (rotated 90°, left of each row)                          #
+    # ------------------------------------------------------------------ #
+    row_label_texts = _FAILING_EDGES_ROW_LABELS[:num_agents]
+    for row_idx in range(num_agents):
+        label = row_label_texts[row_idx] if row_idx < len(row_label_texts) else ordered_agents[row_idx]
+        ax = axes[row_idx, 0]
+        ax.annotate(
+            label,
+            xy=(0, 0.5),
+            xycoords='axes fraction',
+            xytext=(-0.18, 0.5),
+            textcoords='axes fraction',
+            fontsize=LABEL_FS,
+            fontweight='bold',
+            va='center',
+            ha='center',
+            rotation=90,
+            annotation_clip=False,
+        )
+
+    # ------------------------------------------------------------------ #
+    # Colorbars at the bottom (horizontal, one per column)                #
+    # ------------------------------------------------------------------ #
+    tick_fmt = ticker.FormatStrFormatter('%.1f')
+
+    # Connectivity colorbar — 3 ticks with 1 decimal digit
+    norm_conn = Normalize(vmin=conn_vmin, vmax=conn_vmax)
+    sm_conn = ScalarMappable(cmap=connection_cmap, norm=norm_conn)
+    sm_conn.set_array([])
+    cbar_conn = fig.colorbar(sm_conn, cax=cbar_axes[0], orientation='horizontal')
+    cbar_conn.set_label('Mean Connection Rate Before Failure', fontsize=CBAR_LABEL_FS)
+    cbar_conn.ax.tick_params(labelsize=CBAR_TICK_FS)
+    cbar_conn.ax.xaxis.set_major_locator(ticker.MaxNLocator(nbins=2, prune=None))
+    cbar_conn.ax.xaxis.set_major_formatter(tick_fmt)
+
+    # Rho colorbar
+    norm_rho = Normalize(vmin=0, vmax=rho_vmax)
+    sm_rho = ScalarMappable(cmap=rho_cmap.reversed(), norm=norm_rho)
+    sm_rho.set_array([])
+    cbar_rho = fig.colorbar(sm_rho, cax=cbar_axes[1], orientation='horizontal')
+    cbar_rho.set_label('Mean Line Congestion (ρ) Before Failure', fontsize=CBAR_LABEL_FS)
+    cbar_rho.ax.tick_params(labelsize=CBAR_TICK_FS)
+    cbar_rho.ax.xaxis.set_major_formatter(tick_fmt)
+
+    # Spatial action distribution colorbar
+    if has_freq and len(cbar_axes) > 2:
+        norm_reconfig = Normalize(vmin=0.0, vmax=reconfig_vmax)
+        sm_reconfig = ScalarMappable(cmap=reconfig_cmap, norm=norm_reconfig)
+        sm_reconfig.set_array([])
+        cbar_reconfig = fig.colorbar(sm_reconfig, cax=cbar_axes[2], orientation='horizontal')
+        cbar_reconfig.set_label('Action Frequency per Substation', fontsize=CBAR_LABEL_FS)
+        cbar_reconfig.ax.tick_params(labelsize=CBAR_TICK_FS)
+        cbar_reconfig.ax.xaxis.set_major_formatter(tick_fmt)
+
+    # ------------------------------------------------------------------ #
+    # Save                                                                 #
+    # ------------------------------------------------------------------ #
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(save_path, dpi=150, bbox_inches='tight', pad_inches=0.15)
+    if show:
+        plt.show()
+    plt.close(fig)
+
+
 # ---------------------------------------------------------------------------
 # High-level wrappers (kept for convenience / backward-compatibility)
 # ---------------------------------------------------------------------------
@@ -725,25 +1297,50 @@ def paint_failing_edges_rho(
 def visualize_cross_validation_results(results: List[CrossValidateResult], save_path: Path, show: bool = False):
     """Compute cross-validation data and paint the heatmap in one step."""
     data_dir = save_path.parent
-    cv_map, cv_std, failing_agents, backup_agents = compute_cross_validation_data(results, data_dir)
-    paint_cross_validation_results(cv_map, cv_std, failing_agents, backup_agents, save_path, show=show)
+    cv_map, cv_std, cv_n_failures, cv_rescue_frac, failing_agents, backup_agents = compute_cross_validation_data(results, data_dir)
+    paint_cross_validation_results(cv_map, cv_std, failing_agents, backup_agents, save_path,
+                                   cv_n_failures=cv_n_failures, cv_rescue_frac=cv_rescue_frac, show=show)
 
 
 def visualize_failing_edges(
     results: List[CrossValidateResult],
     save_path_connectivity: Path,
     save_path_rho: Path,
+    save_path_combined: Optional[Path] = None,
     show: bool = False,
 ):
-    """Compute failing-edge data and paint both figures in one step."""
+    """Compute failing-edge data and paint the combined figure (and optionally the legacy single figures)."""
     data_dir = save_path_connectivity.parent
     lines_connected_before, rhos_before_failure, pl_edge_index, powerline_edge_indices = (
         compute_failing_edges_data(results, data_dir)
     )
     if not lines_connected_before:
         return
-    paint_failing_edges_connectivity(lines_connected_before, pl_edge_index, powerline_edge_indices, save_path_connectivity, show=show)
-    paint_failing_edges_rho(rhos_before_failure, pl_edge_index, powerline_edge_indices, save_path_rho, show=show)
+    freq = compute_reconfiguration_frequency_data(results, data_dir)
+    # Load the freshly-saved global stats to pass to the combined figure
+    _loaded = _load_failing_edges_data(data_dir)
+    _agent_names = _loaded[0]
+    _conn_gm, _conn_gs, _conn_gn = _loaded[11], _loaded[12], _loaded[13]
+    _rho_gm,  _rho_gs,  _rho_gx  = _loaded[14], _loaded[15], _loaded[16]
+    rho_global_stats: Optional[Dict[str, Dict[str, float]]] = None
+    conn_global_stats: Optional[Dict[str, Dict[str, float]]] = None
+    if any(v is not None for v in _rho_gm.values()):
+        rho_global_stats = {a: {'mean': _rho_gm[a], 'std': _rho_gs[a], 'max': _rho_gx[a]}
+                            for a in _agent_names}
+    if any(v is not None for v in _conn_gm.values()):
+        conn_global_stats = {a: {'mean': _conn_gm[a], 'std': _conn_gs[a], 'min': _conn_gn[a]}
+                             for a in _agent_names}
+    # Combined figure (new default)
+    _combined = save_path_combined or save_path_connectivity.with_name("failing_edges_combined" + save_path_connectivity.suffix)
+    paint_failing_edges_combined(
+        lines_connected_before, rhos_before_failure, pl_edge_index, powerline_edge_indices,
+        _combined, freq=freq or None, show=show,
+        rho_global_stats=rho_global_stats,
+        conn_global_stats=conn_global_stats,
+    )
+    # Keep legacy figures as well
+    paint_failing_edges_connectivity(lines_connected_before, pl_edge_index, powerline_edge_indices, save_path_connectivity, show=False)
+    paint_failing_edges_rho(rhos_before_failure, pl_edge_index, powerline_edge_indices, save_path_rho, show=False)
 
 
 # ---------------------------------------------------------------------------
@@ -753,38 +1350,49 @@ def visualize_failing_edges(
 def repaint_cross_validation_results(data_dir: Path, save_path: Path, show: bool = False):
     """
     Load pre-computed cross-validation data from *data_dir* and repaint the heatmap.
-
-    :param data_dir: directory containing ``cv_map.npy``, ``cv_failing_agents.npy``, ``cv_backup_agents.npy``
-    :param save_path: where to save the figure
-    :param show: whether to display the figure interactively
     """
     cv_map = np.load(data_dir / "cv_map.npy")
-    cv_std = np.load(data_dir / "cv_std.npy") if (data_dir / "cv_std.npy").exists() else None
+    cv_std_path = data_dir / "cv_std.npy"
+    cv_std = np.load(cv_std_path) if cv_std_path.exists() else None
     all_failing_agents = np.load(data_dir / "cv_failing_agents.npy", allow_pickle=True).tolist()
-    all_backup_agents = np.load(data_dir / "cv_backup_agents.npy", allow_pickle=True).tolist()
-    paint_cross_validation_results(cv_map, cv_std, all_failing_agents, all_backup_agents, save_path, show=show)
+    all_backup_agents  = np.load(data_dir / "cv_backup_agents.npy",  allow_pickle=True).tolist()
+
+    cv_n_failures_path  = data_dir / "cv_n_failures.npy"
+    cv_rescue_frac_path = data_dir / "cv_rescue_frac.npy"
+    cv_n_failures  = np.load(cv_n_failures_path)  if cv_n_failures_path.exists()  else None
+    cv_rescue_frac = np.load(cv_rescue_frac_path) if cv_rescue_frac_path.exists() else None
+
+    paint_cross_validation_results(cv_map, cv_std, all_failing_agents, all_backup_agents, save_path,
+                                   cv_n_failures=cv_n_failures, cv_rescue_frac=cv_rescue_frac, show=show)
 
 
 def _load_failing_edges_data(data_dir: Path):
-    """Load all failing-edge arrays from *data_dir* and return them as dicts keyed by agent name."""
-    agent_names: List[str] = np.load(data_dir / "failing_edges_agent_names.npy", allow_pickle=True).tolist()
-    pl_edge_index = np.load(data_dir / "failing_edges_pl_edge_index.npy")
+    agent_names: List[str] = np.load(
+        data_dir / "failing_edges_agent_names.npy", allow_pickle=True
+    ).tolist()
+    pl_edge_index          = np.load(data_dir / "failing_edges_pl_edge_index.npy")
     powerline_edge_indices = np.load(data_dir / "failing_edges_powerline_edge_indices.npy")
 
     lines_connected_before: Dict[str, np.ndarray] = {}
-    lines_connected_std: Dict[str, np.ndarray] = {}
-    lines_connected_min: Dict[str, np.ndarray] = {}
-    lines_connected_max: Dict[str, np.ndarray] = {}
-    rhos_before_failure: Dict[str, np.ndarray] = {}
-    rhos_std: Dict[str, np.ndarray] = {}
-    rhos_min: Dict[str, np.ndarray] = {}
-    rhos_max: Dict[str, np.ndarray] = {}
+    lines_connected_std:    Dict[str, np.ndarray] = {}
+    lines_connected_min:    Dict[str, np.ndarray] = {}
+    lines_connected_max:    Dict[str, np.ndarray] = {}
+    # Global (time × edge) scalars – optional, may not exist in older data
+    conn_global_mean: Dict[str, Optional[float]] = {}
+    conn_global_std:  Dict[str, Optional[float]] = {}
+    conn_global_min:  Dict[str, Optional[float]] = {}
+    rhos_before_failure:    Dict[str, np.ndarray] = {}
+    rhos_std:               Dict[str, np.ndarray] = {}
+    rhos_min:               Dict[str, np.ndarray] = {}
+    rhos_max:               Dict[str, np.ndarray] = {}
+    rho_global_mean: Dict[str, Optional[float]] = {}
+    rho_global_std:  Dict[str, Optional[float]] = {}
+    rho_global_max:  Dict[str, Optional[float]] = {}
 
     for agent_name in agent_names:
         safe = agent_name.replace(" ", "_")
         lines_connected_before[agent_name] = np.load(data_dir / f"failing_edges_connection_{safe}.npy")
-        rhos_before_failure[agent_name] = np.load(data_dir / f"failing_edges_rho_{safe}.npy")
-        # std / min / max are optional (may not exist in older saves)
+        rhos_before_failure[agent_name]    = np.load(data_dir / f"failing_edges_rho_{safe}.npy")
         for dst, key in [
             (lines_connected_std, f"failing_edges_connection_std_{safe}.npy"),
             (lines_connected_min, f"failing_edges_connection_min_{safe}.npy"),
@@ -795,11 +1403,24 @@ def _load_failing_edges_data(data_dir: Path):
         ]:
             p = data_dir / key
             dst[agent_name] = np.load(p) if p.exists() else None
+        # Global scalars (present only in data produced with the updated code)
+        for dst, key in [
+            (conn_global_mean, f"failing_edges_connection_global_mean_{safe}.npy"),
+            (conn_global_std,  f"failing_edges_connection_global_std_{safe}.npy"),
+            (conn_global_min,  f"failing_edges_connection_global_min_{safe}.npy"),
+            (rho_global_mean,  f"failing_edges_rho_global_mean_{safe}.npy"),
+            (rho_global_std,   f"failing_edges_rho_global_std_{safe}.npy"),
+            (rho_global_max,   f"failing_edges_rho_global_max_{safe}.npy"),
+        ]:
+            p = data_dir / key
+            dst[agent_name] = float(np.load(p)) if p.exists() else None
 
     return (
         agent_names, pl_edge_index, powerline_edge_indices,
         lines_connected_before, lines_connected_std, lines_connected_min, lines_connected_max,
         rhos_before_failure, rhos_std, rhos_min, rhos_max,
+        conn_global_mean, conn_global_std, conn_global_min,
+        rho_global_mean, rho_global_std, rho_global_max,
     )
 
 
@@ -807,134 +1428,143 @@ def repaint_failing_edges(
     data_dir: Path,
     save_path_connectivity: Path,
     save_path_rho: Path,
+    save_path_combined: Optional[Path] = None,
     show: bool = False,
 ):
     """
-    Load pre-computed failing-edge data from *data_dir* and repaint both figures.
-
-    :param data_dir: directory containing the ``failing_edges_*.npy`` files
-    :param save_path_connectivity: where to save the connectivity figure
-    :param save_path_rho: where to save the rho/congestion figure
-    :param show: whether to display the figures interactively
+    Load pre-computed failing-edge data from *data_dir* and repaint the combined figure
+    (and optionally the legacy individual figures).
     """
     loaded = _load_failing_edges_data(data_dir)
     agent_names, pl_edge_index, powerline_edge_indices = loaded[0], loaded[1], loaded[2]
     lines_connected_before = loaded[3]
     rhos_before_failure = loaded[7]
+    # Global (time × edge) stats – present only in data produced with updated code
+    _conn_gm, _conn_gs, _conn_gn = loaded[11], loaded[12], loaded[13]
+    _rho_gm,  _rho_gs,  _rho_gx  = loaded[14], loaded[15], loaded[16]
+    # Build per-agent dicts for paint_failing_edges_combined
+    rho_global_stats: Optional[Dict[str, Dict[str, float]]] = None
+    conn_global_stats: Optional[Dict[str, Dict[str, float]]] = None
+    if any(v is not None for v in _rho_gm.values()):
+        rho_global_stats = {a: {'mean': _rho_gm[a], 'std': _rho_gs[a], 'max': _rho_gx[a]}
+                            for a in agent_names}
+    if any(v is not None for v in _conn_gm.values()):
+        conn_global_stats = {a: {'mean': _conn_gm[a], 'std': _conn_gs[a], 'min': _conn_gn[a]}
+                             for a in agent_names}
 
-    paint_failing_edges_connectivity(lines_connected_before, pl_edge_index, powerline_edge_indices, save_path_connectivity, show=show)
-    paint_failing_edges_rho(rhos_before_failure, pl_edge_index, powerline_edge_indices, save_path_rho, show=show)
+    # Load reconfiguration frequency data if available
+    freq: Optional[Dict[str, npt.NDArray]] = None
+    reconfig_names_path = data_dir / "reconfig_freq_agent_names.npy"
+    if reconfig_names_path.exists():
+        reconfig_names: List[str] = np.load(reconfig_names_path, allow_pickle=True).tolist()
+        freq = {}
+        for name in reconfig_names:
+            safe = name.replace(" ", "_")
+            p = data_dir / f"reconfig_freq_{safe}.npy"
+            if p.exists():
+                freq[name] = np.load(p)
+        if not freq:
+            freq = None
+
+    _combined = save_path_combined or save_path_connectivity.with_name(
+        "failing_edges_combined" + save_path_connectivity.suffix
+    )
+    paint_failing_edges_combined(
+        lines_connected_before, rhos_before_failure,
+        pl_edge_index, powerline_edge_indices,
+        _combined, freq=freq, show=show,
+        rho_global_stats=rho_global_stats,
+        conn_global_stats=conn_global_stats,
+    )
+    paint_failing_edges_connectivity(lines_connected_before, pl_edge_index, powerline_edge_indices, save_path_connectivity, show=False)
+    paint_failing_edges_rho(rhos_before_failure, pl_edge_index, powerline_edge_indices, save_path_rho, show=False)
 
 
 def print_table_rho(data_dir: Path):
-    """
-    Load rho statistics saved by ``compute_failing_edges_data`` and print a
-    per-powerline summary table (mean ± std, min, max) for every agent using
-    *tabulate*.
-
-    :param data_dir: directory containing the ``failing_edges_*.npy`` files
-    """
     from tabulate import tabulate as _tabulate
-
-    (agent_names, _pl, powerline_edge_indices,
-     _conn, _conn_std, _conn_min, _conn_max,
-     rhos, rhos_std, rhos_min, rhos_max) = _load_failing_edges_data(data_dir)
-
+    loaded = _load_failing_edges_data(data_dir)
+    agent_names, _pl, powerline_edge_indices = loaded[0], loaded[1], loaded[2]
+    rhos, rhos_std, rhos_min, rhos_max = loaded[7], loaded[8], loaded[9], loaded[10]
     n_lines = len(powerline_edge_indices)
-
     for agent_name in agent_names:
         mean = rhos[agent_name]
         std  = rhos_std[agent_name]
         mn   = rhos_min[agent_name]
         mx   = rhos_max[agent_name]
-
         rows = []
         for pl_idx in range(n_lines):
-            row = [
-                pl_idx,
-                f"{mean[pl_idx]:.4f}",
-                f"{std[pl_idx]:.4f}"  if std  is not None else "N/A",
-                f"{mn[pl_idx]:.4f}"   if mn   is not None else "N/A",
-                f"{mx[pl_idx]:.4f}"   if mx   is not None else "N/A",
-            ]
-            rows.append(row)
-
+            rows.append([pl_idx,
+                         f"{mean[pl_idx]:.4f}",
+                         f"{std[pl_idx]:.4f}"  if std  is not None else "N/A",
+                         f"{mn[pl_idx]:.4f}"   if mn   is not None else "N/A",
+                         f"{mx[pl_idx]:.4f}"   if mx   is not None else "N/A"])
         headers = ["Line", "Mean ρ", "Std ρ", "Min ρ", "Max ρ"]
         print(f"\n=== Rho before failure — agent: {agent_name} ===")
         print(_tabulate(rows, headers=headers, tablefmt="github"))
 
 
 def print_table_connectivity(data_dir: Path):
-    """
-    Load connectivity statistics saved by ``compute_failing_edges_data`` and
-    print a per-powerline summary table (mean ± std, min, max) for every agent
-    using *tabulate*.
-
-    :param data_dir: directory containing the ``failing_edges_*.npy`` files
-    """
     from tabulate import tabulate as _tabulate
-
-    (agent_names, _pl, powerline_edge_indices,
-     conn, conn_std, conn_min, conn_max,
-     *_rho_data) = _load_failing_edges_data(data_dir)
-
+    loaded = _load_failing_edges_data(data_dir)
+    agent_names, _pl, powerline_edge_indices = loaded[0], loaded[1], loaded[2]
+    conn, conn_std, conn_min, conn_max = loaded[3], loaded[4], loaded[5], loaded[6]
     n_lines = len(powerline_edge_indices)
-
     for agent_name in agent_names:
         mean = conn[agent_name]
         std  = conn_std[agent_name]
         mn   = conn_min[agent_name]
         mx   = conn_max[agent_name]
-
         rows = []
         for pl_idx in range(n_lines):
-            row = [
-                pl_idx,
-                f"{mean[pl_idx]:.4f}",
-                f"{std[pl_idx]:.4f}"  if std  is not None else "N/A",
-                f"{mn[pl_idx]:.4f}"   if mn   is not None else "N/A",
-                f"{mx[pl_idx]:.4f}"   if mx   is not None else "N/A",
-            ]
-            rows.append(row)
-
+            rows.append([pl_idx,
+                         f"{mean[pl_idx]:.4f}",
+                         f"{std[pl_idx]:.4f}"  if std  is not None else "N/A",
+                         f"{mn[pl_idx]:.4f}"   if mn   is not None else "N/A",
+                         f"{mx[pl_idx]:.4f}"   if mx   is not None else "N/A"])
         headers = ["Line", "Mean conn.", "Std conn.", "Min conn.", "Max conn."]
         print(f"\n=== Connectivity before failure — agent: {agent_name} ===")
         print(_tabulate(rows, headers=headers, tablefmt="github"))
 
 
 def print_table_agent_summary(data_dir: Path):
-    """
-    Print a single summary table with one row per agent.
-    Each row shows the distribution of the per-line means (averaged over time /
-    failing chronics) across all powerlines:
-
-        mean ρ | std ρ | max ρ | mean conn | std conn | min conn
-
-    :param data_dir: directory containing the ``failing_edges_*.npy`` files
-    """
     from tabulate import tabulate as _tabulate
-
+    loaded = _load_failing_edges_data(data_dir)
     (agent_names, _pl, _pwl,
-     conn, conn_std, conn_min, conn_max,
-     rhos, rhos_std, rhos_min, rhos_max) = _load_failing_edges_data(data_dir)
-
+     conn, _conn_std, _conn_min, _conn_max,
+     rhos, _rhos_std, _rhos_min, _rhos_max,
+     conn_global_mean, conn_global_std, conn_global_min,
+     rho_global_mean, rho_global_std, rho_global_max) = loaded
     rows = []
     for agent_name in agent_names:
-        rho_mean_per_line = rhos[agent_name]       # mean over chronics, per line
-        conn_mean_per_line = conn[agent_name]       # mean over chronics, per line
-
-        rows.append([
-            agent_name,
-            f"{rho_mean_per_line.mean():.4f}",
-            f"{rho_mean_per_line.std():.4f}",
-            f"{rho_mean_per_line.max():.4f}",
-            f"{conn_mean_per_line.mean():.4f}",
-            f"{conn_mean_per_line.std():.4f}",
-            f"{conn_mean_per_line.min():.4f}",
-        ])
-
-    headers = ["Agent", "Mean ρ", "Std ρ", "Max ρ", "Mean conn.", "Std conn.", "Min conn."]
-    print("\n=== Agent summary (distribution of per-line means over failing timesteps) ===")
+        rho_mean_per_line  = rhos[agent_name]
+        conn_mean_per_line = conn[agent_name]
+        # Global simultaneous stats (may be None for older saved data)
+        rg_mean = rho_global_mean.get(agent_name)
+        rg_std  = rho_global_std.get(agent_name)
+        rg_max  = rho_global_max.get(agent_name)
+        cg_mean = conn_global_mean.get(agent_name)
+        cg_std  = conn_global_std.get(agent_name)
+        cg_min  = conn_global_min.get(agent_name)
+        fmt = lambda v: f"{v:.4f}" if v is not None else "N/A"
+        rows.append([agent_name,
+                     # per-line-averaged (two-step)
+                     f"{rho_mean_per_line.mean():.4f}",
+                     f"{rho_mean_per_line.std():.4f}",
+                     f"{rho_mean_per_line.max():.4f}",
+                     # simultaneous time×edge
+                     fmt(rg_mean), fmt(rg_std), fmt(rg_max),
+                     # per-line-averaged connectivity
+                     f"{conn_mean_per_line.mean():.4f}",
+                     f"{conn_mean_per_line.std():.4f}",
+                     f"{conn_mean_per_line.min():.4f}",
+                     # simultaneous time×edge connectivity
+                     fmt(cg_mean), fmt(cg_std), fmt(cg_min)])
+    headers = ["Agent",
+               "ρ Mean(lines)", "ρ Std(lines)", "ρ Max(lines)",
+               "ρ Mean(t×e)",   "ρ Std(t×e)",   "ρ Max(t×e)",
+               "conn Mean(lines)", "conn Std(lines)", "conn Min(lines)",
+               "conn Mean(t×e)",   "conn Std(t×e)",   "conn Min(t×e)"]
+    print("\n=== Agent summary ===")
     print(_tabulate(rows, headers=headers, tablefmt="github"))
 
 
@@ -943,17 +1573,9 @@ def print_table_agent_summary(data_dir: Path):
 # ---------------------------------------------------------------------------
 
 def main():
-    """
-    Cross-validate multiple models against each other and save the results.
+    from concurrent.futures import ProcessPoolExecutor, as_completed
+    from itertools import product
 
-    Step 1 – gather data:
-        Runs the agents, computes summary statistics, and saves everything to
-        JSON + .npy files under *results_dir*.
-
-    Step 2 – paint figures:
-        Loads the saved .npy files and creates the figures.  You can re-run
-        this step independently via the ``repaint_*`` helpers.
-    """
     model1 = AgentSpec(name="RAPPO", load_path="/home/adrian/Schreibtisch/1901/1901_rappo_with_anneal_different_betas/CustomPPO_0_426b7_2026-01-19_10-28-48/", checkpoint_name="checkpoint_000020")
     model2 = AgentSpec(name="MLP", load_path="/home/adrian/Schreibtisch/1901/1901_rainbow_baselines/CustomPPO_0_98414_2026-01-19_18-23-39_MLP/", checkpoint_name="checkpoint_000019")
     model3 = AgentSpec(name="GNN", load_path="/home/adrian/Schreibtisch/1901/1901_baselines/CustomPPO_0_4cbd2_2026-01-19_14-39-38_GNN/", checkpoint_name="checkpoint_000023")
@@ -968,13 +1590,10 @@ def main():
 
     compute_data = False
 
-    models = [model1, model2, model3]  # model4 excluded for now
+    models = [model1, model2, model3]
     pairs = [(m1, m2) for m1, m2 in product(models, models) if m1.name != m2.name]
 
     if compute_data:
-        # ------------------------------------------------------------------
-        # Step 1: gather data
-        # ------------------------------------------------------------------
         results: List[CrossValidateResult] = []
         with ProcessPoolExecutor(max_workers=1) as ex:
             futures = [ex.submit(cross_validate, m1, m2, num_episodes) for (m1, m2) in pairs]
@@ -985,20 +1604,13 @@ def main():
 
         save_cross_validate_results(results, save_path=save_results_to)
         compute_reconfiguration_frequency_data(results, save_dir=results_dir)
-        #compute_cross_validation_data(results, save_dir=results_dir)
-        #compute_failing_edges_data(results, save_dir=results_dir)
 
-    # ------------------------------------------------------------------
-    # Step 2: paint figures (can be re-run independently via repaint_*)
-    # ------------------------------------------------------------------
-    #print_table_connectivity(results_dir)
-    #print_table_rho(results_dir)
-    #repaint_cross_validation_results(results_dir, save_path=save_heatmap_to, show=True)
-    #repaint_cross_validation_results(results_dir, save_path=save_heatmap_to.with_suffix(".png"), show=False)
     repaint_failing_edges(results_dir, save_path_connectivity=save_connectivity_to, save_path_rho=save_rho_to, show=True)
     repaint_failing_edges(results_dir, save_path_connectivity=save_connectivity_to.with_suffix(".png"), save_path_rho=save_rho_to.with_suffix(".png"), show=False)
     repaint_reconfiguration_frequency(results_dir, save_dir=results_dir, show=True)
     repaint_reconfiguration_frequency(results_dir, save_dir=results_dir, show=False)
+    repaint_cross_validation_results(results_dir, save_path=save_heatmap_to.with_suffix(".png"), show=False)
+    repaint_cross_validation_results(results_dir, save_path=save_heatmap_to.with_suffix(".svg"), show=True)
 
 
 if __name__ == "__main__":
