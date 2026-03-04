@@ -6,17 +6,17 @@ from src.experiments.utils import AgentSpec
 
 def main():
     model1 = AgentSpec(name="RAPPO",
-                       load_path=Path("/home/adrian/Schreibtisch/1901/1901_rappo_with_anneal_different_betas/CustomPPO_0_426b7_2026-01-19_10-28-48/"),
+                       load_path=Path("results/agents/CustomPPO_0_426b7_2026-01-19_10-28-48"),
                        checkpoint_name="checkpoint_000020")
     model2 = AgentSpec(name="MLP",
-                       load_path=Path("/home/adrian/Schreibtisch/1901/1901_baselines/CustomPPO_0_48ac9_2026-01-19_14-39-31_MLP/"),
+                       load_path=Path("results/agents/CustomPPO_0_48ac9_2026-01-19_14-39-31_MLP"),
                        checkpoint_name="checkpoint_000020")
     model3 = AgentSpec(name="GNN",
-                       load_path=Path("/home/adrian/Schreibtisch/1901/1901_baselines/CustomPPO_0_4cbd2_2026-01-19_14-39-38_GNN/"),
+                       load_path=Path("results/agents/CustomPPO_0_4cbd2_2026-01-19_14-39-38_GNN"),
                        checkpoint_name="checkpoint_000023")
 
     num_episodes = 50
-    for dataset in ["l2rpn_case14_sandbox_test", "l2rpn_case14_sandbox_val", "l2rpn_case14_sandbox_train"]:
+    for dataset in ["l2rpn_case14_sandbox_train"]:#["l2rpn_case14_sandbox_test", "l2rpn_case14_sandbox_val", "l2rpn_case14_sandbox_train"]:
         print(f"Evaluating on dataset: {dataset}")
         eval_env_name = dataset
         env_suffix = eval_env_name.split('_')[-1]
@@ -24,7 +24,7 @@ def main():
         for model in [model1, model2, model3]:
             print(f"\nEvaluating model: {model.name}")
             model_id = str(model.load_path).split('/')[-1]
-            save_path = Path(f"/home/adrian/Dev/NRI-for-explainable-RL-in-Power-Grids/results/evaluations/{model.name}/{model_id}/{env_suffix}")
+            save_path = Path(f"results/evaluations/{model.name}/{model_id}/{env_suffix}")
             try:
                 print(f"Result will we saved under: {save_path}")
                 evaluate_rllib_checkpoint(
