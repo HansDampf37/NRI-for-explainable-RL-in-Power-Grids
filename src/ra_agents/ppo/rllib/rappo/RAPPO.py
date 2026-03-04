@@ -34,7 +34,7 @@ class RAPPOTorchPolicy(PPOTorchPolicy):
         """
         # Initialize annealed parameters on first call (lazy initialization)
         ra_config = self.config["relation_awareness"]
-        sampling_config = self.config["model"]["custom_model_config"]["sampling"]
+        sampling_config = self.config["model"]["custom_model_config"].get("sampling", self.config["relation_awareness"])
         if not hasattr(self, 'current_beta'):
             self.current_beta = ra_config["beta_end"]
             self.target_beta = ra_config["beta_end"]
