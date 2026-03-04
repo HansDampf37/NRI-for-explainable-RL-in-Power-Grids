@@ -9,8 +9,8 @@ def main():
                        load_path=Path("/home/adrian/Schreibtisch/1901/1901_rappo_with_anneal_different_betas/CustomPPO_0_426b7_2026-01-19_10-28-48/"),
                        checkpoint_name="checkpoint_000020")
     model2 = AgentSpec(name="MLP",
-                       load_path=Path("/home/adrian/Schreibtisch/1901/1901_rainbow_baselines/CustomPPO_0_98414_2026-01-19_18-23-39_MLP/"),
-                       checkpoint_name="checkpoint_000019")
+                       load_path=Path("/home/adrian/Schreibtisch/1901/1901_baselines/CustomPPO_0_48ac9_2026-01-19_14-39-31_MLP/"),
+                       checkpoint_name="checkpoint_000020")
     model3 = AgentSpec(name="GNN",
                        load_path=Path("/home/adrian/Schreibtisch/1901/1901_baselines/CustomPPO_0_4cbd2_2026-01-19_14-39-38_GNN/"),
                        checkpoint_name="checkpoint_000023")
