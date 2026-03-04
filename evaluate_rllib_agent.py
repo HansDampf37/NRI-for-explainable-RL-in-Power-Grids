@@ -15,6 +15,7 @@ import json
 import logging
 import os
 from pathlib import Path
+from typing import Optional
 
 from ray.rllib.models import ModelCatalog
 
@@ -157,7 +158,8 @@ def evaluate_rllib_checkpoint(
     checkpoint_name: str = "checkpoint_000000",
     env_name_override: str = None,
     num_episodes: int = 50,
-    visualize: bool = True
+    visualize: bool = True,
+    save_to_path: Optional[Path] = None
 ):
     """
     Evaluate an RLlib checkpoint on a Grid2Op environment.
@@ -168,6 +170,7 @@ def evaluate_rllib_checkpoint(
     :param env_name_override: Override environment name for evaluation (default: None, uses params.json)
     :param num_episodes: Number of evaluation episodes (default: 50)
     :param visualize: Whether to show visualization after evaluation (default: True)
+    :param save_to_path: Optional path to save results (default: None, saves in checkpoint directory)
     :return: Path to results directory
     """
     # Register custom models before loading checkpoint
@@ -224,7 +227,8 @@ def evaluate_rllib_checkpoint(
         }
 
     # Results path
-    results_path = Path(checkpoint_path) / "evaluations"
+    results_path = Path(checkpoint_path) / "evaluations" if save_to_path is None else save_to_path
+    results_path.mkdir(parents=True, exist_ok=True)
 
     logger.info(f"Loading agent from: {checkpoint_path}")
     logger.info(f"Checkpoint: {checkpoint_name}")

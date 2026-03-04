@@ -1,0 +1,42 @@
+from pathlib import Path
+
+from evaluate_rllib_agent import evaluate_rllib_checkpoint
+from src.experiments.utils import AgentSpec
+
+
+def main():
+    model1 = AgentSpec(name="RAPPO",
+                       load_path=Path("/home/adrian/Schreibtisch/1901/1901_rappo_with_anneal_different_betas/CustomPPO_0_426b7_2026-01-19_10-28-48/"),
+                       checkpoint_name="checkpoint_000020")
+    model2 = AgentSpec(name="MLP",
+                       load_path=Path("/home/adrian/Schreibtisch/1901/1901_rainbow_baselines/CustomPPO_0_98414_2026-01-19_18-23-39_MLP/"),
+                       checkpoint_name="checkpoint_000019")
+    model3 = AgentSpec(name="GNN",
+                       load_path=Path("/home/adrian/Schreibtisch/1901/1901_baselines/CustomPPO_0_4cbd2_2026-01-19_14-39-38_GNN/"),
+                       checkpoint_name="checkpoint_000023")
+
+    num_episodes = 50
+    for dataset in ["l2rpn_case14_sandbox_test", "l2rpn_case14_sandbox_val", "l2rpn_case14_sandbox_train"]:
+        print(f"Evaluating on dataset: {dataset}")
+        eval_env_name = dataset
+        env_suffix = eval_env_name.split('_')[-1]
+
+        for model in [model1, model2, model3]:
+            print(f"\nEvaluating model: {model.name}")
+            model_id = str(model.load_path).split('/')[-1]
+            save_path = Path(f"/home/adrian/Dev/NRI-for-explainable-RL-in-Power-Grids/results/evaluations/{model.name}/{model_id}/{env_suffix}")
+            try:
+                print(f"Result will we saved under: {save_path}")
+                evaluate_rllib_checkpoint(
+                    checkpoint_path=model.load_path,
+                    policy_name="reinforcement_learning_policy",
+                    checkpoint_name=model.checkpoint_name,
+                    env_name_override=eval_env_name,
+                    num_episodes=num_episodes,
+                    save_to_path=save_path
+                )
+            except Exception as e:
+                print(f"Error evaluating model {model.name} on dataset {dataset}: {e}")
+
+if __name__ == "__main__":
+    main()
