@@ -34,14 +34,14 @@ class RAPPOTorchPolicy(PPOTorchPolicy):
         """
         # Initialize annealed parameters on first call (lazy initialization)
         ra_config = self.config["relation_awareness"]
-        #sampling_config = self.config["model"]["custom_model_config"]["sampling"]
+        sampling_config = self.config["model"]["custom_model_config"]["sampling"]
         if not hasattr(self, 'current_beta'):
             self.current_beta = ra_config["beta_end"]
             self.target_beta = ra_config["beta_end"]
             self.current_beta_non_graph_edges = ra_config.get("beta_non_graph_edges_end", ra_config["beta_end"])
             self.target_beta_non_graph_edges = ra_config.get("beta_non_graph_edges_end", ra_config["beta_end"])
-            self.current_tau = 0.5#sampling_config["tau_end"]
-            self.target_tau = 0.5#sampling_config["tau_end"]
+            self.current_tau = sampling_config["tau_end"]
+            self.target_tau = sampling_config["tau_end"]
 
         total_loss = super().loss(model, dist_class, train_batch)
 
@@ -86,16 +86,16 @@ class RAPPOTorchPolicy(PPOTorchPolicy):
         kl_per_edge = (posteriors * (torch.log(posteriors + eps) - torch.log(prior_tensor + eps))).sum(dim=-1)  # [B, E]
 
         # Split KL loss into graph edges and non-graph edges and compute means
-        kl_loss_graph_edges = kl_per_edge[graph_edge_masks].mean() if graph_edge_masks.any() else torch.tensor(0.0, device=self.device)
-        kl_loss_non_graph_edges = kl_per_edge[~graph_edge_masks].mean() if (~graph_edge_masks).any() else torch.tensor(0.0, device=self.device)
+        kl_loss_graph_edges = kl_per_edge[graph_edge_masks].mean() if graph_edge_masks.any() else torch.as_tensor(0.0, device=self.device)
+        kl_loss_non_graph_edges = kl_per_edge[~graph_edge_masks].mean() if (~graph_edge_masks).any() else torch.as_tensor(0.0, device=self.device)
 
         # Calculate occurrence fractions
         num_graph_edges = graph_edge_masks.sum().float()
         num_non_graph_edges = (~graph_edge_masks).sum().float()
         total_edges = num_graph_edges + num_non_graph_edges
 
-        fraction_graph_edges = num_graph_edges / total_edges if total_edges > 0 else torch.tensor(0.0, device=self.device)
-        fraction_non_graph_edges = num_non_graph_edges / total_edges if total_edges > 0 else torch.tensor(0.0, device=self.device)
+        fraction_graph_edges = num_graph_edges / total_edges if total_edges > 0 else torch.as_tensor(0.0, device=self.device)
+        fraction_non_graph_edges = num_non_graph_edges / total_edges if total_edges > 0 else torch.as_tensor(0.0, device=self.device)
 
         # Weighted KL loss: each component weighted by occurrence fraction and respective beta
         kl_loss = (fraction_graph_edges * self.current_beta * kl_loss_graph_edges +
@@ -143,13 +143,13 @@ class RAPPOTorchPolicy(PPOTorchPolicy):
                 torch.stack([t.tower_stats["kl_div_non_graph_edges"].detach() for t in self.model_gpu_towers])
             ).item(),
             "relation_awareness/current_beta": torch.mean(
-                torch.stack([torch.tensor(t.tower_stats["current_beta"]) for t in self.model_gpu_towers])
+                torch.stack([torch.as_tensor(t.tower_stats["current_beta"], dtype=torch.float32, device=self.device) for t in self.model_gpu_towers])
             ).item(),
-            "relation_awareness/target_beta": self.target_beta,
+            "relation_awareness/target_beta": float(self.target_beta),
             "relation_awareness/current_beta_non_graph_edges": torch.mean(
-                torch.stack([torch.tensor(t.tower_stats["current_beta_non_graph_edges"]) for t in self.model_gpu_towers])
+                torch.stack([torch.as_tensor(t.tower_stats["current_beta_non_graph_edges"], dtype=torch.float32, device=self.device) for t in self.model_gpu_towers])
             ).item(),
-            "relation_awareness/target_beta_non_graph_edges": self.target_beta_non_graph_edges,
+            "relation_awareness/target_beta_non_graph_edges": float(self.target_beta_non_graph_edges),
             "relation_awareness/fraction_graph_edges": torch.mean(
                 torch.stack([t.tower_stats["fraction_graph_edges"].detach() for t in self.model_gpu_towers])
             ).item(),
@@ -157,9 +157,9 @@ class RAPPOTorchPolicy(PPOTorchPolicy):
                 torch.stack([t.tower_stats["fraction_non_graph_edges"].detach() for t in self.model_gpu_towers])
             ).item(),
             "relation_awareness/current_tau": torch.mean(
-                torch.stack([torch.tensor(t.tower_stats["current_tau"]) for t in self.model_gpu_towers])
+                torch.stack([torch.as_tensor(t.tower_stats["current_tau"], dtype=torch.float32, device=self.device) for t in self.model_gpu_towers])
             ).item(),
-            "relation_awareness/target_tau": self.target_tau,
+            "relation_awareness/target_tau":float(self.target_tau),
             "relation_awareness/prior_existence_probs": torch.mean(
                 torch.stack([t.tower_stats["mean_prior"][:, 0].detach() for t in self.model_gpu_towers]), dim=0
             ).cpu().numpy().flatten().tolist(),
