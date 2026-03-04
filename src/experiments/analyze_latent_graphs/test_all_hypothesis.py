@@ -4,7 +4,7 @@ from src.experiments.analyze_latent_graphs.agent_analysis_framework import Laten
 from src.experiments.analyze_latent_graphs.hypo1_electrical_coupling import Hypothesis1verifier
 from src.experiments.analyze_latent_graphs.hypo2_risk_coupling import Hypothesis2verifier
 from src.experiments.analyze_latent_graphs.hypo3_action_effect_coupling import Hypothesis3verifier
-from src.experiments.cross_validate_models.cross_validate import load_agent_from_spec, AgentSpec
+from src.experiments.utils import load_agent_from_spec, AgentSpec
 
 logger = logging.getLogger(__name__)
 

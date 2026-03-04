@@ -1209,6 +1209,152 @@ class PathLengthVisualizer(MetricVisualizer[Dict[str, npt.NDArray]]):
         return fig
 
 
+class AllPairsShortestPathVisualizer(MetricVisualizer[Dict[str, npt.NDArray]]):
+    """
+    Computes the all-pairs shortest path length distribution for four graph variants:
+      - Latent graph (full)           – expected graph built from posterior edge probabilities
+      - Latent graph (BCC)            – same, restricted to the biggest connected component
+      - Power-grid graph (full)       – baseline
+      - Power-grid graph (BCC)        – baseline, restricted to the BCC induced by the latent mask
+
+    For each variant the histogram of all finite pairwise distances is stored and visualised.
+    Disconnected pairs (infinite distance) are excluded from statistics but their fraction
+    is reported in the plot title.
+    """
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _apsp_array(G: nx.Graph) -> npt.NDArray:
+        """Return a 1-D array of all finite pairwise distances in G."""
+        lengths = []
+        for source, targets in nx.all_pairs_shortest_path_length(G):
+            for target, d in targets.items():
+                if source < target:          # count each pair once
+                    lengths.append(d)
+        return np.array(lengths, dtype=float) if lengths else np.array([], dtype=float)
+
+    @staticmethod
+    def _build_latent_expected_graph(posterior: npt.NDArray,
+                                     edge_index_fully_connected: npt.NDArray,
+                                     num_nodes: int,
+                                     threshold: float = 0.5) -> nx.Graph:
+        """Build an unweighted graph keeping edges whose existence probability ≥ threshold."""
+        G = nx.Graph()
+        G.add_nodes_from(range(num_nodes))
+        edge_probs = posterior[:, :-1].sum(axis=1)   # p(edge exists)
+        for idx, (src, dst) in enumerate(edge_index_fully_connected.T):
+            if edge_probs[idx] >= threshold:
+                G.add_edge(int(src), int(dst))
+        return G
+
+    # ------------------------------------------------------------------
+    # MetricVisualizer interface
+    # ------------------------------------------------------------------
+
+    def _summarize_data(self) -> Dict[str, npt.NDArray]:
+        latent_full      = np.concatenate([m['latent_full']      for m in self.metrics_history])
+        latent_subgraph  = np.concatenate([m['latent_subgraph']  for m in self.metrics_history])
+        powergrid_full   = np.concatenate([m['powergrid_full']   for m in self.metrics_history])
+        powergrid_subgraph = np.concatenate([m['powergrid_subgraph'] for m in self.metrics_history])
+        node_mask        = self.metrics_history[0]['node_mask']
+        powergrid_graph  = self.metrics_history[0]['powergrid_graph']
+        posterior        = self.metrics_history[0]['posterior']
+        return {
+            'latent_full':       latent_full,
+            'latent_subgraph':   latent_subgraph,
+            'powergrid_full':    powergrid_full,
+            'powergrid_subgraph':powergrid_subgraph,
+            'node_mask':         node_mask,
+            'powergrid_graph':   powergrid_graph,
+            'posterior':         posterior,
+        }
+
+    def _compute(self, posterior: npt.NDArray, powergrid_graph: npt.NDArray,
+                 edge_index_fully_connected: npt.NDArray, node_mask: npt.NDArray,
+                 **kwargs) -> Dict[str, npt.NDArray]:
+        num_nodes = len(node_mask)
+        masked_nodes = [i for i in range(num_nodes) if node_mask[i]]
+
+        # ── Latent full graph ──────────────────────────────────────────
+        G_lat_full = self._build_latent_expected_graph(
+            posterior, edge_index_fully_connected, num_nodes)
+        latent_full = self._apsp_array(G_lat_full)
+
+        # ── Latent subgraph (BCC) ──────────────────────────────────────
+        G_lat_sub = G_lat_full.subgraph(masked_nodes).copy()
+        latent_subgraph = self._apsp_array(G_lat_sub)
+
+        # ── Power-grid full graph ──────────────────────────────────────
+        G_pg_full = nx.Graph()
+        G_pg_full.add_nodes_from(range(num_nodes))
+        G_pg_full.add_edges_from(powergrid_graph.T.astype(int))
+        powergrid_full = self._apsp_array(G_pg_full)
+
+        # ── Power-grid subgraph (BCC) ──────────────────────────────────
+        G_pg_sub = G_pg_full.subgraph(masked_nodes).copy()
+        powergrid_subgraph = self._apsp_array(G_pg_sub)
+
+        return {
+            'latent_full':       latent_full,
+            'latent_subgraph':   latent_subgraph,
+            'powergrid_full':    powergrid_full,
+            'powergrid_subgraph':powergrid_subgraph,
+            'node_mask':         node_mask,
+            'powergrid_graph':   powergrid_graph,
+            'posterior':         posterior,
+        }
+
+    def _visualize(self, computation_result: Dict[str, npt.NDArray],
+                   aggregated: bool = False, show_figure: bool = False) -> Figure:
+        latent_full       = computation_result['latent_full']
+        latent_subgraph   = computation_result['latent_subgraph']
+        powergrid_full    = computation_result['powergrid_full']
+        powergrid_subgraph= computation_result['powergrid_subgraph']
+
+        all_arrays = [a for a in [latent_full, latent_subgraph,
+                                  powergrid_full, powergrid_subgraph] if len(a) > 0]
+        if not all_arrays:
+            fig, ax = plt.subplots()
+            ax.text(0.5, 0.5, 'No path data', ha='center', va='center')
+            return fig
+
+        max_d = int(np.concatenate(all_arrays).max())
+        bins = np.arange(0, max_d + 2) - 0.5   # integer-centred bins
+
+        fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+        fig.suptitle("All-Pairs Shortest Path Length Distribution", fontsize=14)
+
+        configs = [
+            (axes[0, 0], powergrid_full,     'green',   'Power-Grid – Full'),
+            (axes[0, 1], powergrid_subgraph, 'green',   'Power-Grid – BCC'),
+            (axes[1, 0], latent_full,        'steelblue','Latent – Full'),
+            (axes[1, 1], latent_subgraph,    'steelblue','Latent – BCC'),
+        ]
+
+        for ax, arr, color, title in configs:
+            if len(arr) == 0:
+                ax.set_title(f'{title}\n(no data)')
+                continue
+            ax.hist(arr, bins=bins, color=color, edgecolor='black', alpha=0.75, density=True)
+            mean_val = np.mean(arr)
+            ax.axvline(mean_val, color='red', linestyle='--', linewidth=1.8,
+                       label=f'Mean={mean_val:.2f}  Std={np.std(arr):.2f}')
+            ax.set_xlabel('Shortest Path Length')
+            ax.set_ylabel('Density')
+            ax.set_title(f'{title}  (n={len(arr):,})')
+            ax.legend(fontsize=9)
+            ax.grid(alpha=0.3)
+            ax.xaxis.set_major_locator(MultipleLocator(1))
+
+        plt.tight_layout()
+        if show_figure:
+            plt.show()
+        return fig
+
+
 class SymmetryMetricVisualizer(MetricVisualizer[float]):
     """Visualizes the symmetry metric of the posterior graph.
 
@@ -1256,7 +1402,7 @@ class SymmetryMetricVisualizer(MetricVisualizer[float]):
                     p_vw = adj_matrix[v, w]
                     p_wv = adj_matrix[w, v]
                     numerator += p_vw * p_wv
-                    denominator += p_vw
+                    denominator += p_vw ** 2
 
         # Avoid division by zero
         if denominator < 1e-10:
@@ -1303,7 +1449,7 @@ class SymmetryMetricVisualizer(MetricVisualizer[float]):
 
         ax.set_xlabel('Symmetry Score (R)')
         ax.set_ylabel('Density')
-        ax.set_title(f'Distribution of Posterior Symmetry Scores\n(R = Σ p_vw·p_wv / Σ p_vw, aggregated over {len(symmetry_scores)} timesteps)')
+        ax.set_title(f'Distribution of Posterior Symmetry Scores,\n aggregated over {len(symmetry_scores)} timesteps)')
         ax.legend()
         ax.grid(alpha=0.3)
 

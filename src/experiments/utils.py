@@ -1,8 +1,15 @@
-from typing import List
+from pathlib import Path
+from typing import List, Tuple
 
 import networkx as nx
 import numpy.typing as npt
 import numpy as np
+from grid2op.Agent import BaseAgent
+from grid2op.Environment import Environment
+
+from evaluate_rllib_agent import load_config, load_rllib_agent
+from src.rl4pnc.grid2op_env.custom_environment import CustomizedGrid2OpEnvironment
+
 
 def sample_graph_from_posterior(posterior: npt.NDArray, all_edges: npt.NDArray, num_samples=1) -> List[nx.Graph]:
     """
@@ -81,3 +88,22 @@ def expected_distance(posterior: npt.NDArray, all_edges: npt.NDArray, reference_
         distances.append(np.not_equal(A_ref, A_sample).sum())
 
     return float(np.mean(distances))
+
+
+class AgentSpec:
+    def __init__(self, name: str, load_path: Path, checkpoint_name: str, policy_name: str = "reinforcement_learning_policy"):
+        self.name = name
+        self.checkpoint_name = checkpoint_name
+        self.policy_name = policy_name
+        self.load_path = load_path
+
+def load_agent_from_spec(agent_spec: AgentSpec, env_name: str = "l2rpn_case14_sandbox_val") -> Tuple[BaseAgent, Environment, CustomizedGrid2OpEnvironment]:
+    params = load_config(agent_spec.load_path)
+    env_config = params["evaluation_config"]["env_config"]
+    return load_rllib_agent(
+        checkpoint_path=agent_spec.load_path,
+        policy_name=agent_spec.policy_name,
+        checkpoint_name=agent_spec.checkpoint_name,
+        env_name=env_name,
+        env_config=env_config
+    )

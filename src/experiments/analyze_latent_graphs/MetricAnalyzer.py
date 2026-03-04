@@ -27,7 +27,7 @@ from src.experiments.analyze_latent_graphs.Metrics import (
     PathLengthVisualizer, SymmetryMetricVisualizer, EdgeNodeTypeVisualizer, BetweennessVisualizer
 )
 from src.experiments.analyze_latent_graphs.agent_analysis_framework import PosteriorAnalyzer, LatentGraphAnalysisAgent
-from src.experiments.cross_validate_models.cross_validate import AgentSpec, load_agent_from_spec
+from src.experiments.utils import AgentSpec, load_agent_from_spec
 from src.nri.utils import fully_connected_edge_index, get_priors, get_prior_tensor
 from src.visualization import get_node_styles
 from src.visualization.utils import NodeStyle
@@ -60,11 +60,11 @@ class PosteriorMetrics(PosteriorAnalyzer):
             "Inner Tree Node Probability": InnerTreeNodeProbabilityVisualizer(node_styles=node_styles),
             "Posterior Distribution": PosteriorDistributionVisualizer(node_styles=node_styles),
             "KL Divergence": KLDivergenceVisualizer(node_styles=node_styles),
-            "Entropy vs KL": EntropyVsKLVisualizer(node_styles=node_styles),
+            #"Entropy vs KL": EntropyVsKLVisualizer(node_styles=node_styles),
             "Path Length": PathLengthVisualizer(node_styles=node_styles),
             "Symmetry Analysis": SymmetryMetricVisualizer(node_styles=node_styles),
             "Connected Node Types": EdgeNodeTypeVisualizer(node_styles=node_styles),
-            "Steps": StepVisualizer(node_styles=node_styles),
+            #"Steps": StepVisualizer(node_styles=node_styles),
             "Betweenness Centrality": BetweennessVisualizer(node_styles=node_styles),
         }
 
@@ -455,7 +455,7 @@ def main():
     # Set to True to also save per-step figures (slow); False to only save aggregated figures
     enable_stepwise_viz = False
     num_episodes = 50
-    max_total_duration_s = 60 * 60 * 3  # 3 hours
+    max_total_duration_s = 60 * 60 * 1  # 1 hour
     save_dir = Path("results/graph_metrics")
 
     if compute_data:

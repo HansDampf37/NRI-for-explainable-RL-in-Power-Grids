@@ -1,38 +1,23 @@
 import logging
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from itertools import product
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 from grid2op.Agent import BaseAgent
 from grid2op.Environment import Environment
 from tqdm import tqdm
 
-from evaluate_rllib_agent import load_rllib_agent, load_config
 from src.common.observation_space import BusConnectivityGraphObsSpace, EDGE_INDEX
-from src.rl4pnc.grid2op_env.custom_environment import CustomizedGrid2OpEnvironment
+from src.experiments.analyze_latent_graphs.hypo3_action_effect_coupling import get_reconfigured_nodes
+from src.experiments.utils import AgentSpec, load_agent_from_spec
 from src.visualization import visualize_graph, PlottingArgs, get_node_styles
 
 logger = logging.getLogger(__name__)
-
-class AgentSpec:
-    def __init__(self, name: str, load_path: Path, checkpoint_name: str, policy_name: str = "reinforcement_learning_policy"):
-        self.name = name
-        self.checkpoint_name = checkpoint_name
-        self.policy_name = policy_name
-        self.load_path = load_path
-
-def load_agent_from_spec(agent_spec: AgentSpec, env_name: str = "l2rpn_case14_sandbox_val") -> Tuple[BaseAgent, Environment, CustomizedGrid2OpEnvironment]:
-    params = load_config(agent_spec.load_path)
-    env_config = params["evaluation_config"]["env_config"]
-    return load_rllib_agent(
-        checkpoint_path=agent_spec.load_path,
-        policy_name=agent_spec.policy_name,
-        checkpoint_name=agent_spec.checkpoint_name,
-        env_name=env_name,
-        env_config=env_config
-    )
 
 
 class CrossValidateResult:
@@ -56,6 +41,9 @@ class CrossValidateResult:
         self.backup_agent_completed = backup_agent_completed or {}
         self.connected_lines_before_failure: Dict[str, List[int]] = {}
         self.rhos_before_failure: Dict[str, List[int]] = {}
+        # Per-node reconfiguration counts accumulated over all evaluated steps [N], set lazily
+        self._node_action_counts: Optional[npt.NDArray] = None
+        self._total_steps: int = 0
 
 
 def run_until_failure(agent: BaseAgent, g2op_env: Environment, backup_env: Environment, result: CrossValidateResult) -> bool:
@@ -80,6 +68,18 @@ def run_until_failure(agent: BaseAgent, g2op_env: Environment, backup_env: Envir
     num_steps = 0
     while True:
         action = agent.act(obs, reward=reward, done=done)
+
+        # --- Track reconfiguration frequency ---
+        reconfigured = get_reconfigured_nodes(action, obs)
+        if reconfigured:
+            N = 2 * obs.n_line + obs.n_gen + obs.n_load
+            if result._node_action_counts is None:
+                result._node_action_counts = np.zeros(N, dtype=np.int64)
+            for node_idx in reconfigured:
+                if 0 <= node_idx < N:
+                    result._node_action_counts[node_idx] += 1
+        result._total_steps += 1
+
         new_obs, reward, done, info = g2op_env.step(action)
         num_steps += 1
         if done:
@@ -129,11 +129,12 @@ def continue_env_with_backup_agent(backup_g2op_env: Environment, backup_agent: B
             return
 
 
-def cross_validate(failing_agent_spec: AgentSpec, backup_agent_spec: AgentSpec) -> CrossValidateResult:
+def cross_validate(failing_agent_spec: AgentSpec, backup_agent_spec: AgentSpec, num_chronics = 50) -> CrossValidateResult:
     """
     Cross-validate two models by evaluating model2 on the timesteps where model1 fails.
     :param failing_agent_spec: the first model specification
     :param backup_agent_spec: the second model specification
+    :param num_chronics: how many chronics to evaluate on (randomly sampled)
     :return: a cross-validation result object
     """
     # load models and envs
@@ -146,8 +147,7 @@ def cross_validate(failing_agent_spec: AgentSpec, backup_agent_spec: AgentSpec) 
         failing_agent=failing_agent_spec,
         backup_agent=backup_agent_spec,
     )
-    num_validation_chronics = 50
-    for _ in tqdm(range(num_validation_chronics), desc=f"Cross-validating {failing_agent_spec.name} with {backup_agent_spec.name}", unit="chronic"):
+    for _ in tqdm(range(num_chronics), desc=f"Cross-validating {failing_agent_spec.name} with {backup_agent_spec.name}", unit="chronic"):
 
         try:
             completed = run_until_failure(failing_agent, g2op_env, backup_env, result)
@@ -321,8 +321,212 @@ def compute_failing_edges_data(results: List[CrossValidateResult], save_dir: Pat
 
 
 # ---------------------------------------------------------------------------
-# Pure-paint helpers (accept pre-computed arrays, no agents/envs needed)
+# Reconfiguration frequency
 # ---------------------------------------------------------------------------
+
+def compute_reconfiguration_frequency_data(
+    results: List[CrossValidateResult],
+    save_dir: Path,
+) -> Dict[str, npt.NDArray]:
+    """
+    Collect per-node reconfiguration counts from each *failing* agent's rollout
+    and normalise them into a frequency (count / total_steps).
+
+    Saved files
+    -----------
+    reconfig_freq_agent_names.npy       – 1-D array of agent names
+    reconfig_freq_<agent>.npy           – normalised frequency array [N]
+    reconfig_counts_<agent>.npy         – raw integer count array [N]
+    reconfig_total_steps_<agent>.npy    – scalar: total steps evaluated
+
+    :param results: list of cross-validation results (one per agent pair)
+    :param save_dir: directory in which to save the .npy files
+    :return: mapping agent_name → normalised frequency array [N]
+    """
+    # Aggregate per *failing* agent (we measured actions taken by the failing agent)
+    agent_counts: Dict[str, npt.NDArray] = {}
+    agent_steps: Dict[str, int] = {}
+
+    for result in results:
+        name = result.failing_agent.name
+        if result._node_action_counts is None:
+            continue
+        if name in agent_counts:
+            # Accumulate if the same agent appears in multiple pairs
+            agent_counts[name] = agent_counts[name] + result._node_action_counts
+            agent_steps[name] = agent_steps[name] + result._total_steps
+        else:
+            agent_counts[name] = result._node_action_counts.copy()
+            agent_steps[name] = result._total_steps
+
+    freq: Dict[str, npt.NDArray] = {}
+    for name, counts in agent_counts.items():
+        steps = max(agent_steps[name], 1)
+        freq[name] = counts.astype(np.float64) / steps
+
+    save_dir.mkdir(parents=True, exist_ok=True)
+    agent_names = list(freq.keys())
+    np.save(save_dir / "reconfig_freq_agent_names.npy", np.array(agent_names))
+    for name in agent_names:
+        safe = name.replace(" ", "_")
+        np.save(save_dir / f"reconfig_freq_{safe}.npy", freq[name])
+        np.save(save_dir / f"reconfig_counts_{safe}.npy", agent_counts[name])
+        np.save(save_dir / f"reconfig_total_steps_{safe}.npy", np.array(agent_steps[name]))
+    logger.info("Saved reconfiguration frequency data to %s", save_dir)
+
+    return freq
+
+
+def _shrink_axis_box(ax, left: float = 0.0, right: float = 0.0,
+                     bottom: float = 0.0, top: float = 0.0):
+    """Shrink an axis inside its allocated cell by fractions of its size."""
+    pos = ax.get_position()
+    new_x0 = pos.x0 + pos.width * left
+    new_y0 = pos.y0 + pos.height * bottom
+    new_w = pos.width * (1.0 - left - right)
+    new_h = pos.height * (1.0 - bottom - top)
+    ax.set_position([new_x0, new_y0, new_w, new_h])
+
+
+def _paint_single_agent_reconfig(
+    agent_name: str,
+    freq: npt.NDArray,   # [N] normalised frequency (counts / total_steps)
+    pl_edge_index: npt.NDArray,
+    save_path: Path,
+    show: bool = False,
+):
+    """
+    Render a combined graph-map + histogram figure for one agent's reconfiguration
+    frequency, mimicking the style of
+    ``Hypothesis3verifier._visualize_coupling_graph``.
+    """
+    import grid2op
+
+    env = grid2op.make("l2rpn_case14_sandbox_val")
+    obs_space = BusConnectivityGraphObsSpace(env.observation_space)
+    node_styles = get_node_styles(env, obs_space.__class__)
+
+    N = freq.shape[0]
+    counts_pct = freq * 100.0          # convert to percent of timesteps
+
+    cmap = mpl.colormaps["managua"]
+    zero_color = (0.85, 0.85, 0.85, 1.0)
+    vmax = 0.12
+    norm = mpl.colors.Normalize(vmin=0.0, vmax=vmax)
+
+    # Colour graph nodes
+    for i, c in enumerate(counts_pct):
+        node_styles[i].color = zero_color if c <= 0.0 else cmap(norm(c))
+
+    fig = plt.figure(figsize=(12, 4), constrained_layout=False)
+    gs = fig.add_gridspec(
+        nrows=1, ncols=3,
+        width_ratios=[2.5, 1.5, 0.10],
+        wspace=0.25,
+    )
+    ax_graph = fig.add_subplot(gs[0, 0])
+    ax_hist = fig.add_subplot(gs[0, 1])
+    cax = fig.add_subplot(gs[0, 2])
+
+    st = fig.suptitle(
+        f"Node reconfiguration frequency (%) — {agent_name}",
+        x=0.5, y=0.98, ha="center",
+    )
+
+    visualize_graph(
+        PlottingArgs(
+            num_nodes=N,
+            node_styles=node_styles,
+            powerline_edge_index=pl_edge_index,
+            show_legend=False,
+        ),
+        ax=ax_graph,
+    )
+
+    _shrink_axis_box(ax_hist, left=0.03, right=0.03, bottom=0.06, top=0.06)
+    _shrink_axis_box(cax, left=0.0, right=0.0, bottom=0.06, top=0.06)
+
+    hist_pos = ax_hist.get_position()
+    cax_pos = cax.get_position()
+    cax.set_position([cax_pos.x0, hist_pos.y0, cax_pos.width, hist_pos.height])
+
+    x = np.arange(N)
+    bar_colors = [zero_color if c <= 0.0 else cmap(norm(c)) for c in counts_pct]
+    ax_hist.bar(x, counts_pct, color=bar_colors, edgecolor="none")
+    ax_hist.set_xlabel("Node index")
+    ax_hist.set_ylabel("Reconfiguration frequency (%)")
+    ax_hist.set_xlim(-0.5, N - 0.5)
+    ax_hist.margins(x=0.02, y=0.05)
+    ax_hist.set_ylim(0.0, vmax)
+
+    sm = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
+    sm.set_array([])
+    cb = fig.colorbar(sm, cax=cax)
+    cb.set_label("Reconfiguration\nfrequency (%)")
+
+    fig.subplots_adjust(top=0.86)
+
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(save_path, bbox_inches="tight", pad_inches=0.05, bbox_extra_artists=[st])
+    fig.savefig(save_path.with_suffix(".svg"), bbox_inches="tight", pad_inches=0.05,
+                bbox_extra_artists=[st])
+    if show:
+        plt.show()
+    plt.close(fig)
+
+
+def paint_reconfiguration_frequency(
+    freq: Dict[str, npt.NDArray],
+    pl_edge_index: npt.NDArray,
+    save_dir: Path,
+    show: bool = False,
+):
+    """
+    Paint per-agent reconfiguration-frequency figures (graph map + histogram).
+
+    One ``reconfig_freq_<agent>.png/.svg`` file is created per agent.
+
+    :param freq: mapping agent_name → normalised frequency array [N]
+    :param pl_edge_index: powerline edge-index (shape 2 × n_edges)
+    :param save_dir: directory in which to save the figures
+    :param show: whether to display figures interactively
+    """
+    for agent_name, f in freq.items():
+        safe = agent_name.replace(" ", "_")
+        _paint_single_agent_reconfig(
+            agent_name=agent_name,
+            freq=f,
+            pl_edge_index=pl_edge_index,
+            save_path=save_dir / f"reconfig_freq_{safe}.svg",
+            show=show,
+        )
+
+
+def repaint_reconfiguration_frequency(
+    data_dir: Path,
+    save_dir: Path,
+    show: bool = False,
+):
+    """
+    Load saved reconfiguration-frequency data from *data_dir* and repaint the figures.
+
+    :param data_dir: directory containing the ``reconfig_freq_*.npy`` files
+    :param save_dir: directory in which to save the figures
+    :param show: whether to display figures interactively
+    """
+    agent_names: List[str] = np.load(
+        data_dir / "reconfig_freq_agent_names.npy", allow_pickle=True
+    ).tolist()
+    pl_edge_index = np.load(data_dir / "failing_edges_pl_edge_index.npy")
+
+    freq: Dict[str, npt.NDArray] = {}
+    for name in agent_names:
+        safe = name.replace(" ", "_")
+        p = data_dir / f"reconfig_freq_{safe}.npy"
+        if p.exists():
+            freq[name] = np.load(p)
+
+    paint_reconfiguration_frequency(freq, pl_edge_index, save_dir, show=show)
 
 def paint_cross_validation_results(
     cv_map: np.ndarray,
@@ -342,7 +546,6 @@ def paint_cross_validation_results(
     :param save_path: where to save the figure
     :param show: whether to display the figure interactively
     """
-    import matplotlib.pyplot as plt
 
     fig, ax = plt.subplots(figsize=(5, 4))
     im = ax.imshow(cv_map, cmap="viridis")
@@ -754,39 +957,47 @@ def main():
     model2 = AgentSpec(name="MLP", load_path="/home/adrian/Schreibtisch/1901/1901_rainbow_baselines/CustomPPO_0_98414_2026-01-19_18-23-39_MLP/", checkpoint_name="checkpoint_000019")
     model3 = AgentSpec(name="GNN", load_path="/home/adrian/Schreibtisch/1901/1901_baselines/CustomPPO_0_4cbd2_2026-01-19_14-39-38_GNN/", checkpoint_name="checkpoint_000023")
 
+    num_episodes = 50
+
     results_dir = Path("results/cross_validation")
     save_results_to = results_dir / "cross_validate_models.json"
     save_heatmap_to = results_dir / "cross_validate_models.svg"
     save_connectivity_to = results_dir / "failing_edges_connectivity.svg"
     save_rho_to = results_dir / "failing_edges_rho.svg"
 
+    compute_data = False
+
     models = [model1, model2, model3]  # model4 excluded for now
     pairs = [(m1, m2) for m1, m2 in product(models, models) if m1.name != m2.name]
 
-    # ------------------------------------------------------------------
-    # Step 1: gather data
-    # ------------------------------------------------------------------
-    #results: List[CrossValidateResult] = []
-    #with ProcessPoolExecutor(max_workers=1) as ex:
-    #    futures = [ex.submit(cross_validate, m1, m2) for (m1, m2) in pairs]
-    #    for fut in as_completed(futures):
-    #        result = fut.result()
-    #        results.append(result)
-    #        print(f"Cross-validation between {result.failing_agent.name} and {result.backup_agent.name}: {result.additional_timesteps}")
+    if compute_data:
+        # ------------------------------------------------------------------
+        # Step 1: gather data
+        # ------------------------------------------------------------------
+        results: List[CrossValidateResult] = []
+        with ProcessPoolExecutor(max_workers=1) as ex:
+            futures = [ex.submit(cross_validate, m1, m2, num_episodes) for (m1, m2) in pairs]
+            for fut in as_completed(futures):
+                result = fut.result()
+                results.append(result)
+                print(f"Cross-validation between {result.failing_agent.name} and {result.backup_agent.name}: {result.additional_timesteps}")
 
-    #save_cross_validate_results(results, save_path=save_results_to)
-    #compute_cross_validation_data(results, save_dir=results_dir)
-    #compute_failing_edges_data(results, save_dir=results_dir)
+        save_cross_validate_results(results, save_path=save_results_to)
+        compute_reconfiguration_frequency_data(results, save_dir=results_dir)
+        #compute_cross_validation_data(results, save_dir=results_dir)
+        #compute_failing_edges_data(results, save_dir=results_dir)
 
     # ------------------------------------------------------------------
     # Step 2: paint figures (can be re-run independently via repaint_*)
     # ------------------------------------------------------------------
-    print_table_connectivity(results_dir)
-    print_table_rho(results_dir)
-    repaint_cross_validation_results(results_dir, save_path=save_heatmap_to, show=True)
-    repaint_cross_validation_results(results_dir, save_path=save_heatmap_to.with_suffix(".png"), show=False)
-    repaint_failing_edges(results_dir, save_path_connectivity=save_connectivity_to, save_path_rho=save_rho_to, show=True)
-    repaint_failing_edges(results_dir, save_path_connectivity=save_connectivity_to.with_suffix(".png"), save_path_rho=save_rho_to.with_suffix(".png"), show=False)
+    #print_table_connectivity(results_dir)
+    #print_table_rho(results_dir)
+    #repaint_cross_validation_results(results_dir, save_path=save_heatmap_to, show=True)
+    #repaint_cross_validation_results(results_dir, save_path=save_heatmap_to.with_suffix(".png"), show=False)
+    #repaint_failing_edges(results_dir, save_path_connectivity=save_connectivity_to, save_path_rho=save_rho_to, show=True)
+    #repaint_failing_edges(results_dir, save_path_connectivity=save_connectivity_to.with_suffix(".png"), save_path_rho=save_rho_to.with_suffix(".png"), show=False)
+    repaint_reconfiguration_frequency(results_dir, save_dir=results_dir, show=True)
+    repaint_reconfiguration_frequency(results_dir, save_dir=results_dir, show=False)
 
 
 if __name__ == "__main__":
