@@ -15,7 +15,7 @@ from tqdm import tqdm
 from src.common.observation_space import BusConnectivityGraphObsSpace, EDGE_INDEX
 from src.experiments.analyze_latent_graphs.hypo3_action_effect_coupling import get_reconfigured_nodes
 from src.experiments.utils import AgentSpec, load_agent_from_spec
-from src.visualization import visualize_graph, PlottingArgs, get_node_styles
+from src.visualization import visualize_graph, PlottingArgs, get_node_styles, GridPlottingArgs, visualize_grid
 
 logger = logging.getLogger(__name__)
 
@@ -625,15 +625,15 @@ def paint_failing_edges_connectivity(
             edge_colors[edge_idx] = plt.matplotlib.colors.rgb2hex(color[:3])
             edge_widths[edge_idx] = 3.0
 
-        plotting_args = PlottingArgs(
-            num_nodes=57,
-            node_styles=get_node_styles(env, BusConnectivityGraphObsSpace),
-            powerline_edge_index=pl_edge_index,
-            powerline_edge_colors=edge_colors,
-            powerline_edge_widths=edge_widths,
+        plotting_args = GridPlottingArgs(
+            env = env,
+            node_size=900,
+            font_size=18,
+            line_colors=np.array(edge_colors)[powerline_edge_indices],
+            line_widths=np.array(edge_widths)[powerline_edge_indices],
             show_legend=False,
         )
-        visualize_graph(plotting_args, ax=axes[idx])
+        visualize_grid(plotting_args, ax=axes[idx])
         axes[idx].set_title(f"{agent_name}", fontsize=30)
 
     norm = Normalize(vmin=0.9, vmax=1.0)
@@ -683,7 +683,7 @@ def paint_failing_edges_rho(
 
     for idx, (agent_name, rhos) in enumerate(rhos_before_failure.items()):
         edge_colors = [neutral_gray] * num_edges
-        edge_widths = [1.0] * num_edges
+        edge_widths = [4.0] * num_edges
 
         for pl_idx, edge_idx in enumerate(powerline_edge_indices):
             rho = rhos[pl_idx]
@@ -692,15 +692,16 @@ def paint_failing_edges_rho(
             edge_colors[edge_idx] = plt.matplotlib.colors.rgb2hex(color[:3])
             edge_widths[edge_idx] = 3.0
 
-        plotting_args = PlottingArgs(
-            num_nodes=57,
-            node_styles=get_node_styles(env, BusConnectivityGraphObsSpace),
-            powerline_edge_index=pl_edge_index,
-            powerline_edge_colors=edge_colors,
-            powerline_edge_widths=edge_widths,
+        plotting_args = GridPlottingArgs(
+            env=env,
+            node_size=900,
+            font_size=18,
+            node_color='white',
+            line_colors=np.asarray(edge_colors)[powerline_edge_indices],
+            line_widths=np.asarray(edge_widths)[powerline_edge_indices],
             show_legend=False,
         )
-        visualize_graph(plotting_args, ax=axes[idx])
+        visualize_grid(plotting_args, ax=axes[idx])
         axes[idx].set_title(f"{agent_name}", fontsize=30)
 
     norm = Normalize(vmin=0, vmax=1.2)
@@ -994,8 +995,8 @@ def main():
     #print_table_rho(results_dir)
     #repaint_cross_validation_results(results_dir, save_path=save_heatmap_to, show=True)
     #repaint_cross_validation_results(results_dir, save_path=save_heatmap_to.with_suffix(".png"), show=False)
-    #repaint_failing_edges(results_dir, save_path_connectivity=save_connectivity_to, save_path_rho=save_rho_to, show=True)
-    #repaint_failing_edges(results_dir, save_path_connectivity=save_connectivity_to.with_suffix(".png"), save_path_rho=save_rho_to.with_suffix(".png"), show=False)
+    repaint_failing_edges(results_dir, save_path_connectivity=save_connectivity_to, save_path_rho=save_rho_to, show=True)
+    repaint_failing_edges(results_dir, save_path_connectivity=save_connectivity_to.with_suffix(".png"), save_path_rho=save_rho_to.with_suffix(".png"), show=False)
     repaint_reconfiguration_frequency(results_dir, save_dir=results_dir, show=True)
     repaint_reconfiguration_frequency(results_dir, save_dir=results_dir, show=False)
 

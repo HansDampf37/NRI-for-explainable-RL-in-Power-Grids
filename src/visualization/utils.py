@@ -49,6 +49,22 @@ class PlottingArgs:
 
 
 @dataclass
+class GridPlottingArgs:
+    """Arguments for visualize_grid — a substation-level power grid view."""
+    env: Environment
+    # Per-line style overrides (length must match env.n_line or be None for defaults)
+    line_colors: Optional[List[str]] = None    # e.g. ["red", "gray", ...]
+    line_widths: Optional[List[float]] = None  # e.g. [2.0, 1.0, ...]
+    line_styles: Optional[List[str]] = None    # e.g. ["-", "--", ":", "-."]
+    node_size: int = 600           # matplotlib scatter size for substation circles
+    node_color: str = "white"  # fill colour of substation circles
+    font_size: int = 10            # font size for substation index labels
+    font_color: str = "black"      # label colour inside circles
+    show_legend: bool = False      # whether to draw a legend
+    legend_font_size: int = 10     # font size for legend text
+
+
+@dataclass
 class AgentMetrics:
     label: str
     returns: List[float]
@@ -63,7 +79,7 @@ def visualize_agent_survival(datasets: List[AgentMetrics], save_to: Optional[Pat
     df = pd.DataFrame(records)
 
     sns.set_theme(style="whitegrid", palette="muted", font_scale=1.2)
-    plt.figure(figsize=(15, 5))
+    plt.figure(figsize=(12, 4))
     # --- Boxplot ---
     sns.boxplot(
         data=df,
@@ -458,6 +474,170 @@ def _create_legend(args: PlottingArgs, G: nx.Graph, ax=None) -> None:
         ax.legend(handles=node_legend + edge_legend, loc="best", frameon=False)
     else:
         plt.legend(handles=node_legend + edge_legend, loc="best", frameon=False)
+
+
+def visualize_grid(args: GridPlottingArgs, ax=None) -> Optional[Figure]:
+    """
+    Visualize the power grid at the substation level.
+
+    Each substation is drawn as a labelled circle (one node per substation).
+    Transmission lines are drawn as edges between the substations they connect.
+    No intra-substation structure is shown — this is purely the physical grid topology.
+
+    Per-line style can be configured via ``args.line_colors``, ``args.line_widths``
+    and ``args.line_styles``.
+
+    :param args: plotting configuration (see :class:`GridPlottingArgs`)
+    :param ax: optional matplotlib :class:`~matplotlib.axes.Axes` to draw on.
+               If *None* a new figure is created and returned.  If an axis is
+               supplied the function draws into it and returns *None*.
+    :return: the created :class:`~matplotlib.figure.Figure`, or *None* when
+             *ax* was provided.
+    """
+    env = args.env
+    n_sub = env.n_sub
+    n_line = env.n_line
+
+    # ------------------------------------------------------------------ #
+    # Resolve substation positions from the grid2op plot helper            #
+    # ------------------------------------------------------------------ #
+    plot_helper = PlotMatplot(env.observation_space)
+    layout = plot_helper._grid_layout  # dict: "sub_0" -> [x, y], etc.
+
+    pos = {}
+    for sub_id in range(n_sub):
+        xy = layout[f"sub_{sub_id}"]
+        pos[sub_id] = np.array(xy, dtype=float)
+
+    # ------------------------------------------------------------------ #
+    # Build graph                                                          #
+    # ------------------------------------------------------------------ #
+    G = nx.MultiGraph()
+    G.add_nodes_from(range(n_sub))
+
+    # Default line styles
+    default_color = "gray"
+    default_width = 1.5
+    default_style = "-"
+
+    for line_idx in range(n_line):
+        src = int(env.line_or_to_subid[line_idx])
+        dst = int(env.line_ex_to_subid[line_idx])
+        color = args.line_colors[line_idx] if args.line_colors is not None else default_color
+        width = args.line_widths[line_idx] if args.line_widths is not None else default_width
+        style = args.line_styles[line_idx] if args.line_styles is not None else default_style
+        G.add_edge(src, dst, color=color, weight=width, style=style, line_idx=line_idx)
+
+    # ------------------------------------------------------------------ #
+    # Figure / axis                                                        #
+    # ------------------------------------------------------------------ #
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(12, 7), dpi=100)
+        return_fig = True
+    else:
+        fig = ax.get_figure()
+        return_fig = False
+
+    # ------------------------------------------------------------------ #
+    # Draw edges — group by (color, width, style) for efficiency          #
+    # ------------------------------------------------------------------ #
+    # Collect edges grouped by their visual style so we can batch draw
+
+    all_edges = list(G.edges(data=True))
+
+    # Group by style triple so each group gets one draw call
+    style_groups: dict = {}
+    for u, v, d in all_edges:
+        key = (d["color"], d["weight"], d["style"])
+        style_groups.setdefault(key, []).append((u, v))
+
+    for (color, width, style), edgelist in style_groups.items():
+        nx.draw_networkx_edges(
+            G,
+            pos,
+            edgelist=edgelist,
+            edge_color=color,
+            width=width,
+            style=style,
+            arrows=False,
+            ax=ax,
+        )
+
+    # ------------------------------------------------------------------ #
+    # Draw nodes as filled circles                                         #
+    # ------------------------------------------------------------------ #
+    node_collection = nx.draw_networkx_nodes(
+        G,
+        pos,
+        nodelist=list(range(n_sub)),
+        node_color=args.node_color,
+        linewidths=1,
+        edgecolors="black",
+        node_shape="o",
+        node_size=args.node_size,
+        ax=ax,
+    )
+    node_collection.set_zorder(5)
+
+    # ------------------------------------------------------------------ #
+    # Draw substation index labels inside the circles                      #
+    # ------------------------------------------------------------------ #
+    label_artists = nx.draw_networkx_labels(
+        G,
+        pos,
+        labels={i: str(i) for i in range(n_sub)},
+        font_size=args.font_size,
+        font_color=args.font_color,
+        font_weight="bold",
+        ax=ax,
+    )
+    for text in label_artists.values():
+        text.set_zorder(10)
+
+    # ------------------------------------------------------------------ #
+    # Optional legend                                                      #
+    # ------------------------------------------------------------------ #
+    if args.show_legend:
+        legend_handles = []
+        # Substation node entry — derive marker size from the scatter node_size
+        # node_size is a scatter area (points²); convert to a Line2D markersize (points)
+        legend_marker_size = np.sqrt(args.node_size) * 0.5
+        legend_handles.append(
+            Line2D(
+                [0], [0],
+                marker="o",
+                color="w",
+                markerfacecolor=args.node_color,
+                markersize=legend_marker_size,
+                linestyle="None",
+                label="Substation",
+            )
+        )
+        # Unique line styles
+        seen_styles: set = set()
+        for line_idx in range(n_line):
+            color = args.line_colors[line_idx] if args.line_colors is not None else default_color
+            width = args.line_widths[line_idx] if args.line_widths is not None else default_width
+            style = args.line_styles[line_idx] if args.line_styles is not None else default_style
+            key = (color, style)
+            if key not in seen_styles:
+                seen_styles.add(key)
+                legend_handles.append(
+                    Line2D([0], [0], color=color, lw=width, linestyle=style, label="Transmission Line")
+                )
+        ax.legend(
+            handles=legend_handles,
+            loc="best",
+            frameon=False,
+            prop={"size": args.legend_font_size},
+        )
+
+    ax.axis("off")
+
+    if return_fig:
+        fig.tight_layout()
+        return fig
+    return None
 
 
 def latent_edge_hist(accumulated_edge_probabilities: npt.NDArray, skip_last_edge_type: bool = True):
