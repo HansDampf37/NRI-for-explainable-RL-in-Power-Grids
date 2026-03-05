@@ -1,3 +1,4 @@
+import json
 import logging
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from itertools import product
@@ -45,8 +46,6 @@ class CrossValidateResult:
         self._node_action_counts: Optional[npt.NDArray] = None
         self._total_steps: int = 0
         # Per-substation action counts and acting-step counter for the spatial distribution
-        # _sub_action_counts[s] = number of steps where substation s was acted on (at most once per step)
-        # _action_steps          = number of steps where *any* non-do-nothing action was taken
         self._sub_action_counts: Optional[npt.NDArray] = None
         self._action_steps: int = 0
 
@@ -1576,9 +1575,9 @@ def main():
     from concurrent.futures import ProcessPoolExecutor, as_completed
     from itertools import product
 
-    model1 = AgentSpec(name="RAPPO", load_path="/home/adrian/Schreibtisch/1901/1901_rappo_with_anneal_different_betas/CustomPPO_0_426b7_2026-01-19_10-28-48/", checkpoint_name="checkpoint_000020")
-    model2 = AgentSpec(name="MLP", load_path="/home/adrian/Schreibtisch/1901/1901_rainbow_baselines/CustomPPO_0_98414_2026-01-19_18-23-39_MLP/", checkpoint_name="checkpoint_000019")
-    model3 = AgentSpec(name="GNN", load_path="/home/adrian/Schreibtisch/1901/1901_baselines/CustomPPO_0_4cbd2_2026-01-19_14-39-38_GNN/", checkpoint_name="checkpoint_000023")
+    model1 = AgentSpec(name="RAPPO", load_path="/home/adriandegenolb/Dev/NRI-for-explainable-RL-in-Power-Grids/results/agents/CustomPPO_0_426b7_2026-01-19_10-28-48", checkpoint_name="checkpoint_000020")
+    model2 = AgentSpec(name="MLP", load_path="/home/adriandegenolb/Dev/NRI-for-explainable-RL-in-Power-Grids/results/agents/CustomPPO_0_48ac9_2026-01-19_14-39-31_MLP", checkpoint_name="checkpoint_000020")
+    model3 = AgentSpec(name="GNN", load_path="/home/adriandegenolb/Dev/NRI-for-explainable-RL-in-Power-Grids/results/agents/CustomPPO_0_4cbd2_2026-01-19_14-39-38_GNN", checkpoint_name="checkpoint_000023")
 
     num_episodes = 50
 
@@ -1588,7 +1587,7 @@ def main():
     save_connectivity_to = results_dir / "failing_edges_connectivity.svg"
     save_rho_to = results_dir / "failing_edges_rho.svg"
 
-    compute_data = False
+    compute_data = True
 
     models = [model1, model2, model3]
     pairs = [(m1, m2) for m1, m2 in product(models, models) if m1.name != m2.name]
@@ -1604,6 +1603,8 @@ def main():
 
         save_cross_validate_results(results, save_path=save_results_to)
         compute_reconfiguration_frequency_data(results, save_dir=results_dir)
+        compute_cross_validation_data(results, save_dir=results_dir)
+        compute_failing_edges_data(results, save_dir=results_dir)
 
     repaint_failing_edges(results_dir, save_path_connectivity=save_connectivity_to, save_path_rho=save_rho_to, show=True)
     repaint_failing_edges(results_dir, save_path_connectivity=save_connectivity_to.with_suffix(".png"), save_path_rho=save_rho_to.with_suffix(".png"), show=False)

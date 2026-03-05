@@ -72,7 +72,7 @@ class AgentMetrics:
     survival_duration: List[int]
 
 
-def visualize_agent_survival(datasets: List[AgentMetrics], save_to: Optional[Path] = None, show: bool = True):
+def visualize_agent_survival(datasets: List[AgentMetrics], save_to: Optional[Path] = None, show: bool = True, title=None):
     records = []
     for data in datasets:
         records.extend([{"Agent": data.label, "Survival Duration": d}
@@ -91,7 +91,7 @@ def visualize_agent_survival(datasets: List[AgentMetrics], save_to: Optional[Pat
         legend=False
     )
 
-    plt.title("Survival Duration Boxplot per Agent")
+    plt.title(title if title is not None else "Survival Duration Boxplot per Agent", fontsize=14, fontweight='bold')
     plt.xlabel("Agent")
     plt.ylabel("Time Steps")
 
