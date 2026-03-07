@@ -70,7 +70,7 @@ class MetricVisualizer(abc.ABC, Generic[T]):
             edge_index_fully_connected: npt.NDArray,
             node_mask: npt.NDArray,
             observation: BaseObservation,
-            show_figure: bool = False) -> Tuple[Figure, T]:
+            visualize: bool = False) -> Tuple[Figure, T]:
         """
         Computes and visualizes the respective metric or a comparison.
 
@@ -81,7 +81,7 @@ class MetricVisualizer(abc.ABC, Generic[T]):
         :param edge_index_fully_connected: the fully connected graph edge index [2, num_edges]
         :param node_mask: boolean mask indicating which nodes are part of the biggest connected component [num_nodes]
         :param observation: the observation at which the posterior was computed
-        :param show_figure: whether to show the figure interactively
+        :param visualize: whether to plot and show the figure
         :return: the matplotlib figure containing the visualization and the computed data
         """
         data = self._compute(
@@ -93,12 +93,15 @@ class MetricVisualizer(abc.ABC, Generic[T]):
             node_mask=node_mask,
             observation=observation
         )
-        fig = self._visualize(
-            computation_result=data,
-            aggregated=False,
-            show_figure=show_figure
-        )
         self.metrics_history.append(data)
+        fig = None
+        if visualize:
+            fig = self._visualize(
+                computation_result=data,
+                aggregated=False,
+                show_figure=True
+            )
+
         return fig, data
 
     def summarize(self, show_figure=False) -> Tuple[Figure, T]:
@@ -146,7 +149,6 @@ class DegreeDistributionVisualizer(MetricVisualizer[Dict[str, npt.NDArray]]):
         latent_full = np.mean([m['latent_full'] for m in self.metrics_history], axis=0)
         latent_subgraph = np.mean([m['latent_subgraph'] for m in self.metrics_history], axis=0)
         powergrid_full = np.mean([m['powergrid_full'] for m in self.metrics_history], axis=0)
-        powergrid_subgraph = np.mean([m['powergrid_subgraph'] for m in self.metrics_history], axis=0)
         node_mask = self.metrics_history[0]['node_mask']  # Use first node_mask
         powergrid_graph = self.metrics_history[0]['powergrid_graph']  # Use first powergrid
         posterior = self.metrics_history[0]['posterior']  # Use first posterior for visualization
@@ -155,7 +157,6 @@ class DegreeDistributionVisualizer(MetricVisualizer[Dict[str, npt.NDArray]]):
             'latent_full': latent_full,
             'latent_subgraph': latent_subgraph,
             'powergrid_full': powergrid_full,
-            'powergrid_subgraph': powergrid_subgraph,
             'node_mask': node_mask,
             'powergrid_graph': powergrid_graph,
             'posterior': posterior
@@ -180,6 +181,7 @@ class DegreeDistributionVisualizer(MetricVisualizer[Dict[str, npt.NDArray]]):
                 prob_exists = distribution[0:-1].sum().item()
                 latent_subgraph_degrees[src] += prob_exists
                 latent_subgraph_degrees[dst] += prob_exists
+        latent_subgraph_degrees[~node_mask] = np.nan  # Set degrees of nodes outside the mask to NaN for clarity
 
         # Compute powergrid degrees (full graph)
         powergrid_full_degrees = np.zeros(num_nodes, dtype=float)
@@ -187,21 +189,10 @@ class DegreeDistributionVisualizer(MetricVisualizer[Dict[str, npt.NDArray]]):
             powergrid_full_degrees[src] += 1
             powergrid_full_degrees[dst] += 1
 
-        # Compute powergrid degrees (subgraph - only nodes in mask)
-        powergrid_subgraph_degrees = np.zeros(num_nodes, dtype=float)
-        for src, dst in powergrid_graph.T:
-            if node_mask[src] and node_mask[dst]:
-                powergrid_subgraph_degrees[src] += 1
-                powergrid_subgraph_degrees[dst] += 1
-
         return {
             'latent_full': latent_full_degrees,
             'latent_subgraph': latent_subgraph_degrees,
             'powergrid_full': powergrid_full_degrees,
-            'powergrid_subgraph': powergrid_subgraph_degrees,
-            'node_mask': node_mask,
-            'powergrid_graph': powergrid_graph,
-            'posterior': posterior
         }
 
     def _visualize(self, computation_result: Dict[str, npt.NDArray], aggregated: bool = False, show_figure: bool = False) -> Figure:
@@ -213,112 +204,21 @@ class DegreeDistributionVisualizer(MetricVisualizer[Dict[str, npt.NDArray]]):
         latent_full = computation_result['latent_full']
         latent_subgraph = computation_result['latent_subgraph']
         powergrid_full = computation_result['powergrid_full']
-        powergrid_subgraph = computation_result['powergrid_subgraph']
-        node_mask = computation_result['node_mask']
-        powergrid_graph = computation_result['powergrid_graph']
-        posterior = computation_result['posterior']
-        
-        num_nodes = len(node_mask)
-        
-        # Determine global bin range
-        all_degrees = np.concatenate([
-            latent_full,
-            latent_subgraph[node_mask],
-            powergrid_full,
-            powergrid_subgraph[node_mask]
-        ])
-        min_deg = int(np.floor(all_degrees.min()))
-        max_deg = int(np.ceil(all_degrees.max()))
-        bins = np.arange(min_deg, max_deg + 2) - 0.5
-        
-        # Create 2x3 subplot grid
-        fig, axes = plt.subplots(2, 3, figsize=(18, 12))
 
-        # Get subgraph edge indices for powergrid
-        powergrid_subgraph_edges = []
-        for src, dst in powergrid_graph.T:
-            if node_mask[src] and node_mask[dst]:
-                powergrid_subgraph_edges.append([src, dst])
-        powergrid_subgraph_edges = np.array(powergrid_subgraph_edges).T if powergrid_subgraph_edges else np.zeros((2, 0))
-
-        # === ROW 1: POWERGRID ANALYSIS ===
-
-        # Column 1: Powergrid full graph histogram
-        axes[0, 0].hist(powergrid_full, bins=bins, color='green', edgecolor='black', alpha=0.7, density=True)
-        axes[0, 0].axvline(np.mean(powergrid_full), color='red', linestyle='--', linewidth=2,
-                          label=f'Mean: {np.mean(powergrid_full):.2f}')
-        axes[0, 0].set_xlabel('Node Degree')
-        axes[0, 0].set_ylabel('Density')
-        axes[0, 0].set_title('Powergrid (Full Graph) - Degree Distribution')
-        axes[0, 0].legend()
-        axes[0, 0].grid(alpha=0.3)
-        
-        # Column 2: Powergrid subgraph histogram
-        powergrid_subgraph_filtered = powergrid_subgraph[node_mask]
-        axes[0, 1].hist(powergrid_subgraph_filtered, bins=bins, color='green', edgecolor='black', alpha=0.7, density=True)
-        axes[0, 1].axvline(np.mean(powergrid_subgraph_filtered), color='red', linestyle='--', linewidth=2,
-                          label=f'Mean: {np.mean(powergrid_subgraph_filtered):.2f}')
-        axes[0, 1].set_xlabel('Node Degree')
-        axes[0, 1].set_ylabel('Density')
-        axes[0, 1].set_title('Powergrid (Subgraph) - Degree Distribution')
-        axes[0, 1].legend()
-        axes[0, 1].grid(alpha=0.3)
-
-        # Column 3: Powergrid subgraph visualization with node labels
-        max_degree_pg_sub = powergrid_subgraph[node_mask].max() if powergrid_subgraph[node_mask].max() > 0 else 1.0
-        node_sizes_pg_sub = {i: (0.03 + 0.7 * (powergrid_subgraph[i] / max_degree_pg_sub)) if node_mask[i] else 0.05
-                            for i in range(num_nodes)}
-        node_labels_pg_sub = {i: f"d={powergrid_subgraph[i]:.1f}" for i in range(num_nodes) if node_mask[i]}
-
-        visualize_graph(PlottingArgs(
-            num_nodes=num_nodes,
-            node_styles=self.node_styles,
-            powerline_edge_index=powergrid_subgraph_edges,
-            latent_edge_probs=None,
-            node_labels=node_labels_pg_sub,
-            node_sizes_override=node_sizes_pg_sub
-        ), ax=axes[0, 2])
-        axes[0, 2].set_title('Powergrid Subgraph with Degree Labels')
-
-        # === ROW 2: LATENT ANALYSIS ===
-
-        # Column 1: Latent full graph histogram
-        axes[1, 0].hist(latent_full, bins=bins, color='skyblue', edgecolor='black', alpha=0.7, density=True)
-        axes[1, 0].axvline(np.mean(latent_full), color='red', linestyle='--', linewidth=2,
-                          label=f'Mean: {np.mean(latent_full):.2f}')
-        axes[1, 0].set_xlabel('Node Degree')
-        axes[1, 0].set_ylabel('Density')
-        axes[1, 0].set_title('Latent (Full Graph) - Degree Distribution')
-        axes[1, 0].legend()
-        axes[1, 0].grid(alpha=0.3)
-        
-        # Column 2: Latent subgraph histogram
-        latent_subgraph_filtered = latent_subgraph[node_mask]
-        axes[1, 1].hist(latent_subgraph_filtered, bins=bins, color='skyblue', edgecolor='black', alpha=0.7, density=True)
-        axes[1, 1].axvline(np.mean(latent_subgraph_filtered), color='red', linestyle='--', linewidth=2,
-                          label=f'Mean: {np.mean(latent_subgraph_filtered):.2f}')
-        axes[1, 1].set_xlabel('Node Degree')
-        axes[1, 1].set_ylabel('Density')
-        axes[1, 1].set_title('Latent (Subgraph) - Degree Distribution')
-        axes[1, 1].legend()
-        axes[1, 1].grid(alpha=0.3)
-
-        # Column 3: Latent subgraph visualization with node labels
-        max_degree_latent_sub = latent_subgraph[node_mask].max() if latent_subgraph[node_mask].max() > 0 else 1.0
-        node_sizes_latent_sub = {i: (0.3 + 0.7 * (latent_subgraph[i] / max_degree_latent_sub)) if node_mask[i] else 0.05
-                                for i in range(num_nodes)}
-        node_labels_latent_sub = {i: f"d={latent_subgraph[i]:.1f}" for i in range(num_nodes) if node_mask[i]}
-        
-        visualize_graph(PlottingArgs(
-            num_nodes=num_nodes,
-            node_styles=self.node_styles,
-            powerline_edge_index=None,
-            latent_edge_probs=posterior,
-            skip_last_edge_type=True,
-            node_labels=node_labels_latent_sub,
-            node_sizes_override=node_sizes_latent_sub
-        ), ax=axes[1, 2])
-        axes[1, 2].set_title('Latent Subgraph with Degree Labels')
+        fig, axs = plt.subplots(1,3, figsize=(12, 4))
+        sns.histplot(powergrid_full, bins=20, ax=axs[0], stat='density', alpha=0.7, kde=False)
+        axs[0].set_title('Powergrid Graph Degree Distribution')
+        axs[0].set_xlabel('Degree')
+        axs[0].set_ylabel('Density')
+        sns.histplot(latent_full, bins=20, ax=axs[1], stat='density', alpha=0.7, kde=False)
+        axs[1].set_title('Latent Graph Degree Distribution')
+        axs[1].set_xlabel('Degree')
+        axs[1].set_ylabel('Density')
+        sns.histplot(latent_subgraph[~np.isnan(latent_subgraph)], bins=20, ax=axs[2], stat='density', alpha=0.7, kde=False)
+        axs[2].set_title('Latent Subgraph Degree Distribution')
+        axs[2].set_xlabel('Degree')
+        axs[2].set_ylabel('Density')
+        plt.tight_layout()
 
         plt.tight_layout()
         
@@ -336,19 +236,11 @@ class ClusteringCoefficientVisualizer(MetricVisualizer[Dict[str, npt.NDArray]]):
         latent_full = np.mean([m['latent_full'] for m in self.metrics_history], axis=0)
         latent_subgraph = np.mean([m['latent_subgraph'] for m in self.metrics_history], axis=0)
         powergrid_full = np.mean([m['powergrid_full'] for m in self.metrics_history], axis=0)
-        powergrid_subgraph = np.mean([m['powergrid_subgraph'] for m in self.metrics_history], axis=0)
-        node_mask = self.metrics_history[0]['node_mask']
-        powergrid_graph = self.metrics_history[0]['powergrid_graph']
-        posterior = self.metrics_history[0]['posterior']
-        
+
         return {
             'latent_full': latent_full,
             'latent_subgraph': latent_subgraph,
             'powergrid_full': powergrid_full,
-            'powergrid_subgraph': powergrid_subgraph,
-            'node_mask': node_mask,
-            'powergrid_graph': powergrid_graph,
-            'posterior': posterior
         }
 
     def _compute(self, posterior, powergrid_graph, edge_index_fully_connected, node_mask, samples, **kwargs) -> Dict[str, npt.NDArray]:
@@ -393,6 +285,7 @@ class ClusteringCoefficientVisualizer(MetricVisualizer[Dict[str, npt.NDArray]]):
                 if node_mask[node_idx]:
                     latent_subgraph_coeffs[node_idx] += clustering[node_idx]
         latent_subgraph_coeffs /= max(len(samples), 1)
+        latent_subgraph_coeffs[~node_mask] = np.nan  # Set coefficients of nodes outside the mask to NaN for clarity
 
         # Compute clustering coefficients for full powergrid graph
         G_full = nx.Graph()
@@ -401,23 +294,10 @@ class ClusteringCoefficientVisualizer(MetricVisualizer[Dict[str, npt.NDArray]]):
         clustering_full = nx.clustering(G_full)
         powergrid_full_coeffs = np.array([clustering_full[i] for i in range(num_nodes)])
 
-        # Compute clustering coefficients for powergrid subgraph (only nodes in mask)
-        G_subgraph = nx.Graph()
-        G_subgraph.add_nodes_from(range(num_nodes))
-        for src, dst in powergrid_graph.T:
-            if node_mask[src] and node_mask[dst]:
-                G_subgraph.add_edge(int(src), int(dst))
-        clustering_subgraph = nx.clustering(G_subgraph)
-        powergrid_subgraph_coeffs = np.array([clustering_subgraph[i] for i in range(num_nodes)])
-
         return {
             'latent_full': latent_full_coeffs,
             'latent_subgraph': latent_subgraph_coeffs,
             'powergrid_full': powergrid_full_coeffs,
-            'powergrid_subgraph': powergrid_subgraph_coeffs,
-            'node_mask': node_mask,
-            'powergrid_graph': powergrid_graph,
-            'posterior': posterior
         }
 
     def _visualize(self, computation_result: Dict[str, npt.NDArray], aggregated: bool = False, show_figure: bool = False) -> Figure:
@@ -429,105 +309,20 @@ class ClusteringCoefficientVisualizer(MetricVisualizer[Dict[str, npt.NDArray]]):
         latent_full = computation_result['latent_full']
         latent_subgraph = computation_result['latent_subgraph']
         powergrid_full = computation_result['powergrid_full']
-        powergrid_subgraph = computation_result['powergrid_subgraph']
-        node_mask = computation_result['node_mask']
-        powergrid_graph = computation_result['powergrid_graph']
-        posterior = computation_result['posterior']
 
-        num_nodes = len(node_mask)
-
-        # Use consistent bins for clustering coefficients (0 to 1)
-        bins = np.linspace(0, 1, 21)  # 20 bins from 0 to 1
-
-        # Create 2x3 subplot grid
-        fig, axes = plt.subplots(2, 3, figsize=(18, 12))
-
-        # Get subgraph edge indices for powergrid
-        powergrid_subgraph_edges = []
-        for src, dst in powergrid_graph.T:
-            if node_mask[src] and node_mask[dst]:
-                powergrid_subgraph_edges.append([src, dst])
-        powergrid_subgraph_edges = np.array(powergrid_subgraph_edges).T if powergrid_subgraph_edges else np.zeros((2, 0))
-
-        # === ROW 1: POWERGRID ANALYSIS ===
-
-        # Column 1: Powergrid full graph histogram
-        axes[0, 0].hist(powergrid_full, bins=bins, color='green', edgecolor='black', alpha=0.7, density=True)
-        axes[0, 0].axvline(np.mean(powergrid_full), color='red', linestyle='--', linewidth=2,
-                          label=f'Mean: {np.mean(powergrid_full):.2f}')
-        axes[0, 0].set_xlabel('Clustering Coefficient')
-        axes[0, 0].set_ylabel('Density')
-        axes[0, 0].set_title('Powergrid (Full Graph) - Clustering Coefficient Distribution')
-        axes[0, 0].legend()
-        axes[0, 0].grid(alpha=0.3)
-
-        # Column 2: Powergrid subgraph histogram
-        powergrid_subgraph_filtered = powergrid_subgraph[node_mask]
-        axes[0, 1].hist(powergrid_subgraph_filtered, bins=bins, color='green', edgecolor='black', alpha=0.7, density=True)
-        axes[0, 1].axvline(np.mean(powergrid_subgraph_filtered), color='red', linestyle='--', linewidth=2,
-                          label=f'Mean: {np.mean(powergrid_subgraph_filtered):.2f}')
-        axes[0, 1].set_xlabel('Clustering Coefficient')
-        axes[0, 1].set_ylabel('Density')
-        axes[0, 1].set_title('Powergrid (Subgraph) - Clustering Coefficient Distribution')
-        axes[0, 1].legend()
-        axes[0, 1].grid(alpha=0.3)
-
-        # Column 3: Powergrid subgraph visualization with node labels
-        max_coeff_pg_sub = powergrid_subgraph[node_mask].max() if powergrid_subgraph[node_mask].max() > 0 else 1.0
-        node_sizes_pg_sub = {i: (0.3 + 0.7 * (powergrid_subgraph[i] / max_coeff_pg_sub)) if node_mask[i] else 0.05
-                            for i in range(num_nodes)}
-        node_labels_pg_sub = {i: f"c={powergrid_subgraph[i]:.2f}" for i in range(num_nodes) if node_mask[i]}
-
-        visualize_graph(PlottingArgs(
-            num_nodes=num_nodes,
-            node_styles=self.node_styles,
-            powerline_edge_index=powergrid_subgraph_edges,
-            latent_edge_probs=None,
-            node_labels=node_labels_pg_sub,
-            node_sizes_override=node_sizes_pg_sub
-        ), ax=axes[0, 2])
-        axes[0, 2].set_title('Powergrid Subgraph with Clustering Coefficient Labels')
-
-        # === ROW 2: LATENT ANALYSIS ===
-
-        # Column 1: Latent full graph histogram
-        axes[1, 0].hist(latent_full, bins=bins, color='skyblue', edgecolor='black', alpha=0.7, density=True)
-        axes[1, 0].axvline(np.mean(latent_full), color='red', linestyle='--', linewidth=2,
-                          label=f'Mean: {np.mean(latent_full):.2f}')
-        axes[1, 0].set_xlabel('Clustering Coefficient')
-        axes[1, 0].set_ylabel('Density')
-        axes[1, 0].set_title('Latent (Full Graph) - Clustering Coefficient Distribution')
-        axes[1, 0].legend()
-        axes[1, 0].grid(alpha=0.3)
-
-        # Column 2: Latent subgraph histogram
-        latent_subgraph_filtered = latent_subgraph[node_mask]
-        axes[1, 1].hist(latent_subgraph_filtered, bins=bins, color='skyblue', edgecolor='black', alpha=0.7, density=True)
-        axes[1, 1].axvline(np.mean(latent_subgraph_filtered), color='red', linestyle='--', linewidth=2,
-                          label=f'Mean: {np.mean(latent_subgraph_filtered):.2f}')
-        axes[1, 1].set_xlabel('Clustering Coefficient')
-        axes[1, 1].set_ylabel('Density')
-        axes[1, 1].set_title('Latent (Subgraph) - Clustering Coefficient Distribution')
-        axes[1, 1].legend()
-        axes[1, 1].grid(alpha=0.3)
-
-        # Column 3: Latent subgraph visualization with node labels
-        max_coeff_latent_sub = latent_subgraph[node_mask].max() if latent_subgraph[node_mask].max() > 0 else 1.0
-        node_sizes_latent_sub = {i: (0.3 + 0.7 * (latent_subgraph[i] / max_coeff_latent_sub)) if node_mask[i] else 0.05
-                                for i in range(num_nodes)}
-        node_labels_latent_sub = {i: f"c={latent_subgraph[i]:.2f}" for i in range(num_nodes) if node_mask[i]}
-
-        visualize_graph(PlottingArgs(
-            num_nodes=num_nodes,
-            node_styles=self.node_styles,
-            powerline_edge_index=None,
-            latent_edge_probs=posterior,
-            skip_last_edge_type=True,
-            node_labels=node_labels_latent_sub,
-            node_sizes_override=node_sizes_latent_sub
-        ), ax=axes[1, 2])
-        axes[1, 2].set_title('Latent Subgraph with Clustering Coefficient Labels')
-
+        fig, axs = plt.subplots(1,3, figsize=(12, 4))
+        sns.histplot(powergrid_full, bins=20, ax=axs[0], stat='density', alpha=0.7, kde=False)
+        axs[0].set_title('Powergrid Graph Clustering Coefficient Distribution')
+        axs[0].set_xlabel('Clustering Coefficient')
+        axs[0].set_ylabel('Density')
+        sns.histplot(latent_full, bins=20, ax=axs[1], stat='density', alpha=0.7, kde=False)
+        axs[1].set_title('Latent Graph Clustering Coefficient Distribution')
+        axs[1].set_xlabel('Clustering Coefficient')
+        axs[1].set_ylabel('Density')
+        sns.histplot(latent_subgraph[~np.isnan(latent_subgraph)], bins=20, ax=axs[2], stat='density', alpha=0.7, kde=False)
+        axs[2].set_title('Latent Subgraph Clustering Coefficient Distribution')
+        axs[2].set_xlabel('Clustering Coefficient')
+        axs[2].set_ylabel('Density')
         plt.tight_layout()
 
         if show_figure:
@@ -544,19 +339,11 @@ class InnerTreeNodeProbabilityVisualizer(MetricVisualizer[Dict[str, npt.NDArray]
         latent_full = np.mean([m['latent_full'] for m in self.metrics_history], axis=0)
         latent_subgraph = np.mean([m['latent_subgraph'] for m in self.metrics_history], axis=0)
         powergrid_full = np.mean([m['powergrid_full'] for m in self.metrics_history], axis=0)
-        powergrid_subgraph = np.mean([m['powergrid_subgraph'] for m in self.metrics_history], axis=0)
-        node_mask = self.metrics_history[0]['node_mask']
-        powergrid_graph = self.metrics_history[0]['powergrid_graph']
-        posterior = self.metrics_history[0]['posterior']
 
         return {
             'latent_full': latent_full,
             'latent_subgraph': latent_subgraph,
             'powergrid_full': powergrid_full,
-            'powergrid_subgraph': powergrid_subgraph,
-            'node_mask': node_mask,
-            'powergrid_graph': powergrid_graph,
-            'posterior': posterior
         }
 
     def _compute(self, posterior, powergrid_graph, edge_index_fully_connected, node_mask, samples, **kwargs) -> Dict[str, npt.NDArray]:
@@ -597,6 +384,7 @@ class InnerTreeNodeProbabilityVisualizer(MetricVisualizer[Dict[str, npt.NDArray]
                                     latent_full_probs[node] += 1
                 except:
                     pass
+
         latent_full_probs /= max(len(samples), 1)
 
         # Compute inner tree node probabilities for latent subgraph from samples
@@ -628,6 +416,7 @@ class InnerTreeNodeProbabilityVisualizer(MetricVisualizer[Dict[str, npt.NDArray]
                                     latent_subgraph_probs[node] += 1
                 except:
                     pass
+
         latent_subgraph_probs /= max(len(samples), 1)
 
         # Compute inner tree node probabilities for full powergrid graph
@@ -652,41 +441,13 @@ class InnerTreeNodeProbabilityVisualizer(MetricVisualizer[Dict[str, npt.NDArray]
                                     powergrid_full_probs[node] += 1.0
                 except:
                     pass
+
         powergrid_full_probs /= max(len(samples), 1)
-
-        # Compute inner tree node probabilities for powergrid subgraph
-        # Sample different MSTs by adding small random weights
-        powergrid_subgraph_probs = np.zeros(num_nodes, dtype=float)
-        for _ in range(len(samples)):
-            G_subgraph = nx.Graph()
-            G_subgraph.add_nodes_from([i for i in range(num_nodes) if node_mask[i]])
-            # Add edges with small random weights to get different MSTs
-            for src, dst in powergrid_graph.T:
-                if node_mask[src] and node_mask[dst]:
-                    G_subgraph.add_edge(int(src), int(dst), weight=np.random.uniform(0, 1e-6))
-
-            if nx.number_connected_components(G_subgraph) > 0:
-                try:
-                    for component in nx.connected_components(G_subgraph):
-                        if len(component) > 1:
-                            subgraph = G_subgraph.subgraph(component)
-                            mst = nx.minimum_spanning_tree(subgraph, weight='weight')
-                            degrees = dict(mst.degree())
-                            for node in component:
-                                if degrees.get(node, 0) >= 2:
-                                    powergrid_subgraph_probs[node] += 1.0
-                except:
-                    pass
-        powergrid_subgraph_probs /= max(len(samples), 1)
 
         return {
             'latent_full': latent_full_probs,
             'latent_subgraph': latent_subgraph_probs,
             'powergrid_full': powergrid_full_probs,
-            'powergrid_subgraph': powergrid_subgraph_probs,
-            'node_mask': node_mask,
-            'powergrid_graph': powergrid_graph,
-            'posterior': posterior
         }
 
     def _visualize(self, computation_result: Dict[str, npt.NDArray], aggregated: bool = False, show_figure: bool = False) -> Figure:
@@ -698,104 +459,20 @@ class InnerTreeNodeProbabilityVisualizer(MetricVisualizer[Dict[str, npt.NDArray]
         latent_full = computation_result['latent_full']
         latent_subgraph = computation_result['latent_subgraph']
         powergrid_full = computation_result['powergrid_full']
-        powergrid_subgraph = computation_result['powergrid_subgraph']
-        node_mask = computation_result['node_mask']
-        powergrid_graph = computation_result['powergrid_graph']
-        posterior = computation_result['posterior']
 
-        num_nodes = len(node_mask)
-
-        # Use consistent bins for probabilities (0 to 1)
-        bins = np.linspace(0, 1, 21)  # 20 bins from 0 to 1
-
-        # Create 2x3 subplot grid
-        fig, axes = plt.subplots(2, 3, figsize=(18, 12))
-
-        # Get subgraph edge indices for powergrid
-        powergrid_subgraph_edges = []
-        for src, dst in powergrid_graph.T:
-            if node_mask[src] and node_mask[dst]:
-                powergrid_subgraph_edges.append([src, dst])
-        powergrid_subgraph_edges = np.array(powergrid_subgraph_edges).T if powergrid_subgraph_edges else np.zeros((2, 0))
-
-        # === ROW 1: POWERGRID ANALYSIS ===
-
-        # Column 1: Powergrid full graph histogram
-        axes[0, 0].hist(powergrid_full, bins=bins, color='green', edgecolor='black', alpha=0.7, density=True)
-        axes[0, 0].axvline(np.mean(powergrid_full), color='red', linestyle='--', linewidth=2,
-                          label=f'Mean: {np.mean(powergrid_full):.2f}')
-        axes[0, 0].set_xlabel('Inner Tree Node Probability')
-        axes[0, 0].set_ylabel('Density')
-        axes[0, 0].set_title('Powergrid (Full Graph) - Inner Tree Node Probability')
-        axes[0, 0].legend()
-        axes[0, 0].grid(alpha=0.3)
-
-        # Column 2: Powergrid subgraph histogram
-        powergrid_subgraph_filtered = powergrid_subgraph[node_mask]
-        axes[0, 1].hist(powergrid_subgraph_filtered, bins=bins, color='green', edgecolor='black', alpha=0.7, density=True)
-        axes[0, 1].axvline(np.mean(powergrid_subgraph_filtered), color='red', linestyle='--', linewidth=2,
-                          label=f'Mean: {np.mean(powergrid_subgraph_filtered):.2f}')
-        axes[0, 1].set_xlabel('Inner Tree Node Probability')
-        axes[0, 1].set_ylabel('Density')
-        axes[0, 1].set_title('Powergrid (Subgraph) - Inner Tree Node Probability')
-        axes[0, 1].legend()
-        axes[0, 1].grid(alpha=0.3)
-
-        # Column 3: Powergrid subgraph visualization with node labels
-        max_prob_pg_sub = powergrid_subgraph[node_mask].max() if powergrid_subgraph[node_mask].max() > 0 else 1.0
-        node_sizes_pg_sub = {i: (0.3 + 0.7 * (powergrid_subgraph[i] / max_prob_pg_sub)) if node_mask[i] else 0.05
-                            for i in range(num_nodes)}
-        node_labels_pg_sub = {i: f"p={powergrid_subgraph[i]:.2f}" for i in range(num_nodes) if node_mask[i]}
-
-        visualize_graph(PlottingArgs(
-            num_nodes=num_nodes,
-            node_styles=self.node_styles,
-            powerline_edge_index=powergrid_subgraph_edges,
-            latent_edge_probs=None,
-            node_labels=node_labels_pg_sub,
-            node_sizes_override=node_sizes_pg_sub
-        ), ax=axes[0, 2])
-        axes[0, 2].set_title('Powergrid Subgraph with Inner Tree Node Probability Labels')
-
-        # === ROW 2: LATENT ANALYSIS ===
-
-        # Column 1: Latent full graph histogram
-        axes[1, 0].hist(latent_full, bins=bins, color='skyblue', edgecolor='black', alpha=0.7, density=True)
-        axes[1, 0].axvline(np.mean(latent_full), color='red', linestyle='--', linewidth=2,
-                          label=f'Mean: {np.mean(latent_full):.2f}')
-        axes[1, 0].set_xlabel('Inner Tree Node Probability')
-        axes[1, 0].set_ylabel('Density')
-        axes[1, 0].set_title('Latent (Full Graph) - Inner Tree Node Probability')
-        axes[1, 0].legend()
-        axes[1, 0].grid(alpha=0.3)
-
-        # Column 2: Latent subgraph histogram
-        latent_subgraph_filtered = latent_subgraph[node_mask]
-        axes[1, 1].hist(latent_subgraph_filtered, bins=bins, color='skyblue', edgecolor='black', alpha=0.7, density=True)
-        axes[1, 1].axvline(np.mean(latent_subgraph_filtered), color='red', linestyle='--', linewidth=2,
-                          label=f'Mean: {np.mean(latent_subgraph_filtered):.2f}')
-        axes[1, 1].set_xlabel('Inner Tree Node Probability')
-        axes[1, 1].set_ylabel('Density')
-        axes[1, 1].set_title('Latent (Subgraph) - Inner Tree Node Probability')
-        axes[1, 1].legend()
-        axes[1, 1].grid(alpha=0.3)
-
-        # Column 3: Latent subgraph visualization with node labels
-        max_prob_latent_sub = latent_subgraph[node_mask].max() if latent_subgraph[node_mask].max() > 0 else 1.0
-        node_sizes_latent_sub = {i: (0.3 + 0.7 * (latent_subgraph[i] / max_prob_latent_sub)) if node_mask[i] else 0.05
-                                for i in range(num_nodes)}
-        node_labels_latent_sub = {i: f"p={latent_subgraph[i]:.2f}" for i in range(num_nodes) if node_mask[i]}
-
-        visualize_graph(PlottingArgs(
-            num_nodes=num_nodes,
-            node_styles=self.node_styles,
-            powerline_edge_index=None,
-            latent_edge_probs=posterior,
-            skip_last_edge_type=True,
-            node_labels=node_labels_latent_sub,
-            node_sizes_override=node_sizes_latent_sub
-        ), ax=axes[1, 2])
-        axes[1, 2].set_title('Latent Subgraph with Inner Tree Node Probability Labels')
+        fig, axs = plt.subplots(1,3, figsize=(12, 4))
+        sns.histplot(powergrid_full, bins=20, ax=axs[0], stat='density', alpha=0.7, kde=False)
+        axs[0].set_title('Powergrid Graph Inner Tree Node Probability Distribution')
+        axs[0].set_xlabel('Probability of being inner node in MST')
+        axs[0].set_ylabel('Density')
+        sns.histplot(latent_full, bins=20, ax=axs[1], stat='density', alpha=0.7, kde=False)
+        axs[1].set_title('Latent Graph Inner Tree Node Probability Distribution')
+        axs[1].set_xlabel('Probability of being inner node in MST')
+        axs[1].set_ylabel('Density')
+        sns.histplot(latent_subgraph[~np.isnan(latent_subgraph)], bins=20, ax=axs[2], stat='density', alpha=0.7, kde=False)
+        axs[2].set_title('Latent Subgraph Inner Tree Node Probability Distribution')
+        axs[2].set_xlabel('Probability of being inner node in MST')
+        axs[2].set_ylabel('Density')
 
         plt.tight_layout()
 
@@ -805,28 +482,285 @@ class InnerTreeNodeProbabilityVisualizer(MetricVisualizer[Dict[str, npt.NDArray]
         return fig
 
 
-class PosteriorDistributionVisualizer(MetricVisualizer[Tuple[npt.NDArray, npt.NDArray]]):
+class BetweennessVisualizer(MetricVisualizer[Tuple[npt.NDArray, npt.NDArray]]):
+    """Visualizes edge betweenness centrality of the posterior graph."""
+
+    def _summarize_data(self) -> Dict[str, npt.NDArray]:
+        latent_full = np.mean([m['betweenness_centrality_latent_full'] for m in self.metrics_history], axis=0)
+        latent_subgraph = np.mean([m['betweenness_centrality_latent_sub'] for m in self.metrics_history], axis=0)
+        powergrid_full = np.mean([m['betweenness_centrality_powergrid_full'] for m in self.metrics_history], axis=0)
+
+        return {
+            'betweenness_centrality_latent_full': latent_full,
+            'betweenness_centrality_latent_sub': latent_subgraph,
+            'betweenness_centrality_powergrid_full': powergrid_full,
+        }
+
+    def _compute(self, posterior: npt.NDArray, prior: npt.NDArray, samples: npt.NDArray, powergrid_graph: npt.NDArray,
+                 edge_index_fully_connected: npt.NDArray, node_mask: npt.NDArray, observation: BaseObservation) -> T:
+        # compute the betweenness centrality for nodes in the posterior graph
+        num_nodes = len(node_mask)
+
+        # Build powergrid graph (full)
+        G_pg_full = nx.Graph()
+        G_pg_full.add_nodes_from(range(num_nodes))
+        G_pg_full.add_edges_from(powergrid_graph.T.astype(int))
+
+        # Build powergrid subgraph (only nodes in mask)
+        G_pg_sub = nx.Graph()
+        G_pg_sub.add_nodes_from([i for i in range(num_nodes) if node_mask[i]])
+        for src, dst in powergrid_graph.T:
+            if node_mask[src] and node_mask[dst]:
+                G_pg_sub.add_edge(int(src), int(dst))
+
+        bc_pg_full = nx.betweenness_centrality(G_pg_full)
+        bc_pg_full = [bc_pg_full[i] if i in bc_pg_full else 0 for i in range(num_nodes)]
+
+        bcs_latent_sub = []
+        bcs_latent_full = []
+        for i, sample in enumerate(samples):
+            # build latent graph (full)
+            G_latent_full = nx.Graph()
+            G_latent_full.add_nodes_from(range(num_nodes))
+            G_latent_full.add_edges_from(sample.T.astype(int))
+
+            G_latent_sub = nx.Graph()
+            G_latent_sub.add_nodes_from([i for i in range(num_nodes) if node_mask[i]])
+            for src, dst in sample.T:
+                if node_mask[src] and node_mask[dst]:
+                    G_latent_sub.add_edge(int(src), int(dst))
+
+            bcs_latent_sub.append(nx.betweenness_centrality(G_latent_sub))
+            bcs_latent_full.append(nx.betweenness_centrality(G_latent_full))
+
+        bc_latent_sub = {node: np.mean([bc[node] for bc in bcs_latent_sub]) for node in bcs_latent_sub[0].keys()}
+        bc_latent_full = {node: np.mean([bc[node] for bc in bcs_latent_full]) for node in bcs_latent_full[0].keys()}
+        bc_latent_sub = [bc_latent_sub[i] if i in bc_latent_sub else 0 for i in range(num_nodes)]
+        bc_latent_full = [bc_latent_full[i] if i in bc_latent_full else 0 for i in range(num_nodes)]
+
+        return {
+            "betweenness_centrality_latent_sub": np.array(bc_latent_sub),
+            "betweenness_centrality_latent_full": np.array(bc_latent_full),
+            "betweenness_centrality_powergrid_full": np.array(bc_pg_full),
+        }
+
+    def _visualize(self, computation_result: T, aggregated: bool = False, show_figure: bool = False) -> Figure:
+        latent_full = computation_result['betweenness_centrality_latent_full']
+        latent_subgraph = computation_result['betweenness_centrality_latent_sub']
+        powergrid_full = computation_result['betweenness_centrality_powergrid_full']
+
+        fig, axs = plt.subplots(1, 3, figsize=(12, 4))
+        sns.histplot(powergrid_full, bins=20, ax=axs[0], stat='density', alpha=0.7, kde=False)
+        axs[0].set_title('Powergrid Graph Betweenness Centrality Distribution')
+        axs[0].set_xlabel('Betweenness Centrality')
+        axs[0].set_ylabel('Density')
+        sns.histplot(latent_full, bins=20, ax=axs[1], stat='density', alpha=0.7, kde=False)
+        axs[1].set_title('Latent Graph Betweenness Centrality Distribution')
+        axs[1].set_xlabel('Betweenness Centrality')
+        axs[1].set_ylabel('Density')
+        sns.histplot(latent_subgraph[~np.isnan(latent_subgraph)], bins=20, ax=axs[2], stat='density', alpha=0.7, kde=False)
+        axs[2].set_title('Latent Subgraph Betweenness Centrality Distribution')
+        axs[2].set_xlabel('Betweenness Centrality')
+        axs[2].set_ylabel('Density')
+
+        plt.tight_layout()
+
+        if show_figure:
+            plt.show()
+
+        return fig
+
+
+class AllPairsShortestPathVisualizer(MetricVisualizer[Dict[str, npt.NDArray]]):
+    """
+    Visualizes path length distributions for all pairs of nodes in the latent and powergrid graphs.
+
+    For each graph variant (latent full, latent subgraph, powergrid full) the shortest path
+    lengths between every pair of reachable nodes are collected and their distribution is shown
+    as a histogram.  Unreachable pairs (disconnected components) are excluded.
+
+    Stored metric keys
+    ------------------
+    latent_full        : 1-D array of APSP lengths aggregated over posterior samples (full graph)
+    latent_subgraph    : 1-D array of APSP lengths aggregated over posterior samples (subgraph induced by node_mask)
+    powergrid_full     : 1-D array of APSP lengths for the powergrid graph (full)
+    """
+
+    # ------------------------------------------------------------------
+    # helpers
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _apsp_lengths(G: nx.Graph) -> npt.NDArray:
+        """Return a flat array of all finite shortest-path lengths in *G*."""
+        lengths = []
+        for src in G.nodes:
+            for dst, d in nx.single_source_shortest_path_length(G, src).items():
+                if dst != src:
+                    lengths.append(d)
+        return np.array(lengths, dtype=float) if lengths else np.array([], dtype=float)
+
+    def _compute(self, posterior: npt.NDArray, powergrid_graph: npt.NDArray,
+                 edge_index_fully_connected: npt.NDArray, node_mask: npt.NDArray,
+                 samples: npt.NDArray, **kwargs) -> Dict[str, npt.NDArray]:
+        """
+        Compute all-pairs shortest path length distributions.
+
+        :param posterior: posterior edge probabilities [E, K]  (kept for API compatibility)
+        :param powergrid_graph: powergrid edge index [2, E_grid]
+        :param edge_index_fully_connected: fully connected edge index [2, E_all]
+        :param node_mask: boolean mask for the biggest connected component [num_nodes]
+        :param samples: list of sampled edge indices from the posterior (list of [2, num_edges])
+        :return: dict with APSP length arrays for three graph variants
+        """
+        num_nodes = len(node_mask)
+
+        # ---- powergrid full ----
+        G_pg = nx.Graph()
+        G_pg.add_nodes_from(range(num_nodes))
+        G_pg.add_edges_from(powergrid_graph.T.astype(int))
+        powergrid_full_lengths = self._apsp_lengths(G_pg)
+
+        # ---- latent graphs – concatenate lengths across all samples ----
+        masked_nodes = [i for i in range(num_nodes) if node_mask[i]]
+        latent_full_lengths_all: List[npt.NDArray] = []
+        latent_sub_lengths_all: List[npt.NDArray] = []
+
+        for sample_edges in samples:
+            # -- full latent graph --
+            G_full = nx.Graph()
+            G_full.add_nodes_from(range(num_nodes))
+            G_full.add_edges_from(sample_edges.T.astype(int))
+            latent_full_lengths_all.append(self._apsp_lengths(G_full))
+
+            # -- latent subgraph (nodes within mask only) --
+            sub_edges = [
+                (int(s), int(d))
+                for s, d in sample_edges.T
+                if node_mask[int(s)] and node_mask[int(d)]
+            ]
+            G_sub = nx.Graph()
+            G_sub.add_nodes_from(masked_nodes)
+            G_sub.add_edges_from(sub_edges)
+            latent_sub_lengths_all.append(self._apsp_lengths(G_sub))
+
+        latent_full_lengths = (
+            np.concatenate(latent_full_lengths_all)
+            if latent_full_lengths_all else np.array([], dtype=float)
+        )
+        latent_sub_lengths = (
+            np.concatenate(latent_sub_lengths_all)
+            if latent_sub_lengths_all else np.array([], dtype=float)
+        )
+
+        return {
+            'latent_full': latent_full_lengths,
+            'latent_subgraph': latent_sub_lengths,
+            'powergrid_full': powergrid_full_lengths,
+        }
+
+    # ------------------------------------------------------------------
+    # _summarize_data
+    # ------------------------------------------------------------------
+    def _summarize_data(self) -> Dict[str, npt.NDArray]:
+        """
+        Concatenate all collected path-length arrays across timesteps.
+        This gives the global distribution over the full evaluation episode.
+        """
+        def _concat(key: str) -> npt.NDArray:
+            arrays = [m[key] for m in self.metrics_history if len(m[key]) > 0]
+            return np.concatenate(arrays) if arrays else np.array([], dtype=float)
+
+        return {
+            'latent_full': _concat('latent_full'),
+            'latent_subgraph': _concat('latent_subgraph'),
+            'powergrid_full': _concat('powergrid_full'),
+        }
+
+    # ------------------------------------------------------------------
+    # _visualize
+    # ------------------------------------------------------------------
+    def _visualize(self, computation_result: Dict[str, npt.NDArray],
+                   aggregated: bool = False, show_figure: bool = False) -> Figure:
+        """
+        Visualize APSP distributions as three histograms side by side.
+
+        Columns
+        -------
+        1. Powergrid graph (full)
+        2. Latent graph (full, aggregated over samples)
+        3. Latent subgraph (nodes in node_mask, aggregated over samples)
+        """
+        latent_full = computation_result['latent_full']
+        latent_sub = computation_result['latent_subgraph']
+        powergrid_full = computation_result['powergrid_full']
+
+        # Determine a common integer bin range across all non-empty arrays
+        all_lengths = np.concatenate([arr for arr in [latent_full, latent_sub, powergrid_full] if len(arr) > 0])
+        if len(all_lengths) == 0:
+            fig, ax = plt.subplots(figsize=(6, 4))
+            ax.text(0.5, 0.5, 'No path data available', ha='center', va='center', transform=ax.transAxes)
+            return fig
+
+        max_d = int(np.ceil(all_lengths.max()))
+        bins = np.arange(0.5, max_d + 1.5, 1.0)  # integer-centred bins: [0.5,1.5), [1.5,2.5), …
+
+        fig, axs = plt.subplots(1, 3, figsize=(15, 4))
+
+        data_specs = [
+            (powergrid_full, 'steelblue',  'Powergrid (Full)\nAPSP Distribution'),
+            (latent_full,    'darkorange', 'Latent Graph (Full)\nAPSP Distribution'),
+            (latent_sub,     'seagreen',   'Latent Subgraph\nAPSP Distribution'),
+        ]
+
+        for ax, (data, color, title) in zip(axs, data_specs):
+            if len(data) > 0:
+                ax.hist(data, bins=bins, color=color, edgecolor='black', alpha=0.75, density=True)
+                mean_d = float(np.mean(data))
+                ax.axvline(mean_d, color='red', linestyle='--', linewidth=1.8,
+                           label=f'Mean: {mean_d:.2f}')
+                ax.legend(fontsize=9)
+            else:
+                ax.text(0.5, 0.5, 'No data', ha='center', va='center', transform=ax.transAxes)
+
+            ax.set_title(title)
+            ax.set_xlabel('Shortest Path Length')
+            ax.set_ylabel('Density')
+            ax.xaxis.set_major_locator(MultipleLocator(1))
+            ax.grid(axis='y', alpha=0.3)
+
+        suffix = ' (Aggregated)' if aggregated else ''
+        fig.suptitle(f'All-Pairs Shortest Path Length Distributions{suffix}', fontsize=13, fontweight='bold')
+        plt.tight_layout()
+
+        if show_figure:
+            plt.show()
+
+        return fig
+
+
+class PosteriorDistributionVisualizer(MetricVisualizer[Tuple[npt.NDArray, Optional[npt.NDArray], npt.NDArray]]):
     """Visualizes the posterior distribution histogram and latent graph structure."""
 
-    def _summarize_data(self) -> Tuple[npt.NDArray, npt.NDArray]:
+    def _summarize_data(self) -> Tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
         # Stack all posteriors and powerline edges
         all_posteriors = np.stack([m[0] for m in self.metrics_history], axis=0)
         # Just use the first powerline edges
         powerline_edges = self.metrics_history[0][1] if self.metrics_history else np.array([])
         # Compute mean posterior
         mean_posterior = np.mean(all_posteriors, axis=0)
-        return mean_posterior, powerline_edges
+        std_posterior = np.std(all_posteriors, axis=0)
+        return mean_posterior, std_posterior, powerline_edges
 
-    def _compute(self, posterior, powergrid_graph, **kwargs) -> Tuple[npt.NDArray, npt.NDArray]:
+    def _compute(self, posterior, powergrid_graph, **kwargs) -> Tuple[npt.NDArray, Optional[npt.NDArray], npt.NDArray]:
         """
         Store posterior and powergrid graph for visualization.
         :param posterior: the posterior distribution [E, K]
         :param powergrid_graph: the powergrid graph edge index [2, E_grid]
         :return: tuple of (posterior, powergrid_graph)
         """
-        return posterior, powergrid_graph
+        return posterior, None, powergrid_graph
 
-    def _visualize(self, computation_result: Tuple[npt.NDArray, npt.NDArray], aggregated: bool = False, show_figure: bool = False) -> Figure:
+    def _visualize(self, computation_result: Tuple[npt.NDArray, Optional[npt.NDArray], npt.NDArray], aggregated: bool = False, show_figure: bool = False) -> Figure:
         """
         Visualize the posterior distribution with histogram and graph structure.
         :param computation_result: tuple of (posterior, powerline_edges)
@@ -834,25 +768,11 @@ class PosteriorDistributionVisualizer(MetricVisualizer[Tuple[npt.NDArray, npt.ND
         :param show_figure: whether to show the figure interactively
         :return: matplotlib figure
         """
-        posterior, powerline_edges = computation_result
-        edge_probs = posterior[:, 0]  # Edge existence probabilities
-
-        fig, axes = plt.subplots(1, 2, figsize=(20, 8))
-
-        # Left: Histogram
-        axes[0].hist(edge_probs, bins=50, color='skyblue', edgecolor='black', alpha=0.7)
-        axes[0].axvline(edge_probs.mean(), color='red', linestyle='--', linewidth=2,
-                       label=f'Mean: {edge_probs.mean():.3f}')
-        axes[0].axvline(np.median(edge_probs), color='green', linestyle='--', linewidth=2,
-                       label=f'Median: {np.median(edge_probs):.3f}')
-        axes[0].set_xlabel('Edge Existence Probability')
-        axes[0].set_ylabel('Count')
-        if aggregated:
-            axes[0].set_title(f'Mean Posterior Distribution')
-        else:
-            axes[0].set_title(f'Posterior Distribution')
-        axes[0].legend()
-        axes[0].grid(alpha=0.3)
+        posterior, std_posterior, powerline_edges = computation_result
+        n_cols = 1 + int(aggregated and std_posterior is not None) # show variance only if aggregated and present
+        fig, axes = plt.subplots(1, n_cols, figsize=(10 * n_cols, 8))
+        if n_cols == 1:
+            axes = [axes]  # Make it iterable
 
         # Right: Graph visualization
         visualize_graph(PlottingArgs(
@@ -860,9 +780,20 @@ class PosteriorDistributionVisualizer(MetricVisualizer[Tuple[npt.NDArray, npt.ND
             node_styles=self.node_styles,
             powerline_edge_index=powerline_edges,
             latent_edge_probs=posterior,
-            skip_last_edge_type=True
-        ), ax=axes[1])
-        axes[1].set_title('Latent Graph Structure\n(Black dashed = power grid, Colored = latent)')
+            skip_last_edge_type=True,
+            show_legend=False
+        ), ax=axes[0])
+        axes[0].set_title(r'Mean RAPPO graph $\bar{q}_\phi(\mathbf{z}_{ij} = 1)$')
+
+        if aggregated and std_posterior is not None:
+            visualize_graph(PlottingArgs(
+                num_nodes=len(self.node_styles),
+                node_styles=self.node_styles,
+                powerline_edge_index=powerline_edges,
+                latent_edge_probs=std_posterior,
+                skip_last_edge_type=True
+            ), ax=axes[1])
+            axes[1].set_title(r'Edge-wise temporal variance over $p_\phi(\mathbf{z}_{ij} = 1 \mid s_t)$')
 
         plt.tight_layout()
 
@@ -870,6 +801,211 @@ class PosteriorDistributionVisualizer(MetricVisualizer[Tuple[npt.NDArray, npt.ND
             plt.show()
 
         return fig
+
+
+# class PathLengthVisualizer(MetricVisualizer[Dict[str, npt.NDArray]]):
+#     """Visualizes distribution of shortest path lengths bridged by latent edges for full and subgraph variants."""
+#
+#     def _summarize_data(self) -> Dict[str, npt.NDArray]:
+#         # Concatenate path lengths across all timesteps
+#         latent_full = np.concatenate([m['latent_full'] for m in self.metrics_history])
+#         latent_subgraph = np.concatenate([m['latent_subgraph'] for m in self.metrics_history])
+#         powergrid_full = np.concatenate([m['powergrid_full'] for m in self.metrics_history])
+#         powergrid_subgraph = np.concatenate([m['powergrid_subgraph'] for m in self.metrics_history])
+#         node_mask = self.metrics_history[0]['node_mask']
+#         powergrid_graph = self.metrics_history[0]['powergrid_graph']
+#         posterior = self.metrics_history[0]['posterior']
+#
+#         return {
+#             'latent_full': latent_full,
+#             'latent_subgraph': latent_subgraph,
+#             'powergrid_full': powergrid_full,
+#             'powergrid_subgraph': powergrid_subgraph,
+#             'node_mask': node_mask,
+#             'powergrid_graph': powergrid_graph,
+#             'posterior': posterior
+#         }
+#
+#     def _compute(self, posterior, powergrid_graph, edge_index_fully_connected, node_mask, samples, **kwargs) -> Dict[str, npt.NDArray]:
+#         """
+#         Compute shortest path lengths for edges sampled from posterior vs powergrid baseline.
+#         Analyzes both full graphs and subgraphs induced by node_mask.
+#
+#         :param posterior: the posterior distribution [E, K]
+#         :param powergrid_graph: the powergrid graph edge index [2, E_grid]
+#         :param edge_index_fully_connected: fully connected edge index [2, E_all]
+#         :param node_mask: boolean mask indicating nodes in the biggest connected component
+#         :param samples: list of sampled edge indices from posterior
+#         :return: dict with path lengths for all variants
+#         """
+#         num_nodes = len(node_mask)
+#
+#         # Build powergrid graph (full)
+#         G_pg_full = nx.Graph()
+#         G_pg_full.add_nodes_from(range(num_nodes))
+#         G_pg_full.add_edges_from(powergrid_graph.T.astype(int))
+#
+#         # Build powergrid subgraph (only nodes in mask)
+#         G_pg_sub = nx.Graph()
+#         G_pg_sub.add_nodes_from([i for i in range(num_nodes) if node_mask[i]])
+#         for src, dst in powergrid_graph.T:
+#             if node_mask[src] and node_mask[dst]:
+#                 G_pg_sub.add_edge(int(src), int(dst))
+#
+#         # === Latent Full Graph ===
+#         # Compute path lengths for sampled edges using full powergrid as baseline
+#         latent_full_paths = []
+#         for sample_edges in samples:
+#             for src, dst in sample_edges.T:
+#                 src, dst = int(src), int(dst)
+#                 try:
+#                     d = nx.shortest_path_length(G_pg_full, source=src, target=dst)
+#                     latent_full_paths.append(d)
+#                 except (nx.NetworkXNoPath, nx.NodeNotFound):
+#                     pass
+#
+#         # === Latent Subgraph ===
+#         # Compute path lengths for sampled edges within subgraph using powergrid subgraph as baseline
+#         latent_subgraph_paths = []
+#         for sample_edges in samples:
+#             for src, dst in sample_edges.T:
+#                 src, dst = int(src), int(dst)
+#                 # Only consider edges within the mask
+#                 if node_mask[src] and node_mask[dst]:
+#                     try:
+#                         d = nx.shortest_path_length(G_pg_sub, source=src, target=dst)
+#                         latent_subgraph_paths.append(d)
+#                     except (nx.NetworkXNoPath, nx.NodeNotFound):
+#                         pass
+#
+#         # === Powergrid Full Graph ===
+#         # Sample random node pairs and compute their distances in full powergrid
+#         num_samples = min(1000, len(samples) * 10)
+#         powergrid_full_paths = []
+#         for _ in range(num_samples):
+#             src, dst = np.random.choice(num_nodes, size=2, replace=False)
+#             try:
+#                 d = nx.shortest_path_length(G_pg_full, source=src, target=dst)
+#                 powergrid_full_paths.append(d)
+#             except (nx.NetworkXNoPath, nx.NodeNotFound):
+#                 pass
+#
+#         # === Powergrid Subgraph ===
+#         # Sample random node pairs from subgraph and compute distances
+#         masked_nodes = [i for i in range(num_nodes) if node_mask[i]]
+#         powergrid_subgraph_paths = []
+#         if len(masked_nodes) >= 2:
+#             for _ in range(num_samples):
+#                 src, dst = np.random.choice(masked_nodes, size=2, replace=False)
+#                 try:
+#                     d = nx.shortest_path_length(G_pg_sub, source=src, target=dst)
+#                     powergrid_subgraph_paths.append(d)
+#                 except (nx.NetworkXNoPath, nx.NodeNotFound):
+#                     pass
+#
+#         return {
+#             'latent_full': np.array(latent_full_paths),
+#             'latent_subgraph': np.array(latent_subgraph_paths),
+#             'powergrid_full': np.array(powergrid_full_paths),
+#             'powergrid_subgraph': np.array(powergrid_subgraph_paths),
+#             'node_mask': node_mask,
+#             'powergrid_graph': powergrid_graph,
+#             'posterior': posterior
+#         }
+#
+#     def _visualize(self, computation_result: Dict[str, npt.NDArray], aggregated: bool = False, show_figure: bool = False) -> Figure:
+#         """
+#         Visualize path length distributions in 2x3 grid:
+#         Row 1: Powergrid analysis (full histogram, subgraph histogram, comparison)
+#         Row 2: Latent analysis (full histogram, subgraph histogram, comparison)
+#         """
+#         latent_full = computation_result['latent_full']
+#         latent_subgraph = computation_result['latent_subgraph']
+#         powergrid_full = computation_result['powergrid_full']
+#         powergrid_subgraph = computation_result['powergrid_subgraph']
+#
+#         # Determine global bin range
+#         all_paths = []
+#         if len(latent_full) > 0:
+#             all_paths.append(latent_full)
+#         if len(latent_subgraph) > 0:
+#             all_paths.append(latent_subgraph)
+#         if len(powergrid_full) > 0:
+#             all_paths.append(powergrid_full)
+#         if len(powergrid_subgraph) > 0:
+#             all_paths.append(powergrid_subgraph)
+#
+#         if len(all_paths) == 0:
+#             # Create empty figure
+#             fig = plt.figure(figsize=(18, 12))
+#             plt.text(0.5, 0.5, 'No path data available', ha='center', va='center', fontsize=16)
+#             return fig
+#
+#         all_paths_concat = np.concatenate(all_paths)
+#         max_d = int(np.ceil(all_paths_concat.max()))
+#         bins = np.arange(0, max_d + 2) - 0.5  # integer-centered bins
+#
+#         # Create 2x3 subplot grid
+#         fig, axes = plt.subplots(2, 2, figsize=(18, 12))
+#
+#         # === ROW 1: POWERGRID ANALYSIS ===
+#
+#         # Column 1: Powergrid full graph histogram
+#         if len(powergrid_full) > 0:
+#             axes[0, 0].hist(powergrid_full, bins=bins, color='green', edgecolor='black', alpha=0.7, density=True)
+#             axes[0, 0].axvline(np.mean(powergrid_full), color='red', linestyle='--', linewidth=2,
+#                               label=f'Mean: {np.mean(powergrid_full):.2f}')
+#         axes[0, 0].set_xlabel('Path Length')
+#         axes[0, 0].set_ylabel('Density')
+#         axes[0, 0].set_title('Powergrid (Full) - Random Path Lengths')
+#         axes[0, 0].legend()
+#         axes[0, 0].grid(alpha=0.3)
+#         axes[0, 0].xaxis.set_major_locator(MultipleLocator(1))
+#
+#         # Column 2: Powergrid subgraph histogram
+#         if len(powergrid_subgraph) > 0:
+#             axes[0, 1].hist(powergrid_subgraph, bins=bins, color='green', edgecolor='black', alpha=0.7, density=True)
+#             axes[0, 1].axvline(np.mean(powergrid_subgraph), color='red', linestyle='--', linewidth=2,
+#                               label=f'Mean: {np.mean(powergrid_subgraph):.2f}')
+#         axes[0, 1].set_xlabel('Path Length')
+#         axes[0, 1].set_ylabel('Density')
+#         axes[0, 1].set_title('Powergrid (Subgraph) - Random Path Lengths')
+#         axes[0, 1].legend()
+#         axes[0, 1].grid(alpha=0.3)
+#         axes[0, 1].xaxis.set_major_locator(MultipleLocator(1))
+#
+#         # === ROW 2: LATENT ANALYSIS ===
+#
+#         # Column 1: Latent full graph histogram
+#         if len(latent_full) > 0:
+#             axes[1, 0].hist(latent_full, bins=bins, color='skyblue', edgecolor='black', alpha=0.7, density=True)
+#             axes[1, 0].axvline(np.mean(latent_full), color='red', linestyle='--', linewidth=2,
+#                               label=f'Mean: {np.mean(latent_full):.2f}')
+#         axes[1, 0].set_xlabel('Path Length')
+#         axes[1, 0].set_ylabel('Density')
+#         axes[1, 0].set_title('Latent (Full) - Bridged Path Lengths')
+#         axes[1, 0].legend()
+#         axes[1, 0].grid(alpha=0.3)
+#         axes[1, 0].xaxis.set_major_locator(MultipleLocator(1))
+#
+#         # Column 2: Latent subgraph histogram
+#         if len(latent_subgraph) > 0:
+#             axes[1, 1].hist(latent_subgraph, bins=bins, color='skyblue', edgecolor='black', alpha=0.7, density=True)
+#             axes[1, 1].axvline(np.mean(latent_subgraph), color='red', linestyle='--', linewidth=2,
+#                               label=f'Mean: {np.mean(latent_subgraph):.2f}')
+#         axes[1, 1].set_xlabel('Path Length')
+#         axes[1, 1].set_ylabel('Density')
+#         axes[1, 1].set_title('Latent (Subgraph) - Bridged Path Lengths')
+#         axes[1, 1].legend()
+#         axes[1, 1].grid(alpha=0.3)
+#         axes[1, 1].xaxis.set_major_locator(MultipleLocator(1))
+#
+#         plt.tight_layout()
+#
+#         if show_figure:
+#             plt.show()
+#
+#         return fig
 
 
 class KLDivergenceVisualizer(MetricVisualizer[Tuple[npt.NDArray, npt.NDArray]]):
@@ -878,11 +1014,9 @@ class KLDivergenceVisualizer(MetricVisualizer[Tuple[npt.NDArray, npt.NDArray]]):
     def _summarize_data(self) -> Tuple[npt.NDArray, npt.NDArray]:
         # Stack all KL divergences and powerline edges
         all_kls = np.stack([m[0] for m in self.metrics_history], axis=0)
-        # Just use the first powerline edges
-        powerline_edges = self.metrics_history[0][1] if self.metrics_history else np.array([])
         # Compute mean KL
         mean_kl = np.mean(all_kls, axis=0)
-        return mean_kl, powerline_edges
+        return mean_kl
 
     def _compute(self, posterior, prior, powergrid_graph, **kwargs) -> Tuple[npt.NDArray, npt.NDArray]:
         """
@@ -892,9 +1026,10 @@ class KLDivergenceVisualizer(MetricVisualizer[Tuple[npt.NDArray, npt.NDArray]]):
         :param powergrid_graph: the powergrid graph edge index [2, E_grid]
         :return: tuple of (per_edge_kl, powergrid_graph)
         """
+        self.powerline_edges = powergrid_graph
         eps = 1e-7
         per_edge_kl = (posterior * (np.log(posterior + eps) - np.log(prior + eps))).sum(axis=-1)
-        return per_edge_kl, powergrid_graph
+        return per_edge_kl
 
     def _visualize(self, computation_result: Tuple[npt.NDArray, npt.NDArray], aggregated: bool = False, show_figure: bool = False) -> Figure:
         """
@@ -904,38 +1039,13 @@ class KLDivergenceVisualizer(MetricVisualizer[Tuple[npt.NDArray, npt.NDArray]]):
         :param show_figure: whether to show the figure interactively
         :return: matplotlib figure
         """
-        per_edge_kl, powerline_edges = computation_result
+        per_edge_kl = computation_result
 
-        fig, axes = plt.subplots(1, 1, figsize=(12, 4))
-
-        # Left: Histogram
-        sns.histplot(per_edge_kl, kde=False, bins=50, ax=axes)
-        axes.hist(per_edge_kl, bins=50, alpha=0.7)
-        axes.axvline(per_edge_kl.mean(), color='red', linestyle='--', linewidth=2,
-                       label=f'Mean KL: {per_edge_kl.mean():.3f}')
-        axes.axvline(np.median(per_edge_kl), color='green', linestyle='--', linewidth=2,
-                       label=f'Median KL: {np.median(per_edge_kl):.3f}')
-        axes.set_xlabel('Per-Edge KL Divergence')
-        axes.set_ylabel('Count')
-        axes.set_title(f'Histogram of Per-Edge KL Divergence Values', fontsize=14, fontweight='bold')
-        axes.legend()
-        axes.grid(alpha=0.3)
-
-        # Right: Graph visualization with KL as edge weights
-        # max_kl = per_edge_kl.max()
-        # if max_kl > 0:
-        #     edge_weights = np.stack([per_edge_kl / max_kl, np.zeros(len(per_edge_kl))]).transpose()
-        # else:
-        #     edge_weights = np.stack([per_edge_kl, np.zeros(len(per_edge_kl))]).transpose()
-        #
-        # visualize_graph(PlottingArgs(
-        #     num_nodes=len(self.node_styles),
-        #     node_styles=self.node_styles,
-        #     powerline_edge_index=powerline_edges,
-        #     latent_edge_probs=edge_weights,
-        #     skip_last_edge_type=True
-        # ), ax=axes[1])
-        # axes[1].set_title('KL per edge Graph Structure\n(Black dashed = power grid, Colored = KL value)')
+        fig = plt.figure(figsize=(6, 4))
+        sns.histplot(per_edge_kl, kde=False, bins=20)
+        plt.xlabel('Per-Edge KL Divergence')
+        plt.ylabel('Count')
+        plt.title(f'Histogram of Per-Edge KL Divergence Values', fontsize=14, fontweight='bold')
 
         plt.tight_layout()
 
@@ -1001,358 +1111,6 @@ class EntropyVsKLVisualizer(MetricVisualizer[Tuple[npt.NDArray, npt.NDArray]]):
             plt.show()
 
         return fig
-
-
-class PathLengthVisualizer(MetricVisualizer[Dict[str, npt.NDArray]]):
-    """Visualizes distribution of shortest path lengths bridged by latent edges for full and subgraph variants."""
-
-    def _summarize_data(self) -> Dict[str, npt.NDArray]:
-        # Concatenate path lengths across all timesteps
-        latent_full = np.concatenate([m['latent_full'] for m in self.metrics_history])
-        latent_subgraph = np.concatenate([m['latent_subgraph'] for m in self.metrics_history])
-        powergrid_full = np.concatenate([m['powergrid_full'] for m in self.metrics_history])
-        powergrid_subgraph = np.concatenate([m['powergrid_subgraph'] for m in self.metrics_history])
-        node_mask = self.metrics_history[0]['node_mask']
-        powergrid_graph = self.metrics_history[0]['powergrid_graph']
-        posterior = self.metrics_history[0]['posterior']
-
-        return {
-            'latent_full': latent_full,
-            'latent_subgraph': latent_subgraph,
-            'powergrid_full': powergrid_full,
-            'powergrid_subgraph': powergrid_subgraph,
-            'node_mask': node_mask,
-            'powergrid_graph': powergrid_graph,
-            'posterior': posterior
-        }
-
-    def _compute(self, posterior, powergrid_graph, edge_index_fully_connected, node_mask, samples, **kwargs) -> Dict[str, npt.NDArray]:
-        """
-        Compute shortest path lengths for edges sampled from posterior vs powergrid baseline.
-        Analyzes both full graphs and subgraphs induced by node_mask.
-
-        :param posterior: the posterior distribution [E, K]
-        :param powergrid_graph: the powergrid graph edge index [2, E_grid]
-        :param edge_index_fully_connected: fully connected edge index [2, E_all]
-        :param node_mask: boolean mask indicating nodes in the biggest connected component
-        :param samples: list of sampled edge indices from posterior
-        :return: dict with path lengths for all variants
-        """
-        num_nodes = len(node_mask)
-
-        # Build powergrid graph (full)
-        G_pg_full = nx.Graph()
-        G_pg_full.add_nodes_from(range(num_nodes))
-        G_pg_full.add_edges_from(powergrid_graph.T.astype(int))
-
-        # Build powergrid subgraph (only nodes in mask)
-        G_pg_sub = nx.Graph()
-        G_pg_sub.add_nodes_from([i for i in range(num_nodes) if node_mask[i]])
-        for src, dst in powergrid_graph.T:
-            if node_mask[src] and node_mask[dst]:
-                G_pg_sub.add_edge(int(src), int(dst))
-
-        # === Latent Full Graph ===
-        # Compute path lengths for sampled edges using full powergrid as baseline
-        latent_full_paths = []
-        for sample_edges in samples:
-            for src, dst in sample_edges.T:
-                src, dst = int(src), int(dst)
-                try:
-                    d = nx.shortest_path_length(G_pg_full, source=src, target=dst)
-                    latent_full_paths.append(d)
-                except (nx.NetworkXNoPath, nx.NodeNotFound):
-                    pass
-
-        # === Latent Subgraph ===
-        # Compute path lengths for sampled edges within subgraph using powergrid subgraph as baseline
-        latent_subgraph_paths = []
-        for sample_edges in samples:
-            for src, dst in sample_edges.T:
-                src, dst = int(src), int(dst)
-                # Only consider edges within the mask
-                if node_mask[src] and node_mask[dst]:
-                    try:
-                        d = nx.shortest_path_length(G_pg_sub, source=src, target=dst)
-                        latent_subgraph_paths.append(d)
-                    except (nx.NetworkXNoPath, nx.NodeNotFound):
-                        pass
-
-        # === Powergrid Full Graph ===
-        # Sample random node pairs and compute their distances in full powergrid
-        num_samples = min(1000, len(samples) * 10)
-        powergrid_full_paths = []
-        for _ in range(num_samples):
-            src, dst = np.random.choice(num_nodes, size=2, replace=False)
-            try:
-                d = nx.shortest_path_length(G_pg_full, source=src, target=dst)
-                powergrid_full_paths.append(d)
-            except (nx.NetworkXNoPath, nx.NodeNotFound):
-                pass
-
-        # === Powergrid Subgraph ===
-        # Sample random node pairs from subgraph and compute distances
-        masked_nodes = [i for i in range(num_nodes) if node_mask[i]]
-        powergrid_subgraph_paths = []
-        if len(masked_nodes) >= 2:
-            for _ in range(num_samples):
-                src, dst = np.random.choice(masked_nodes, size=2, replace=False)
-                try:
-                    d = nx.shortest_path_length(G_pg_sub, source=src, target=dst)
-                    powergrid_subgraph_paths.append(d)
-                except (nx.NetworkXNoPath, nx.NodeNotFound):
-                    pass
-
-        return {
-            'latent_full': np.array(latent_full_paths),
-            'latent_subgraph': np.array(latent_subgraph_paths),
-            'powergrid_full': np.array(powergrid_full_paths),
-            'powergrid_subgraph': np.array(powergrid_subgraph_paths),
-            'node_mask': node_mask,
-            'powergrid_graph': powergrid_graph,
-            'posterior': posterior
-        }
-
-    def _visualize(self, computation_result: Dict[str, npt.NDArray], aggregated: bool = False, show_figure: bool = False) -> Figure:
-        """
-        Visualize path length distributions in 2x3 grid:
-        Row 1: Powergrid analysis (full histogram, subgraph histogram, comparison)
-        Row 2: Latent analysis (full histogram, subgraph histogram, comparison)
-        """
-        latent_full = computation_result['latent_full']
-        latent_subgraph = computation_result['latent_subgraph']
-        powergrid_full = computation_result['powergrid_full']
-        powergrid_subgraph = computation_result['powergrid_subgraph']
-
-        # Determine global bin range
-        all_paths = []
-        if len(latent_full) > 0:
-            all_paths.append(latent_full)
-        if len(latent_subgraph) > 0:
-            all_paths.append(latent_subgraph)
-        if len(powergrid_full) > 0:
-            all_paths.append(powergrid_full)
-        if len(powergrid_subgraph) > 0:
-            all_paths.append(powergrid_subgraph)
-
-        if len(all_paths) == 0:
-            # Create empty figure
-            fig = plt.figure(figsize=(18, 12))
-            plt.text(0.5, 0.5, 'No path data available', ha='center', va='center', fontsize=16)
-            return fig
-
-        all_paths_concat = np.concatenate(all_paths)
-        max_d = int(np.ceil(all_paths_concat.max()))
-        bins = np.arange(0, max_d + 2) - 0.5  # integer-centered bins
-
-        # Create 2x3 subplot grid
-        fig, axes = plt.subplots(2, 2, figsize=(18, 12))
-
-        # === ROW 1: POWERGRID ANALYSIS ===
-
-        # Column 1: Powergrid full graph histogram
-        if len(powergrid_full) > 0:
-            axes[0, 0].hist(powergrid_full, bins=bins, color='green', edgecolor='black', alpha=0.7, density=True)
-            axes[0, 0].axvline(np.mean(powergrid_full), color='red', linestyle='--', linewidth=2,
-                              label=f'Mean: {np.mean(powergrid_full):.2f}')
-        axes[0, 0].set_xlabel('Path Length')
-        axes[0, 0].set_ylabel('Density')
-        axes[0, 0].set_title('Powergrid (Full) - Random Path Lengths')
-        axes[0, 0].legend()
-        axes[0, 0].grid(alpha=0.3)
-        axes[0, 0].xaxis.set_major_locator(MultipleLocator(1))
-
-        # Column 2: Powergrid subgraph histogram
-        if len(powergrid_subgraph) > 0:
-            axes[0, 1].hist(powergrid_subgraph, bins=bins, color='green', edgecolor='black', alpha=0.7, density=True)
-            axes[0, 1].axvline(np.mean(powergrid_subgraph), color='red', linestyle='--', linewidth=2,
-                              label=f'Mean: {np.mean(powergrid_subgraph):.2f}')
-        axes[0, 1].set_xlabel('Path Length')
-        axes[0, 1].set_ylabel('Density')
-        axes[0, 1].set_title('Powergrid (Subgraph) - Random Path Lengths')
-        axes[0, 1].legend()
-        axes[0, 1].grid(alpha=0.3)
-        axes[0, 1].xaxis.set_major_locator(MultipleLocator(1))
-
-        # === ROW 2: LATENT ANALYSIS ===
-
-        # Column 1: Latent full graph histogram
-        if len(latent_full) > 0:
-            axes[1, 0].hist(latent_full, bins=bins, color='skyblue', edgecolor='black', alpha=0.7, density=True)
-            axes[1, 0].axvline(np.mean(latent_full), color='red', linestyle='--', linewidth=2,
-                              label=f'Mean: {np.mean(latent_full):.2f}')
-        axes[1, 0].set_xlabel('Path Length')
-        axes[1, 0].set_ylabel('Density')
-        axes[1, 0].set_title('Latent (Full) - Bridged Path Lengths')
-        axes[1, 0].legend()
-        axes[1, 0].grid(alpha=0.3)
-        axes[1, 0].xaxis.set_major_locator(MultipleLocator(1))
-
-        # Column 2: Latent subgraph histogram
-        if len(latent_subgraph) > 0:
-            axes[1, 1].hist(latent_subgraph, bins=bins, color='skyblue', edgecolor='black', alpha=0.7, density=True)
-            axes[1, 1].axvline(np.mean(latent_subgraph), color='red', linestyle='--', linewidth=2,
-                              label=f'Mean: {np.mean(latent_subgraph):.2f}')
-        axes[1, 1].set_xlabel('Path Length')
-        axes[1, 1].set_ylabel('Density')
-        axes[1, 1].set_title('Latent (Subgraph) - Bridged Path Lengths')
-        axes[1, 1].legend()
-        axes[1, 1].grid(alpha=0.3)
-        axes[1, 1].xaxis.set_major_locator(MultipleLocator(1))
-
-        plt.tight_layout()
-
-        if show_figure:
-            plt.show()
-
-        return fig
-
-
-class AllPairsShortestPathVisualizer(MetricVisualizer[Dict[str, npt.NDArray]]):
-    """
-    Computes the all-pairs shortest path length distribution for four graph variants:
-      - Latent graph (full)           – expected graph built from posterior edge probabilities
-      - Latent graph (BCC)            – same, restricted to the biggest connected component
-      - Power-grid graph (full)       – baseline
-      - Power-grid graph (BCC)        – baseline, restricted to the BCC induced by the latent mask
-
-    For each variant the histogram of all finite pairwise distances is stored and visualised.
-    Disconnected pairs (infinite distance) are excluded from statistics but their fraction
-    is reported in the plot title.
-    """
-
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _apsp_array(G: nx.Graph) -> npt.NDArray:
-        """Return a 1-D array of all finite pairwise distances in G."""
-        lengths = []
-        for source, targets in nx.all_pairs_shortest_path_length(G):
-            for target, d in targets.items():
-                if source < target:          # count each pair once
-                    lengths.append(d)
-        return np.array(lengths, dtype=float) if lengths else np.array([], dtype=float)
-
-    @staticmethod
-    def _build_latent_expected_graph(posterior: npt.NDArray,
-                                     edge_index_fully_connected: npt.NDArray,
-                                     num_nodes: int,
-                                     threshold: float = 0.5) -> nx.Graph:
-        """Build an unweighted graph keeping edges whose existence probability ≥ threshold."""
-        G = nx.Graph()
-        G.add_nodes_from(range(num_nodes))
-        edge_probs = posterior[:, :-1].sum(axis=1)   # p(edge exists)
-        for idx, (src, dst) in enumerate(edge_index_fully_connected.T):
-            if edge_probs[idx] >= threshold:
-                G.add_edge(int(src), int(dst))
-        return G
-
-    # ------------------------------------------------------------------
-    # MetricVisualizer interface
-    # ------------------------------------------------------------------
-
-    def _summarize_data(self) -> Dict[str, npt.NDArray]:
-        latent_full      = np.concatenate([m['latent_full']      for m in self.metrics_history])
-        latent_subgraph  = np.concatenate([m['latent_subgraph']  for m in self.metrics_history])
-        powergrid_full   = np.concatenate([m['powergrid_full']   for m in self.metrics_history])
-        powergrid_subgraph = np.concatenate([m['powergrid_subgraph'] for m in self.metrics_history])
-        node_mask        = self.metrics_history[0]['node_mask']
-        powergrid_graph  = self.metrics_history[0]['powergrid_graph']
-        posterior        = self.metrics_history[0]['posterior']
-        return {
-            'latent_full':       latent_full,
-            'latent_subgraph':   latent_subgraph,
-            'powergrid_full':    powergrid_full,
-            'powergrid_subgraph':powergrid_subgraph,
-            'node_mask':         node_mask,
-            'powergrid_graph':   powergrid_graph,
-            'posterior':         posterior,
-        }
-
-    def _compute(self, posterior: npt.NDArray, powergrid_graph: npt.NDArray,
-                 edge_index_fully_connected: npt.NDArray, node_mask: npt.NDArray,
-                 **kwargs) -> Dict[str, npt.NDArray]:
-        num_nodes = len(node_mask)
-        masked_nodes = [i for i in range(num_nodes) if node_mask[i]]
-
-        # ── Latent full graph ──────────────────────────────────────────
-        G_lat_full = self._build_latent_expected_graph(
-            posterior, edge_index_fully_connected, num_nodes)
-        latent_full = self._apsp_array(G_lat_full)
-
-        # ── Latent subgraph (BCC) ──────────────────────────────────────
-        G_lat_sub = G_lat_full.subgraph(masked_nodes).copy()
-        latent_subgraph = self._apsp_array(G_lat_sub)
-
-        # ── Power-grid full graph ──────────────────────────────────────
-        G_pg_full = nx.Graph()
-        G_pg_full.add_nodes_from(range(num_nodes))
-        G_pg_full.add_edges_from(powergrid_graph.T.astype(int))
-        powergrid_full = self._apsp_array(G_pg_full)
-
-        # ── Power-grid subgraph (BCC) ──────────────────────────────────
-        G_pg_sub = G_pg_full.subgraph(masked_nodes).copy()
-        powergrid_subgraph = self._apsp_array(G_pg_sub)
-
-        return {
-            'latent_full':       latent_full,
-            'latent_subgraph':   latent_subgraph,
-            'powergrid_full':    powergrid_full,
-            'powergrid_subgraph':powergrid_subgraph,
-            'node_mask':         node_mask,
-            'powergrid_graph':   powergrid_graph,
-            'posterior':         posterior,
-        }
-
-    def _visualize(self, computation_result: Dict[str, npt.NDArray],
-                   aggregated: bool = False, show_figure: bool = False) -> Figure:
-        latent_full       = computation_result['latent_full']
-        latent_subgraph   = computation_result['latent_subgraph']
-        powergrid_full    = computation_result['powergrid_full']
-        powergrid_subgraph= computation_result['powergrid_subgraph']
-
-        all_arrays = [a for a in [latent_full, latent_subgraph,
-                                  powergrid_full, powergrid_subgraph] if len(a) > 0]
-        if not all_arrays:
-            fig, ax = plt.subplots()
-            ax.text(0.5, 0.5, 'No path data', ha='center', va='center')
-            return fig
-
-        max_d = int(np.concatenate(all_arrays).max())
-        bins = np.arange(0, max_d + 2) - 0.5   # integer-centred bins
-
-        fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-        fig.suptitle("All-Pairs Shortest Path Length Distribution", fontsize=14)
-
-        configs = [
-            (axes[0, 0], powergrid_full,     'green',   'Power-Grid – Full'),
-            (axes[0, 1], powergrid_subgraph, 'green',   'Power-Grid – BCC'),
-            (axes[1, 0], latent_full,        'steelblue','Latent – Full'),
-            (axes[1, 1], latent_subgraph,    'steelblue','Latent – BCC'),
-        ]
-
-        for ax, arr, color, title in configs:
-            if len(arr) == 0:
-                ax.set_title(f'{title}\n(no data)')
-                continue
-            ax.hist(arr, bins=bins, color=color, edgecolor='black', alpha=0.75, density=True)
-            mean_val = np.mean(arr)
-            ax.axvline(mean_val, color='red', linestyle='--', linewidth=1.8,
-                       label=f'Mean={mean_val:.2f}  Std={np.std(arr):.2f}')
-            ax.set_xlabel('Shortest Path Length')
-            ax.set_ylabel('Density')
-            ax.set_title(f'{title}  (n={len(arr):,})')
-            ax.legend(fontsize=9)
-            ax.grid(alpha=0.3)
-            ax.xaxis.set_major_locator(MultipleLocator(1))
-
-        plt.tight_layout()
-        if show_figure:
-            plt.show()
-        return fig
-
 
 class SymmetryMetricVisualizer(MetricVisualizer[float]):
     """Visualizes the symmetry metric of the posterior graph.
@@ -1427,30 +1185,11 @@ class SymmetryMetricVisualizer(MetricVisualizer[float]):
         # In aggregated mode, computation_result is an array of symmetry scores
         symmetry_scores = computation_result
 
-        fig, ax = plt.subplots(1, 1, figsize=(10, 6))
-
-        # Create histogram of symmetry scores
-        ax.hist(symmetry_scores, bins=50, color='skyblue', edgecolor='black', alpha=0.7, density=True)
-
-        # Mark the reference symmetry score of 1 (perfectly symmetric graph)
-        ax.axvline(1.0, color='red', linestyle='--', linewidth=2,
-                   label='Reference (R=1, Perfect Symmetry)', zorder=10)
-
-        # Add mean line
-        mean_symmetry = np.mean(symmetry_scores)
-        ax.axvline(mean_symmetry, color='green', linestyle='--', linewidth=2,
-                   label=f'Mean: {mean_symmetry:.4f}', zorder=10)
-
-        # Add median line
-        median_symmetry = np.median(symmetry_scores)
-        ax.axvline(median_symmetry, color='orange', linestyle='--', linewidth=2,
-                   label=f'Median: {median_symmetry:.4f}', zorder=10)
-
+        fig, ax = plt.subplots(1, 1, figsize=(6, 4))
+        ax.hist(symmetry_scores, bins=30, alpha=0.7, density=True)
         ax.set_xlabel('Symmetry Score (R)')
         ax.set_ylabel('Density')
         ax.set_title(f'Distribution of Posterior Symmetry Scores,\n aggregated over {len(symmetry_scores)} timesteps)')
-        ax.legend()
-        ax.grid(alpha=0.3)
 
         plt.tight_layout()
 
@@ -1685,192 +1424,6 @@ class EdgeNodeTypeVisualizer(MetricVisualizer[Tuple[Dict[NodeTypes, Dict[NodeTyp
                 agg_normalized[src_type][dst_type] /= num_timesteps
 
         return agg_probs, agg_possibilities, agg_normalized
-
-class BetweennessVisualizer(MetricVisualizer[Tuple[npt.NDArray, npt.NDArray]]):
-    """Visualizes edge betweenness centrality of the posterior graph."""
-
-    def _summarize_data(self) -> Dict[str, npt.NDArray]:
-        # Average degrees across all timesteps
-        latent_full = np.mean([m['betweenness_centrality_latent_full'] for m in self.metrics_history], axis=0)
-        latent_subgraph = np.mean([m['betweenness_centrality_latent_sub'] for m in self.metrics_history], axis=0)
-        powergrid_full = np.mean([m['betweenness_centrality_powergrid_full'] for m in self.metrics_history], axis=0)
-        powergrid_subgraph = np.mean([m['betweenness_centrality_powergrid_sub'] for m in self.metrics_history], axis=0)
-        node_mask = self.metrics_history[0]['node_mask']  # Use first node_mask
-        powergrid_graph = self.metrics_history[0]['powergrid_graph']  # Use first powergrid
-        posterior = self.metrics_history[0]['posterior']  # Use first posterior for visualization
-
-        return {
-            'betweenness_centrality_latent_full': latent_full,
-            'betweenness_centrality_latent_sub': latent_subgraph,
-            'betweenness_centrality_powergrid_full': powergrid_full,
-            'betweenness_centrality_powergrid_sub': powergrid_subgraph,
-            'node_mask': node_mask,
-            'powergrid_graph': powergrid_graph,
-            'posterior': posterior
-        }
-
-    def _compute(self, posterior: npt.NDArray, prior: npt.NDArray, samples: npt.NDArray, powergrid_graph: npt.NDArray,
-                 edge_index_fully_connected: npt.NDArray, node_mask: npt.NDArray, observation: BaseObservation) -> T:
-        # compute the betweenness centrality for nodes in the posterior graph
-        num_nodes = len(node_mask)
-
-        # Build powergrid graph (full)
-        G_pg_full = nx.Graph()
-        G_pg_full.add_nodes_from(range(num_nodes))
-        G_pg_full.add_edges_from(powergrid_graph.T.astype(int))
-
-        # Build powergrid subgraph (only nodes in mask)
-        G_pg_sub = nx.Graph()
-        G_pg_sub.add_nodes_from([i for i in range(num_nodes) if node_mask[i]])
-        for src, dst in powergrid_graph.T:
-            if node_mask[src] and node_mask[dst]:
-                G_pg_sub.add_edge(int(src), int(dst))
-
-        bc_pg_sub = nx.betweenness_centrality(G_pg_sub)
-        bc_pg_full = nx.betweenness_centrality(G_pg_full)
-        bc_pg_sub = [bc_pg_sub[i] if i in bc_pg_sub else 0 for i in range(num_nodes)]
-        bc_pg_full = [bc_pg_full[i] if i in bc_pg_full else 0 for i in range(num_nodes)]
-
-        bcs_latent_sub = []
-        bcs_latent_full = []
-        for i, sample in enumerate(samples):
-            # build latent graph (full)
-            G_latent_full = nx.Graph()
-            G_latent_full.add_nodes_from(range(num_nodes))
-            G_latent_full.add_edges_from(sample.T.astype(int))
-
-            G_latent_sub = nx.Graph()
-            G_latent_sub.add_nodes_from([i for i in range(num_nodes) if node_mask[i]])
-            for src, dst in sample.T:
-                if node_mask[src] and node_mask[dst]:
-                    G_latent_sub.add_edge(int(src), int(dst))
-
-            bcs_latent_sub.append(nx.betweenness_centrality(G_latent_sub))
-            bcs_latent_full.append(nx.betweenness_centrality(G_latent_full))
-
-        bc_latent_sub = {node: np.mean([bc[node] for bc in bcs_latent_sub]) for node in bcs_latent_sub[0].keys()}
-        bc_latent_full = {node: np.mean([bc[node] for bc in bcs_latent_full]) for node in bcs_latent_full[0].keys()}
-        bc_latent_sub = [bc_latent_sub[i] if i in bc_latent_sub else 0 for i in range(num_nodes)]
-        bc_latent_full = [bc_latent_full[i] if i in bc_latent_full else 0 for i in range(num_nodes)]
-
-        return {
-            "betweenness_centrality_latent_sub": np.array(bc_latent_sub),
-            "betweenness_centrality_latent_full": np.array(bc_latent_full),
-            "betweenness_centrality_powergrid_sub": np.array(bc_pg_sub),
-            "betweenness_centrality_powergrid_full": np.array(bc_pg_full),
-            "node_mask": node_mask,
-            "powergrid_graph": powergrid_graph,
-            "posterior": posterior,
-        }
-
-    def _visualize(self, computation_result: T, aggregated: bool = False, show_figure: bool = False) -> Figure:
-        latent_full = computation_result['betweenness_centrality_latent_full']
-        latent_subgraph = computation_result['betweenness_centrality_latent_sub']
-        powergrid_full = computation_result['betweenness_centrality_powergrid_full']
-        powergrid_subgraph = computation_result['betweenness_centrality_powergrid_sub']
-        node_mask = computation_result['node_mask']
-        powergrid_graph = computation_result['powergrid_graph']
-        posterior = computation_result['posterior']
-
-        num_nodes = len(node_mask)
-
-        # Create 2x3 subplot grid
-        fig, axes = plt.subplots(2, 3, figsize=(18, 12))
-
-        # Get subgraph edge indices for powergrid
-        powergrid_subgraph_edges = []
-        for src, dst in powergrid_graph.T:
-            if node_mask[src] and node_mask[dst]:
-                powergrid_subgraph_edges.append([src, dst])
-        powergrid_subgraph_edges = np.array(powergrid_subgraph_edges).T if powergrid_subgraph_edges else np.zeros((2, 0))
-
-        # === ROW 1: POWERGRID ANALYSIS ===
-
-        # Column 1: Powergrid full graph histogram
-        axes[0, 0].hist(powergrid_full, bins=50, color='green', edgecolor='black', alpha=0.7, density=True)
-        axes[0, 0].axvline(np.mean(powergrid_full), color='red', linestyle='--', linewidth=2,
-                           label=f'Mean: {np.mean(powergrid_full):.2f}')
-        axes[0, 0].set_xlabel('Betweenness Centrality')
-        axes[0, 0].set_ylabel('Density')
-        axes[0, 0].set_title('Powergrid (Full Graph) - Betweenness Centrality')
-        axes[0, 0].legend()
-        axes[0, 0].grid(alpha=0.3)
-
-        # Column 2: Powergrid subgraph histogram
-        powergrid_subgraph_filtered = powergrid_subgraph[node_mask]
-        axes[0, 1].hist(powergrid_subgraph_filtered, bins=50, color='green', edgecolor='black', alpha=0.7,
-                        density=True)
-        axes[0, 1].axvline(np.mean(powergrid_subgraph_filtered), color='red', linestyle='--', linewidth=2,
-                           label=f'Mean: {np.mean(powergrid_subgraph_filtered):.2f}')
-        axes[0, 1].set_xlabel('Betweenness Centrality')
-        axes[0, 1].set_ylabel('Density')
-        axes[0, 1].set_title('Powergrid (Subgraph) - Betweenness Centrality')
-        axes[0, 1].legend()
-        axes[0, 1].grid(alpha=0.3)
-
-        # Column 3: Powergrid subgraph visualization with node labels
-        max_bc_pg_sub = powergrid_subgraph[node_mask].max() if powergrid_subgraph[node_mask].max() > 0 else 1.0
-        node_sizes_pg_sub = {i: (0.03 + 0.7 * (powergrid_subgraph[i] / max_bc_pg_sub)) if node_mask[i] else 0.05
-                             for i in range(num_nodes)}
-        node_labels_pg_sub = {i: f"bc={powergrid_subgraph[i]:.1f}" for i in range(num_nodes) if node_mask[i]}
-
-        visualize_graph(PlottingArgs(
-            num_nodes=num_nodes,
-            node_styles=self.node_styles,
-            powerline_edge_index=powergrid_subgraph_edges,
-            latent_edge_probs=None,
-            node_labels=node_labels_pg_sub,
-            node_sizes_override=node_sizes_pg_sub
-        ), ax=axes[0, 2])
-        axes[0, 2].set_title('Powergrid Subgraph with Betweenness Centrality Labels')
-
-        # === ROW 2: LATENT ANALYSIS ===
-
-        # Column 1: Latent full graph histogram
-        axes[1, 0].hist(latent_full, bins=50, color='skyblue', edgecolor='black', alpha=0.7, density=True)
-        axes[1, 0].axvline(np.mean(latent_full), color='red', linestyle='--', linewidth=2,
-                           label=f'Mean: {np.mean(latent_full):.2f}')
-        axes[1, 0].set_xlabel('Betweenness Centrality')
-        axes[1, 0].set_ylabel('Density')
-        axes[1, 0].set_title('Latent (Full Graph) - Betweenness Centrality')
-        axes[1, 0].legend()
-        axes[1, 0].grid(alpha=0.3)
-
-        # Column 2: Latent subgraph histogram
-        latent_subgraph_filtered = latent_subgraph[node_mask]
-        axes[1, 1].hist(latent_subgraph_filtered, bins=50, color='skyblue', edgecolor='black', alpha=0.7,
-                        density=True)
-        axes[1, 1].axvline(np.mean(latent_subgraph_filtered), color='red', linestyle='--', linewidth=2,
-                           label=f'Mean: {np.mean(latent_subgraph_filtered):.2f}')
-        axes[1, 1].set_xlabel('Betweenness Centrality')
-        axes[1, 1].set_ylabel('Density')
-        axes[1, 1].set_title('Latent (Subgraph) - Betweenness Centrality')
-        axes[1, 1].legend()
-        axes[1, 1].grid(alpha=0.3)
-
-        # Column 3: Latent subgraph visualization with node labels
-        max_bc_latent_sub = latent_subgraph[node_mask].max() if latent_subgraph[node_mask].max() > 0 else 1.0
-        node_sizes_latent_sub = {i: (0.3 + 0.7 * (latent_subgraph[i] / max_bc_latent_sub)) if node_mask[i] else 0.05
-                                 for i in range(num_nodes)}
-        node_labels_latent_sub = {i: f"d={latent_subgraph[i]:.1f}" for i in range(num_nodes) if node_mask[i]}
-
-        visualize_graph(PlottingArgs(
-            num_nodes=num_nodes,
-            node_styles=self.node_styles,
-            powerline_edge_index=None,
-            latent_edge_probs=posterior,
-            skip_last_edge_type=True,
-            node_labels=node_labels_latent_sub,
-            node_sizes_override=node_sizes_latent_sub
-        ), ax=axes[1, 2])
-        axes[1, 2].set_title('Latent Subgraph with Betweenness Centrality Labels')
-
-        plt.tight_layout()
-
-        if show_figure:
-            plt.show()
-
-        return fig
 
 class StepVisualizer(MetricVisualizer):
     def _summarize_data(self) -> T:

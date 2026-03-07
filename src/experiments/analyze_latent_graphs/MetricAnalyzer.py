@@ -24,7 +24,8 @@ from src.experiments.analyze_latent_graphs.Metrics import (
     MetricVisualizer,
     PosteriorDistributionVisualizer, StepVisualizer, KLDivergenceVisualizer, EntropyVsKLVisualizer,
     DegreeDistributionVisualizer, ClusteringCoefficientVisualizer, InnerTreeNodeProbabilityVisualizer,
-    PathLengthVisualizer, SymmetryMetricVisualizer, EdgeNodeTypeVisualizer, BetweennessVisualizer
+    SymmetryMetricVisualizer, EdgeNodeTypeVisualizer, BetweennessVisualizer,
+    AllPairsShortestPathVisualizer
 )
 from src.experiments.analyze_latent_graphs.agent_analysis_framework import PosteriorAnalyzer, LatentGraphAnalysisAgent
 from src.experiments.utils import AgentSpec, load_agent_from_spec
@@ -61,7 +62,7 @@ class PosteriorMetrics(PosteriorAnalyzer):
             "Posterior Distribution": PosteriorDistributionVisualizer(node_styles=node_styles),
             "KL Divergence": KLDivergenceVisualizer(node_styles=node_styles),
             #"Entropy vs KL": EntropyVsKLVisualizer(node_styles=node_styles),
-            "Path Length": PathLengthVisualizer(node_styles=node_styles),
+            "Path Length": AllPairsShortestPathVisualizer(node_styles=node_styles),
             "Symmetry Analysis": SymmetryMetricVisualizer(node_styles=node_styles),
             "Connected Node Types": EdgeNodeTypeVisualizer(node_styles=node_styles),
             #"Steps": StepVisualizer(node_styles=node_styles),
@@ -89,38 +90,26 @@ class PosteriorMetrics(PosteriorAnalyzer):
         # compute all metrics (always); only visualize and save per-step figures when enabled
         samples = self._sample_n_graphs(posterior, n=self.num_posterior_samples)
         node_mask = self._compute_mask_connected_nodes(posterior, threshold=0.5)
-        for metric_name, metric_vis_fn in self.metrics.items():
+        for metric_name, metric in self.metrics.items():
             try:
-                if self.enable_stepwise_viz:
+                figure, _ = metric(
+                    posterior=posterior,
+                    prior=prior,
+                    samples=samples,
+                    powergrid_graph=powergrid_graph,
+                    edge_index_fully_connected=self.fully_connected_edge_index,
+                    node_mask=node_mask,
+                    observation=observation,
+                    visualize=self.enable_stepwise_viz,
+                )
+                if figure is not None:
                     save_dir = self.save_dir / "metrics" / metric_name.replace(" ", "_").lower()
                     image_save_path = save_dir / f"{self.current_chronic_id}_step_{self.step_count_total:04d}.svg"
-                    figure, data = metric_vis_fn(
-                        posterior=posterior,
-                        prior=prior,
-                        samples=samples,
-                        powergrid_graph=powergrid_graph,
-                        edge_index_fully_connected=self.fully_connected_edge_index,
-                        node_mask=node_mask,
-                        observation=observation,
-                        show_figure=False,
-                    )
-                    if figure is not None:
-                        save_dir.mkdir(parents=True, exist_ok=True)
-                        figure.savefig(image_save_path)
-                        logger.info(f"Saved metric {metric_name} at step {self.step_count_total} to {image_save_path}")
-                        plt.close(figure)
-                else:
-                    # Only compute and accumulate data, skip visualization
-                    _, data = metric_vis_fn(
-                        posterior=posterior,
-                        prior=prior,
-                        samples=samples,
-                        powergrid_graph=powergrid_graph,
-                        edge_index_fully_connected=self.fully_connected_edge_index,
-                        node_mask=node_mask,
-                        observation=observation,
-                        show_figure=False,
-                    )
+                    save_dir.mkdir(parents=True, exist_ok=True)
+                    figure.savefig(image_save_path)
+                    logger.info(f"Saved metric {metric_name} at step {self.step_count_total} to {image_save_path}")
+                    plt.close(figure)
+
             except Exception as e:
                 logger.error(f"Error computing metric {metric_name} at step {self.step_count_total}: {e}")
                 traceback.print_exc()
@@ -133,33 +122,24 @@ class PosteriorMetrics(PosteriorAnalyzer):
         parent_dir = self.save_dir / "metrics_agg"
         parent_dir.mkdir(parents=True, exist_ok=True)
 
-        # First pass: compute & save all aggregated data
-        aggregated_data_per_metric: Dict[str, object] = {}
-        for metric_name, metric_fn in self.metrics.items():
+        aggregated_data_per_metric = {}
+        for metric_name, metric in self.metrics.items():
             path_data = parent_dir / f"{metric_name.replace(' ', '_').lower()}.pkl"
+            path_fig = parent_dir / f"{metric_name.replace(' ', '_').lower()}.svg"
             try:
-                _, data = metric_fn.summarize(show_figure=False)
-                metric_fn.save_data(data, path_data)
+                fig, data = metric.summarize(show_figure=True)
+                metric.save_data(data, path_data)
                 aggregated_data_per_metric[metric_name] = data
                 logger.info(f"Saved aggregate data for {metric_name} to {path_data}")
+                if fig is not None:
+                    fig.savefig(path_fig)
+                    plt.close(fig)
+                    logger.info(f"Saved aggregate figure for {metric_name} to {path_fig}")
+                else:
+                    logger.warning(f"No figure returned by summarize() for {metric_name}")
+
             except Exception as e:
                 logger.error(f"Error computing aggregate metric {metric_name}: {e}")
-                traceback.print_exc()
-
-        # Second pass: visualize and save figures
-        for metric_name, metric_fn in self.metrics.items():
-            path_fig = parent_dir / f"{metric_name.replace(' ', '_').lower()}.svg"
-            data = aggregated_data_per_metric.get(metric_name)
-            if data is None:
-                continue
-            try:
-                figure = metric_fn._visualize(computation_result=data, aggregated=True, show_figure=False)
-                if figure is not None:
-                    figure.savefig(path_fig)
-                    plt.close(figure)
-                    logger.info(f"Saved aggregate figure for {metric_name} to {path_fig}")
-            except Exception as e:
-                logger.error(f"Error visualizing aggregate metric {metric_name}: {e}")
                 traceback.print_exc()
 
         # Print summary table
@@ -178,7 +158,7 @@ class PosteriorMetrics(PosteriorAnalyzer):
                 continue
             try:
                 data = metric_fn.load_data(path_data)
-                figure = metric_fn._visualize(computation_result=data, aggregated=True, show_figure=False)
+                figure = metric_fn._visualize(computation_result=data, aggregated=True, show_figure=True)
                 if figure is not None:
                     figure.savefig(path_fig)
                     plt.close(figure)
@@ -187,113 +167,9 @@ class PosteriorMetrics(PosteriorAnalyzer):
                 logger.error(f"Error visualizing loaded metric {metric_name}: {e}")
                 traceback.print_exc()
 
-    # Keys used by the four-variant dict-based metrics
-    _FOUR_VARIANT_KEYS = ("latent_full", "latent_subgraph", "powergrid_full", "powergrid_subgraph")
-    # Auxiliary keys that should be ignored for statistics
-    _AUX_KEYS = {"node_mask", "powergrid_graph", "posterior"}
-    # Betweenness uses different key names
-    _BETWEENNESS_KEY_MAP = {
-        "latent_full": "betweenness_centrality_latent_full",
-        "latent_subgraph": "betweenness_centrality_latent_sub",
-        "powergrid_full": "betweenness_centrality_powergrid_full",
-        "powergrid_subgraph": "betweenness_centrality_powergrid_sub",
-    }
-
-    @staticmethod
-    def _scalar_stats(arr: npt.NDArray, node_mask: Optional[npt.NDArray] = None,
-                      subgraph_only: bool = False) -> Optional[Dict[str, float]]:
-        """
-        Compute mean/std/min/max/median for an array.
-        If subgraph_only is True and node_mask is provided, only include masked entries.
-        """
-        try:
-            v = arr.ravel().astype(float)
-            if subgraph_only and node_mask is not None:
-                v = v[node_mask.ravel()]
-            v = v[np.isfinite(v)]
-            if v.size == 0:
-                return None
-            return {
-                "mean":   float(np.mean(v)),
-                "std":    float(np.std(v)),
-                "min":    float(np.min(v)),
-                "max":    float(np.max(v)),
-                "median": float(np.median(v)),
-            }
-        except Exception:
-            return None
-
-    @staticmethod
-    def _extract_scalars(metric_name: str, data: object) -> Optional[Dict[str, float]]:
-        """
-        Legacy helper – returns a single flat stat dict (used as fallback for non-four-variant metrics).
-        """
-        try:
-            arrays = []
-            if isinstance(data, np.ndarray):
-                arrays = [data.ravel()]
-            elif isinstance(data, (tuple, list)):
-                for item in data:
-                    if isinstance(item, np.ndarray):
-                        arrays.append(item.ravel())
-            elif isinstance(data, dict):
-                for key, val in data.items():
-                    if key in PosteriorMetrics._AUX_KEYS:
-                        continue
-                    if isinstance(val, np.ndarray) and np.issubdtype(val.dtype, np.floating):
-                        arrays.append(val.ravel())
-            if not arrays:
-                return None
-            values = np.concatenate(arrays)
-            values = values[np.isfinite(values)]
-            if values.size == 0:
-                return None
-            return {
-                "mean": float(np.mean(values)),
-                "std": float(np.std(values)),
-                "min": float(np.min(values)),
-                "max": float(np.max(values)),
-                "median": float(np.median(values)),
-            }
-        except Exception:
-            return None
-
-    def _extract_four_variant_stats(
-        self, data: object
-    ) -> Optional[Dict[str, Optional[Dict[str, float]]]]:
-        """
-        For dict-based metrics with four graph variants, extract per-variant stats.
-        Subgraph variants are filtered to nodes inside the node_mask.
-        Returns a dict keyed by variant name, or None if data is not in this format.
-        """
-        if not isinstance(data, dict):
-            return None
-
-        # Detect whether the dict uses standard or betweenness key names
-        if all(k in data for k in self._FOUR_VARIANT_KEYS):
-            key_map = {v: v for v in self._FOUR_VARIANT_KEYS}
-        elif all(v in data for v in self._BETWEENNESS_KEY_MAP.values()):
-            key_map = self._BETWEENNESS_KEY_MAP
-        else:
-            return None
-
-        node_mask = data.get("node_mask")
-        result = {}
-        for variant, data_key in key_map.items():
-            arr = data.get(data_key)
-            if arr is None or not isinstance(arr, np.ndarray):
-                result[variant] = None
-                continue
-            is_subgraph = "subgraph" in variant or "sub" in variant
-            result[variant] = self._scalar_stats(arr, node_mask=node_mask, subgraph_only=is_subgraph)
-        return result
-
     def print_summary_table(self, aggregated_data_per_metric: Optional[Dict[str, object]] = None):
         """
-        Prints four tables — one per graph variant (latent_full, latent_subgraph,
-        powergrid_full, powergrid_subgraph) — with one row per metric and columns
-        for mean, std, min, max, median.
-        Metrics that don't carry four variants are listed in a fifth "other" table.
+        Prints a table with one row per metric for the three graphs and columns for mean, std, min, max, median.
 
         If aggregated_data_per_metric is not provided, tries to load data from disk.
         """
@@ -308,74 +184,7 @@ class PosteriorMetrics(PosteriorAnalyzer):
                     except Exception as e:
                         logger.warning(f"Could not load data for {metric_name}: {e}")
 
-        # Separate metrics into four-variant and "other"
-        four_variant_rows: Dict[str, list] = {
-            v: [] for v in self._FOUR_VARIANT_KEYS
-        }
-        other_rows: list = []
-
-        for metric_name in self.metrics:
-            data = aggregated_data_per_metric.get(metric_name)
-            if data is None:
-                # No data at all — add N/A row to every table
-                na = [metric_name, "N/A", "N/A", "N/A", "N/A", "N/A"]
-                for v in self._FOUR_VARIANT_KEYS:
-                    four_variant_rows[v].append(na)
-                other_rows.append(na)
-                continue
-
-            variant_stats = self._extract_four_variant_stats(data)
-            if variant_stats is not None:
-                for variant, stats in variant_stats.items():
-                    if stats is None:
-                        four_variant_rows[variant].append(
-                            [metric_name, "N/A", "N/A", "N/A", "N/A", "N/A"]
-                        )
-                    else:
-                        four_variant_rows[variant].append([
-                            metric_name,
-                            f"{stats['mean']:.4f}",
-                            f"{stats['std']:.4f}",
-                            f"{stats['min']:.4f}",
-                            f"{stats['max']:.4f}",
-                            f"{stats['median']:.4f}",
-                        ])
-            else:
-                # Fallback: flat stats into the "other" table
-                scalars = self._extract_scalars(metric_name, data)
-                if scalars is None:
-                    other_rows.append([metric_name, "N/A", "N/A", "N/A", "N/A", "N/A"])
-                else:
-                    other_rows.append([
-                        metric_name,
-                        f"{scalars['mean']:.4f}",
-                        f"{scalars['std']:.4f}",
-                        f"{scalars['min']:.4f}",
-                        f"{scalars['max']:.4f}",
-                        f"{scalars['median']:.4f}",
-                    ])
-
-        headers = ["Metric", "Mean", "Std", "Min", "Max", "Median"]
-        variant_titles = {
-            "latent_full":       "Latent Graph – Full",
-            "latent_subgraph":   "Latent Graph – Biggest Connected Component",
-            "powergrid_full":    "Power Grid – Full (Baseline)",
-            "powergrid_subgraph":"Power Grid – Biggest Connected Component (Baseline)",
-        }
-
-        output = []
-        for variant, title in variant_titles.items():
-            rows = four_variant_rows[variant]
-            if rows:
-                output.append(f"\n── {title} ──")
-                output.append(tabulate(rows, headers=headers, tablefmt="rounded_outline"))
-
-        if other_rows:
-            output.append("\n── Other Metrics ──")
-            output.append(tabulate(other_rows, headers=headers, tablefmt="rounded_outline"))
-
-        print("\n".join(output))
-        logger.info("Summary table printed.")
+        ... # TODO
 
     def _compute_mask_connected_nodes(self, posterior: npt.NDArray, threshold: float = 0.5) -> npt.NDArray:
         """
@@ -451,7 +260,7 @@ def main():
     )
     env_name = "l2rpn_case14_sandbox_test"
     # Set to True to run the agent and compute metrics; False to load from disk and visualize only
-    compute_data = False
+    compute_data = True
     # Set to True to also save per-step figures (slow); False to only save aggregated figures
     enable_stepwise_viz = False
     num_episodes = 50
