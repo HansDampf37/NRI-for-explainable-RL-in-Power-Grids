@@ -11,6 +11,7 @@ from grid2op.Observation import BaseObservation
 from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.ticker import MultipleLocator
+import seaborn as sns
 
 from src.visualization import visualize_graph, PlottingArgs
 from src.visualization.utils import NodeStyle
@@ -905,38 +906,36 @@ class KLDivergenceVisualizer(MetricVisualizer[Tuple[npt.NDArray, npt.NDArray]]):
         """
         per_edge_kl, powerline_edges = computation_result
 
-        fig, axes = plt.subplots(1, 2, figsize=(20, 8))
+        fig, axes = plt.subplots(1, 1, figsize=(12, 4))
 
         # Left: Histogram
-        axes[0].hist(per_edge_kl, bins=50, color='skyblue', edgecolor='black', alpha=0.7)
-        axes[0].axvline(per_edge_kl.mean(), color='red', linestyle='--', linewidth=2,
+        sns.histplot(per_edge_kl, kde=False, bins=50, ax=axes)
+        axes.hist(per_edge_kl, bins=50, alpha=0.7)
+        axes.axvline(per_edge_kl.mean(), color='red', linestyle='--', linewidth=2,
                        label=f'Mean KL: {per_edge_kl.mean():.3f}')
-        axes[0].axvline(np.median(per_edge_kl), color='green', linestyle='--', linewidth=2,
+        axes.axvline(np.median(per_edge_kl), color='green', linestyle='--', linewidth=2,
                        label=f'Median KL: {np.median(per_edge_kl):.3f}')
-        axes[0].set_xlabel('Per-Edge KL Divergence')
-        axes[0].set_ylabel('Count')
-        if aggregated:
-            axes[0].set_title(f'Histogram of Per-Edge KL Divergence Values\n(Based on mean posterior and prior)')
-        else:
-            axes[0].set_title(f'Histogram of Per-Edge KL Divergence Values')
-        axes[0].legend()
-        axes[0].grid(alpha=0.3)
+        axes.set_xlabel('Per-Edge KL Divergence')
+        axes.set_ylabel('Count')
+        axes.set_title(f'Histogram of Per-Edge KL Divergence Values', fontsize=14, fontweight='bold')
+        axes.legend()
+        axes.grid(alpha=0.3)
 
         # Right: Graph visualization with KL as edge weights
-        max_kl = per_edge_kl.max()
-        if max_kl > 0:
-            edge_weights = np.stack([per_edge_kl / max_kl, np.zeros(len(per_edge_kl))]).transpose()
-        else:
-            edge_weights = np.stack([per_edge_kl, np.zeros(len(per_edge_kl))]).transpose()
-
-        visualize_graph(PlottingArgs(
-            num_nodes=len(self.node_styles),
-            node_styles=self.node_styles,
-            powerline_edge_index=powerline_edges,
-            latent_edge_probs=edge_weights,
-            skip_last_edge_type=True
-        ), ax=axes[1])
-        axes[1].set_title('KL per edge Graph Structure\n(Black dashed = power grid, Colored = KL value)')
+        # max_kl = per_edge_kl.max()
+        # if max_kl > 0:
+        #     edge_weights = np.stack([per_edge_kl / max_kl, np.zeros(len(per_edge_kl))]).transpose()
+        # else:
+        #     edge_weights = np.stack([per_edge_kl, np.zeros(len(per_edge_kl))]).transpose()
+        #
+        # visualize_graph(PlottingArgs(
+        #     num_nodes=len(self.node_styles),
+        #     node_styles=self.node_styles,
+        #     powerline_edge_index=powerline_edges,
+        #     latent_edge_probs=edge_weights,
+        #     skip_last_edge_type=True
+        # ), ax=axes[1])
+        # axes[1].set_title('KL per edge Graph Structure\n(Black dashed = power grid, Colored = KL value)')
 
         plt.tight_layout()
 

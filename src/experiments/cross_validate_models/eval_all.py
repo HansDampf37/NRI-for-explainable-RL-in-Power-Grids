@@ -14,14 +14,18 @@ def main():
     model3 = AgentSpec(name="GNN",
                        load_path=Path("results/agents/CustomPPO_0_4cbd2_2026-01-19_14-39-38_GNN"),
                        checkpoint_name="checkpoint_000023")
+    model4 = AgentSpec(name="RAPPO_optuna",
+                       load_path=Path(
+                           "/home/adrian/Schreibtisch/0302_OPT_RAGNN/CustomPPO_3087133_5b7242a3_2026-02-03_14-17-38/"),
+                       checkpoint_name="checkpoint_000022")
 
     num_episodes = 50
-    for dataset in ["l2rpn_case14_sandbox_train"]:#["l2rpn_case14_sandbox_test", "l2rpn_case14_sandbox_val", "l2rpn_case14_sandbox_train"]:
+    for dataset in ["l2rpn_case14_sandbox_val", "l2rpn_case14_sandbox_test"]:
         print(f"Evaluating on dataset: {dataset}")
         eval_env_name = dataset
         env_suffix = eval_env_name.split('_')[-1]
 
-        for model in [model1, model2, model3]:
+        for model in [model4]:
             print(f"\nEvaluating model: {model.name}")
             model_id = str(model.load_path).split('/')[-1]
             save_path = Path(f"results/evaluations/{model.name}/{model_id}/{env_suffix}")

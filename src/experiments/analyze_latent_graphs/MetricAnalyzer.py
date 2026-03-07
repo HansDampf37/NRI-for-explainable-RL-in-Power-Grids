@@ -451,7 +451,7 @@ def main():
     )
     env_name = "l2rpn_case14_sandbox_test"
     # Set to True to run the agent and compute metrics; False to load from disk and visualize only
-    compute_data = True
+    compute_data = False
     # Set to True to also save per-step figures (slow); False to only save aggregated figures
     enable_stepwise_viz = False
     num_episodes = 50
