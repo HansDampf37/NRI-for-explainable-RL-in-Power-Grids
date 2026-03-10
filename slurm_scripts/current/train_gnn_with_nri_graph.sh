@@ -38,5 +38,5 @@ sbatch << EOF
 module load devel/miniforge
 conda activate L2RPN
 
-PYTHONPATH=$(pwd) python training_scripts/train_ppo.py -f configs/gnn_rappo_graph.yaml -wd . -s 0 -j 0 --model-type NRIGNN --experiment-name ${experiment_name}
+PYTHONPATH=$(pwd) python training_scripts/train_ppo.py -f configs/gnn_nri_graph.yaml -wd . -s 0 -j 0 --model-type NRIGNN --experiment-name ${experiment_name}
 EOF

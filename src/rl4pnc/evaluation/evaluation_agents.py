@@ -208,8 +208,7 @@ class RllibAgent(HeuristicsAgent):
             # file_path already points to checkpoint directory
             checkpoint_path = os.path.join(file_path, "policies", policy_name)
 
-        #self._rllib_agent = Policy.from_checkpoint(checkpoint_path)
-        self._rllib_agent = Policy.from_checkpoint("/home/adrian/Schreibtisch/0302_OPT_RAGNN/CustomPPO_3087133_5b7242a3_2026-02-03_14-17-38/checkpoint_000022/policies/reinforcement_learning_policy/")
+        self._rllib_agent = Policy.from_checkpoint(checkpoint_path)
 
         # IMPORTANT: Restore the correct observation space structure
         # The checkpoint deserialization converts custom observation spaces to generic Dict spaces,

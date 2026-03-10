@@ -203,7 +203,10 @@ def get_evaluation_metrics(path: Path, agent_name: str) -> AgentMetrics:
     returns = []
     for folder in path.iterdir():
         if folder.is_dir():
-            with Path.joinpath(folder, "episode_meta.json").open() as f:
+            meta_file = Path.joinpath(folder, "episode_meta.json")
+            if not meta_file.exists():
+                continue
+            with meta_file.open() as f:
                 episode_metadata = json.load(f)
                 survival_duration.append(episode_metadata["nb_timestep_played"])
                 returns.append(episode_metadata["cumulative_reward"])

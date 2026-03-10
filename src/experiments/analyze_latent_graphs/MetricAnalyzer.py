@@ -7,7 +7,7 @@ Reuses existing infrastructure from evaluate_rllib_agent.py
 import logging
 import traceback
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -22,7 +22,7 @@ from tabulate import tabulate
 from src.common.observation_space import BusConnectivityGraphObsSpace
 from src.experiments.analyze_latent_graphs.Metrics import (
     MetricVisualizer,
-    PosteriorDistributionVisualizer, StepVisualizer, KLDivergenceVisualizer, EntropyVsKLVisualizer,
+    PosteriorDistributionVisualizer, KLDivergenceVisualizer,
     DegreeDistributionVisualizer, ClusteringCoefficientVisualizer, InnerTreeNodeProbabilityVisualizer,
     SymmetryMetricVisualizer, EdgeNodeTypeVisualizer, BetweennessVisualizer,
     AllPairsShortestPathVisualizer
@@ -62,7 +62,7 @@ class PosteriorMetrics(PosteriorAnalyzer):
             "Posterior Distribution": PosteriorDistributionVisualizer(node_styles=node_styles),
             "KL Divergence": KLDivergenceVisualizer(node_styles=node_styles),
             #"Entropy vs KL": EntropyVsKLVisualizer(node_styles=node_styles),
-            "Path Length": AllPairsShortestPathVisualizer(node_styles=node_styles),
+            #"Path Length": AllPairsShortestPathVisualizer(node_styles=node_styles),
             "Symmetry Analysis": SymmetryMetricVisualizer(node_styles=node_styles),
             "Connected Node Types": EdgeNodeTypeVisualizer(node_styles=node_styles),
             #"Steps": StepVisualizer(node_styles=node_styles),
@@ -167,7 +167,7 @@ class PosteriorMetrics(PosteriorAnalyzer):
                 logger.error(f"Error visualizing loaded metric {metric_name}: {e}")
                 traceback.print_exc()
 
-    def print_summary_table(self, aggregated_data_per_metric: Optional[Dict[str, object]] = None):
+    def print_summary_table(self, aggregated_data_per_metric: Optional[Dict[str, Any]] = None):
         """
         Prints a table with one row per metric for the three graphs and columns for mean, std, min, max, median.
 
@@ -184,7 +184,158 @@ class PosteriorMetrics(PosteriorAnalyzer):
                     except Exception as e:
                         logger.warning(f"Could not load data for {metric_name}: {e}")
 
-        ... # TODO
+        # ------------------------------------------------------------------ #
+        # Helper: compute stats (mean, std, min, max, median) for a 1-D array
+        # ------------------------------------------------------------------ #
+        def _stats(arr: npt.NDArray):
+            """Return (mean, std, min, max, median) or all None if arr is empty / scalar."""
+            arr = np.asarray(arr).ravel()
+            arr = arr[np.isfinite(arr)]
+            if arr.size == 0:
+                return None, None, None, None, None
+            return float(np.mean(arr)), float(np.std(arr)), float(np.min(arr)), float(np.max(arr)), float(np.median(arr))
+
+        def _fmt(val, digits=4):
+            return f"{val:.{digits}f}" if val is not None else "--"
+
+        def _fmt_mean_std(mean, std, digits=4):
+            if mean is None:
+                return "--"
+            if std is None:
+                return _fmt(mean, digits)
+            return f"{mean:.{digits}f} ± {std:.{digits}f}"
+
+        # ------------------------------------------------------------------ #
+        # Build rows: (metric_name, graph_label, mean±std, min, max, median)
+        # ------------------------------------------------------------------ #
+        rows = []
+
+        # --- metrics that return {'latent_full', 'latent_subgraph', 'powergrid_full'} ---
+        node_metrics = [
+            ("Node Degree",                "Node Degree"),
+            ("Clustering Coefficient",     "Clustering Coefficient"),
+            ("Inner Tree Node Probability","Inner Tree Node Probability"),
+            ("Path Length",                "All-Pairs Shortest Path"),
+        ]
+        for metric_key, display_name in node_metrics:
+            data = aggregated_data_per_metric.get(metric_key)
+            if data is None:
+                continue
+            for arr, graph_label in [
+                (data.get('latent_full'),    "Latent"),
+                (data.get('latent_subgraph'),"Latent (BCC)"),
+                (data.get('powergrid_full'), "Power grid"),
+            ]:
+                if arr is None:
+                    continue
+                mean, std, mn, mx, med = _stats(arr)
+                rows.append((display_name, graph_label,
+                             _fmt_mean_std(mean, std), _fmt(mn), _fmt(mx), _fmt(med)))
+            rows.append(("", "", "", "", "", ""))  # blank separator row
+
+        # --- Betweenness Centrality (different dict keys) ---
+        data = aggregated_data_per_metric.get("Betweenness Centrality")
+        if data is not None:
+            for arr, graph_label in [
+                (data.get('betweenness_centrality_latent_full'), "Latent"),
+                (data.get('betweenness_centrality_latent_sub'),  "Latent (BCC)"),
+                (data.get('betweenness_centrality_powergrid_full'), "Power grid"),
+            ]:
+                if arr is None:
+                    continue
+                mean, std, mn, mx, med = _stats(arr)
+                rows.append(("Betweenness Centrality", graph_label,
+                             _fmt_mean_std(mean, std), _fmt(mn), _fmt(mx), _fmt(med)))
+            rows.append(("", "", "", "", "", ""))
+
+        # --- Posterior Distribution ---
+        data = aggregated_data_per_metric.get("Posterior Distribution")
+        if data is not None:
+            mean_post, std_post, _ = data  # (mean_posterior [E,K], std_posterior [E,K], edges)
+            # p(edge exists) = sum over all types except last
+            p_exists = mean_post[:, :-1].sum(axis=1)
+            p_no_edge = mean_post[:, -1]
+            for arr, label in [(p_exists, "p(edge exists)"), (p_no_edge, "p(no edge)")]:
+                mean, std, mn, mx, med = _stats(arr)
+                rows.append(("Posterior Distribution", label,
+                             _fmt_mean_std(mean, std), _fmt(mn), _fmt(mx), _fmt(med)))
+            rows.append(("", "", "", "", "", ""))
+
+        # --- KL Divergence ---
+        data = aggregated_data_per_metric.get("KL Divergence")
+        if data is not None:
+            mean, std, mn, mx, med = _stats(data)
+            rows.append(("Per Edge KL Divergence", "--",
+                         _fmt_mean_std(mean, std), _fmt(mn), _fmt(mx), _fmt(med)))
+            rows.append(("", "", "", "", "", ""))
+
+        # --- Symmetry Analysis ---
+        data = aggregated_data_per_metric.get("Symmetry Analysis")
+        if data is not None:
+            scores = np.asarray(data).ravel()
+            mean_sym = float(np.mean(scores)) if scores.size > 0 else None
+            rows.append(("Symmetry Analysis", "Latent",
+                         _fmt(mean_sym), "--", "--", "--"))
+            rows.append(("Symmetry Analysis", "Power grid",
+                         "1.0000", "--", "--", "--"))
+
+        # ------------------------------------------------------------------ #
+        # Print readable console table with tabulate
+        # ------------------------------------------------------------------ #
+        headers = ["Metric", "Graph", "Mean ± Std", "Min", "Max", "Median"]
+        # Filter blank separator rows for the tabulate display
+        display_rows = [r for r in rows if any(c != "" for c in r)]
+        print("\n" + "=" * 90)
+        print("AGGREGATED GRAPH METRIC SUMMARY")
+        print("=" * 90)
+        print(tabulate(display_rows, headers=headers, tablefmt="rounded_outline"))
+        print()
+
+        # ------------------------------------------------------------------ #
+        # Print LaTeX table ready to paste into thesis
+        # ------------------------------------------------------------------ #
+
+        # Section separators: metric names where we want a \midrule before them
+        latex_midrule_before = {
+            "Posterior Distribution",
+            "Per Edge KL Divergence",
+            "Symmetry Analysis",
+        }
+
+        latex_lines = [r"\begin{tabular}{llllll}", r"\toprule",
+                       r"\textbf{Metric} & \textbf{Graph} & \textbf{Mean} $\pm$ \textbf{Std} "
+                       r"& \textbf{Min} & \textbf{Max} & \textbf{Median} \\", r"\midrule"]
+
+        prev_metric = None
+        for metric, graph, mean_std_str, mn_str, mx_str, med_str in rows:
+            if metric == "" and graph == "":
+                continue  # skip blank separator rows (we handle separators via midrule_before)
+
+            # Insert \midrule before new section groups
+            if metric != prev_metric and metric in latex_midrule_before:
+                latex_lines.append(r"\midrule")
+            prev_metric = metric
+
+            # Re-compute LaTeX-formatted mean±std from the display string (already formatted)
+            # Just replace ± with $\pm$ in the string we already built
+            latex_ms = mean_std_str.replace("±", r"$\pm$")
+
+            # Escape underscores in graph label (BCC has none, but be safe)
+            graph_esc = graph.replace("_", r"\_")
+
+            latex_lines.append(
+                f"{metric} & {graph_esc} & {latex_ms} & {mn_str} & {mx_str} & {med_str} \\\\"
+            )
+
+        latex_lines.append(r"\bottomrule")
+        latex_lines.append(r"\end{tabular}")
+
+        latex_table = "\n".join(latex_lines)
+        print("\n" + "=" * 90)
+        print("LATEX TABLE (copy-paste into thesis)")
+        print("=" * 90)
+        print(latex_table)
+        print()
 
     def _compute_mask_connected_nodes(self, posterior: npt.NDArray, threshold: float = 0.5) -> npt.NDArray:
         """

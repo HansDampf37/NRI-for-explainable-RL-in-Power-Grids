@@ -48,7 +48,7 @@ training:
         hidden_dim: 256
         out_dim: 64
         num_layers: 3
-        edge_probs_path: "/pfs/data6/home/ka/ka_iai/ka_hw6998/dev/NRI-for-explainable-RL-in-Power-Grids/results/edge_probabilities/rappo_essence_graph.npy"
+        edge_probs_path: "/pfs/data6/home/ka/ka_iai/ka_hw6998/dev/NRI-for-explainable-RL-in-Power-Grids/results/edge_probabilities/consensus_graph_data_edges_testing_NRI_with_forecast_agreement_0.9_prob_0.9_js_0.1.npy"
   _enable_learner_api: False
 
 rl_module:

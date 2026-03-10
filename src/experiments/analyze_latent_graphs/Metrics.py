@@ -18,6 +18,109 @@ from src.visualization.utils import NodeStyle
 
 T = TypeVar("T")  # generic type for computed metric
 
+# ---------------------------------------------------------------------------
+# Global colour palette for the three graph-histogram variants
+# ---------------------------------------------------------------------------
+COLOR_POWERGRID = "steelblue"
+COLOR_LATENT_FULL = "darkorange"
+COLOR_LATENT_SUB = "seagreen"
+
+# Ordered (color, title) pairs used by _plot_three_histograms
+_HIST_SPECS = [
+    (COLOR_POWERGRID,   "Powergrid (Full)"),
+    (COLOR_LATENT_FULL, "Latent Graph (Full)"),
+    (COLOR_LATENT_SUB,  "Latent Subgraph"),
+]
+
+
+def _compute_shared_bins(
+    arrays: List[npt.NDArray],
+    n_bins: int = 20,
+    integer_bins: bool = False,
+) -> npt.NDArray:
+    """Return a common bin array computed from all non-empty *arrays*.
+
+    Parameters
+    ----------
+    arrays:
+        List of 1-D data arrays (NaN values are stripped automatically).
+    n_bins:
+        Number of bins when ``integer_bins=False``.
+    integer_bins:
+        When *True* bins are integer-centred (useful for path-length data).
+    """
+    clean = [a[~np.isnan(a)] for a in arrays if len(a) > 0]
+    clean = [a for a in clean if len(a) > 0]
+    if not clean:
+        return np.linspace(0, 1, n_bins + 1)
+
+    all_data = np.concatenate(clean)
+    lo, hi = float(all_data.min()), float(all_data.max())
+
+    if integer_bins:
+        max_d = int(np.ceil(hi))
+        return np.arange(0.5, max_d + 1.5, 1.0)
+
+    if np.isclose(lo, hi):
+        lo, hi = lo - 0.5, hi + 0.5
+    return np.linspace(lo, hi, n_bins + 1)
+
+
+def _plot_three_histograms(
+    fig: Figure,
+    axs,
+    data_triple: Tuple[npt.NDArray, npt.NDArray, npt.NDArray],
+    xlabel: str,
+    suptitle: str,
+    aggregated: bool = False,
+    integer_bins: bool = False,
+    n_bins: int = 20,
+) -> None:
+    """Render three comparable histograms onto *axs* (length-3 sequence of Axes).
+
+    All panels share the same bin edges and the same x/y axis limits.
+    A vertical dashed red line marks the mean and a light horizontal grid
+    is drawn on every panel.
+
+    Parameters
+    ----------
+    fig:          Parent figure (used for suptitle).
+    axs:          Sequence of three ``Axes`` objects.
+    data_triple:  ``(powergrid_full, latent_full, latent_subgraph)`` 1-D arrays.
+                  NaN values are stripped before plotting.
+    xlabel:       Label for the x-axis of every panel.
+    suptitle:     Figure-level title; "(Aggregated)" is appended when *aggregated*.
+    integer_bins: Forwarded to :func:`_compute_shared_bins`.
+    n_bins:       Forwarded to :func:`_compute_shared_bins`.
+    """
+    pg, lf, ls = data_triple
+    # Strip NaN
+    pg = pg[~np.isnan(pg)] if len(pg) > 0 else pg
+    lf = lf[~np.isnan(lf)] if len(lf) > 0 else lf
+    ls = ls[~np.isnan(ls)] if len(ls) > 0 else ls
+
+    bins = _compute_shared_bins([pg, lf, ls], n_bins=n_bins, integer_bins=integer_bins)
+
+    for ax, data, (color, title) in zip(axs, [pg, lf, ls], _HIST_SPECS):
+        if len(data) > 0:
+            ax.hist(data, bins=bins, color=color, edgecolor='black', alpha=0.75, density=True)
+            mean_val = float(np.mean(data))
+            ax.axvline(mean_val, color='red', linestyle='--', linewidth=1.8,
+                       label=f'Mean: {mean_val:.2f}')
+            ax.legend(fontsize=9)
+        else:
+            ax.text(0.5, 0.5, 'No data', ha='center', va='center', transform=ax.transAxes)
+
+        ax.set_title(title)
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel('Density')
+        ax.grid(axis='y', alpha=0.3)
+        if integer_bins:
+            ax.xaxis.set_major_locator(MultipleLocator(1))
+
+    suffix = ' (Aggregated)' if aggregated else ''
+    fig.suptitle(f'{suptitle}{suffix}', fontsize=14, fontweight='bold')
+
 
 class MetricVisualizer(abc.ABC, Generic[T]):
     """
@@ -149,17 +252,11 @@ class DegreeDistributionVisualizer(MetricVisualizer[Dict[str, npt.NDArray]]):
         latent_full = np.mean([m['latent_full'] for m in self.metrics_history], axis=0)
         latent_subgraph = np.mean([m['latent_subgraph'] for m in self.metrics_history], axis=0)
         powergrid_full = np.mean([m['powergrid_full'] for m in self.metrics_history], axis=0)
-        node_mask = self.metrics_history[0]['node_mask']  # Use first node_mask
-        powergrid_graph = self.metrics_history[0]['powergrid_graph']  # Use first powergrid
-        posterior = self.metrics_history[0]['posterior']  # Use first posterior for visualization
-        
+
         return {
             'latent_full': latent_full,
             'latent_subgraph': latent_subgraph,
             'powergrid_full': powergrid_full,
-            'node_mask': node_mask,
-            'powergrid_graph': powergrid_graph,
-            'posterior': posterior
         }
 
     def _compute(self, posterior, powergrid_graph, edge_index_fully_connected, node_mask, **kwargs) -> Dict[str, npt.NDArray]:
@@ -196,35 +293,21 @@ class DegreeDistributionVisualizer(MetricVisualizer[Dict[str, npt.NDArray]]):
         }
 
     def _visualize(self, computation_result: Dict[str, npt.NDArray], aggregated: bool = False, show_figure: bool = False) -> Figure:
-        """
-        Visualize degree distributions in 2x3 grid:
-        Row 1: Powergrid analysis (full histogram, subgraph histogram, subgraph graph viz)
-        Row 2: Latent analysis (full histogram, subgraph histogram, subgraph graph viz)
-        """
-        latent_full = computation_result['latent_full']
-        latent_subgraph = computation_result['latent_subgraph']
-        powergrid_full = computation_result['powergrid_full']
-
-        fig, axs = plt.subplots(1,3, figsize=(12, 4))
-        sns.histplot(powergrid_full, bins=20, ax=axs[0], stat='density', alpha=0.7, kde=False)
-        axs[0].set_title('Powergrid Graph Degree Distribution')
-        axs[0].set_xlabel('Degree')
-        axs[0].set_ylabel('Density')
-        sns.histplot(latent_full, bins=20, ax=axs[1], stat='density', alpha=0.7, kde=False)
-        axs[1].set_title('Latent Graph Degree Distribution')
-        axs[1].set_xlabel('Degree')
-        axs[1].set_ylabel('Density')
-        sns.histplot(latent_subgraph[~np.isnan(latent_subgraph)], bins=20, ax=axs[2], stat='density', alpha=0.7, kde=False)
-        axs[2].set_title('Latent Subgraph Degree Distribution')
-        axs[2].set_xlabel('Degree')
-        axs[2].set_ylabel('Density')
+        fig, axs = plt.subplots(1, 3, figsize=(15, 4), sharey=True, sharex=True)
+        _plot_three_histograms(
+            fig, axs,
+            data_triple=(
+                computation_result['powergrid_full'],
+                computation_result['latent_full'],
+                computation_result['latent_subgraph'],
+            ),
+            xlabel='Degree',
+            suptitle='Degree Distribution',
+            aggregated=aggregated,
+        )
         plt.tight_layout()
-
-        plt.tight_layout()
-        
         if show_figure:
             plt.show()
-        
         return fig
 
 
@@ -301,30 +384,19 @@ class ClusteringCoefficientVisualizer(MetricVisualizer[Dict[str, npt.NDArray]]):
         }
 
     def _visualize(self, computation_result: Dict[str, npt.NDArray], aggregated: bool = False, show_figure: bool = False) -> Figure:
-        """
-        Visualize clustering coefficient distributions in 2x3 grid:
-        Row 1: Powergrid analysis (full histogram, subgraph histogram, subgraph graph viz)
-        Row 2: Latent analysis (full histogram, subgraph histogram, subgraph graph viz)
-        """
-        latent_full = computation_result['latent_full']
-        latent_subgraph = computation_result['latent_subgraph']
-        powergrid_full = computation_result['powergrid_full']
-
-        fig, axs = plt.subplots(1,3, figsize=(12, 4))
-        sns.histplot(powergrid_full, bins=20, ax=axs[0], stat='density', alpha=0.7, kde=False)
-        axs[0].set_title('Powergrid Graph Clustering Coefficient Distribution')
-        axs[0].set_xlabel('Clustering Coefficient')
-        axs[0].set_ylabel('Density')
-        sns.histplot(latent_full, bins=20, ax=axs[1], stat='density', alpha=0.7, kde=False)
-        axs[1].set_title('Latent Graph Clustering Coefficient Distribution')
-        axs[1].set_xlabel('Clustering Coefficient')
-        axs[1].set_ylabel('Density')
-        sns.histplot(latent_subgraph[~np.isnan(latent_subgraph)], bins=20, ax=axs[2], stat='density', alpha=0.7, kde=False)
-        axs[2].set_title('Latent Subgraph Clustering Coefficient Distribution')
-        axs[2].set_xlabel('Clustering Coefficient')
-        axs[2].set_ylabel('Density')
+        fig, axs = plt.subplots(1, 3, figsize=(15, 4), sharey=True, sharex=True)
+        _plot_three_histograms(
+            fig, axs,
+            data_triple=(
+                computation_result['powergrid_full'],
+                computation_result['latent_full'],
+                computation_result['latent_subgraph'],
+            ),
+            xlabel='Clustering Coefficient',
+            suptitle='Clustering Coefficient Distribution',
+            aggregated=aggregated,
+        )
         plt.tight_layout()
-
         if show_figure:
             plt.show()
 
@@ -451,31 +523,19 @@ class InnerTreeNodeProbabilityVisualizer(MetricVisualizer[Dict[str, npt.NDArray]
         }
 
     def _visualize(self, computation_result: Dict[str, npt.NDArray], aggregated: bool = False, show_figure: bool = False) -> Figure:
-        """
-        Visualize inner tree node probabilities in 2x3 grid:
-        Row 1: Powergrid analysis (full histogram, subgraph histogram, subgraph graph viz)
-        Row 2: Latent analysis (full histogram, subgraph histogram, subgraph graph viz)
-        """
-        latent_full = computation_result['latent_full']
-        latent_subgraph = computation_result['latent_subgraph']
-        powergrid_full = computation_result['powergrid_full']
-
-        fig, axs = plt.subplots(1,3, figsize=(12, 4))
-        sns.histplot(powergrid_full, bins=20, ax=axs[0], stat='density', alpha=0.7, kde=False)
-        axs[0].set_title('Powergrid Graph Inner Tree Node Probability Distribution')
-        axs[0].set_xlabel('Probability of being inner node in MST')
-        axs[0].set_ylabel('Density')
-        sns.histplot(latent_full, bins=20, ax=axs[1], stat='density', alpha=0.7, kde=False)
-        axs[1].set_title('Latent Graph Inner Tree Node Probability Distribution')
-        axs[1].set_xlabel('Probability of being inner node in MST')
-        axs[1].set_ylabel('Density')
-        sns.histplot(latent_subgraph[~np.isnan(latent_subgraph)], bins=20, ax=axs[2], stat='density', alpha=0.7, kde=False)
-        axs[2].set_title('Latent Subgraph Inner Tree Node Probability Distribution')
-        axs[2].set_xlabel('Probability of being inner node in MST')
-        axs[2].set_ylabel('Density')
-
+        fig, axs = plt.subplots(1, 3, figsize=(15, 4), sharey=True, sharex=True)
+        _plot_three_histograms(
+            fig, axs,
+            data_triple=(
+                computation_result['powergrid_full'],
+                computation_result['latent_full'],
+                computation_result['latent_subgraph'],
+            ),
+            xlabel='Probability of being inner node in MST',
+            suptitle='Inner Tree Node Probability Distribution',
+            aggregated=aggregated,
+        )
         plt.tight_layout()
-
         if show_figure:
             plt.show()
 
@@ -545,26 +605,19 @@ class BetweennessVisualizer(MetricVisualizer[Tuple[npt.NDArray, npt.NDArray]]):
         }
 
     def _visualize(self, computation_result: T, aggregated: bool = False, show_figure: bool = False) -> Figure:
-        latent_full = computation_result['betweenness_centrality_latent_full']
-        latent_subgraph = computation_result['betweenness_centrality_latent_sub']
-        powergrid_full = computation_result['betweenness_centrality_powergrid_full']
-
-        fig, axs = plt.subplots(1, 3, figsize=(12, 4))
-        sns.histplot(powergrid_full, bins=20, ax=axs[0], stat='density', alpha=0.7, kde=False)
-        axs[0].set_title('Powergrid Graph Betweenness Centrality Distribution')
-        axs[0].set_xlabel('Betweenness Centrality')
-        axs[0].set_ylabel('Density')
-        sns.histplot(latent_full, bins=20, ax=axs[1], stat='density', alpha=0.7, kde=False)
-        axs[1].set_title('Latent Graph Betweenness Centrality Distribution')
-        axs[1].set_xlabel('Betweenness Centrality')
-        axs[1].set_ylabel('Density')
-        sns.histplot(latent_subgraph[~np.isnan(latent_subgraph)], bins=20, ax=axs[2], stat='density', alpha=0.7, kde=False)
-        axs[2].set_title('Latent Subgraph Betweenness Centrality Distribution')
-        axs[2].set_xlabel('Betweenness Centrality')
-        axs[2].set_ylabel('Density')
-
+        fig, axs = plt.subplots(1, 3, figsize=(15, 4), sharey=True, sharex=True)
+        _plot_three_histograms(
+            fig, axs,
+            data_triple=(
+                computation_result['betweenness_centrality_powergrid_full'],
+                computation_result['betweenness_centrality_latent_full'],
+                computation_result['betweenness_centrality_latent_sub'],
+            ),
+            xlabel='Betweenness Centrality',
+            suptitle='Betweenness Centrality Distribution',
+            aggregated=aggregated,
+        )
         plt.tight_layout()
-
         if show_figure:
             plt.show()
 
@@ -681,57 +734,27 @@ class AllPairsShortestPathVisualizer(MetricVisualizer[Dict[str, npt.NDArray]]):
     # ------------------------------------------------------------------
     def _visualize(self, computation_result: Dict[str, npt.NDArray],
                    aggregated: bool = False, show_figure: bool = False) -> Figure:
-        """
-        Visualize APSP distributions as three histograms side by side.
-
-        Columns
-        -------
-        1. Powergrid graph (full)
-        2. Latent graph (full, aggregated over samples)
-        3. Latent subgraph (nodes in node_mask, aggregated over samples)
-        """
+        """Visualize APSP distributions as three histograms side by side."""
         latent_full = computation_result['latent_full']
         latent_sub = computation_result['latent_subgraph']
         powergrid_full = computation_result['powergrid_full']
 
-        # Determine a common integer bin range across all non-empty arrays
-        all_lengths = np.concatenate([arr for arr in [latent_full, latent_sub, powergrid_full] if len(arr) > 0])
-        if len(all_lengths) == 0:
+        all_arrays = [arr for arr in [latent_full, latent_sub, powergrid_full] if len(arr) > 0]
+        if not all_arrays:
             fig, ax = plt.subplots(figsize=(6, 4))
             ax.text(0.5, 0.5, 'No path data available', ha='center', va='center', transform=ax.transAxes)
             return fig
 
-        max_d = int(np.ceil(all_lengths.max()))
-        bins = np.arange(0.5, max_d + 1.5, 1.0)  # integer-centred bins: [0.5,1.5), [1.5,2.5), …
-
-        fig, axs = plt.subplots(1, 3, figsize=(15, 4))
-
-        data_specs = [
-            (powergrid_full, 'steelblue',  'Powergrid (Full)\nAPSP Distribution'),
-            (latent_full,    'darkorange', 'Latent Graph (Full)\nAPSP Distribution'),
-            (latent_sub,     'seagreen',   'Latent Subgraph\nAPSP Distribution'),
-        ]
-
-        for ax, (data, color, title) in zip(axs, data_specs):
-            if len(data) > 0:
-                ax.hist(data, bins=bins, color=color, edgecolor='black', alpha=0.75, density=True)
-                mean_d = float(np.mean(data))
-                ax.axvline(mean_d, color='red', linestyle='--', linewidth=1.8,
-                           label=f'Mean: {mean_d:.2f}')
-                ax.legend(fontsize=9)
-            else:
-                ax.text(0.5, 0.5, 'No data', ha='center', va='center', transform=ax.transAxes)
-
-            ax.set_title(title)
-            ax.set_xlabel('Shortest Path Length')
-            ax.set_ylabel('Density')
-            ax.xaxis.set_major_locator(MultipleLocator(1))
-            ax.grid(axis='y', alpha=0.3)
-
-        suffix = ' (Aggregated)' if aggregated else ''
-        fig.suptitle(f'All-Pairs Shortest Path Length Distributions{suffix}', fontsize=13, fontweight='bold')
+        fig, axs = plt.subplots(1, 3, figsize=(15, 4), sharey=True, sharex=True)
+        _plot_three_histograms(
+            fig, axs,
+            data_triple=(powergrid_full, latent_full, latent_sub),
+            xlabel='Shortest Path Length',
+            suptitle='All-Pairs Shortest Path Length Distributions',
+            aggregated=aggregated,
+            integer_bins=True,
+        )
         plt.tight_layout()
-
         if show_figure:
             plt.show()
 
@@ -770,7 +793,7 @@ class PosteriorDistributionVisualizer(MetricVisualizer[Tuple[npt.NDArray, Option
         """
         posterior, std_posterior, powerline_edges = computation_result
         n_cols = 1 + int(aggregated and std_posterior is not None) # show variance only if aggregated and present
-        fig, axes = plt.subplots(1, n_cols, figsize=(10 * n_cols, 8))
+        fig, axes = plt.subplots(1, n_cols, figsize=(9 * n_cols, 6))
         if n_cols == 1:
             axes = [axes]  # Make it iterable
 
@@ -786,11 +809,12 @@ class PosteriorDistributionVisualizer(MetricVisualizer[Tuple[npt.NDArray, Option
         axes[0].set_title(r'Mean RAPPO graph $\bar{q}_\phi(\mathbf{z}_{ij} = 1)$')
 
         if aggregated and std_posterior is not None:
+            latent_edge_probs = np.stack(std_posterior * 5)
             visualize_graph(PlottingArgs(
                 num_nodes=len(self.node_styles),
                 node_styles=self.node_styles,
                 powerline_edge_index=powerline_edges,
-                latent_edge_probs=std_posterior,
+                latent_edge_probs=latent_edge_probs,
                 skip_last_edge_type=True
             ), ax=axes[1])
             axes[1].set_title(r'Edge-wise temporal variance over $p_\phi(\mathbf{z}_{ij} = 1 \mid s_t)$')
@@ -1011,41 +1035,52 @@ class PosteriorDistributionVisualizer(MetricVisualizer[Tuple[npt.NDArray, Option
 class KLDivergenceVisualizer(MetricVisualizer[Tuple[npt.NDArray, npt.NDArray]]):
     """Visualizes per-edge KL divergence between posterior and prior."""
 
-    def _summarize_data(self) -> Tuple[npt.NDArray, npt.NDArray]:
-        # Stack all KL divergences and powerline edges
-        all_kls = np.stack([m[0] for m in self.metrics_history], axis=0)
-        # Compute mean KL
-        mean_kl = np.mean(all_kls, axis=0)
+    def _summarize_data(self) -> npt.NDArray:
+        # Each element of metrics_history is a 1-D array of per-edge KL values.
+        # Stack across time steps and compute the per-edge mean, then flatten to 1-D.
+        all_kls = np.stack(self.metrics_history, axis=0)  # shape [T, E]
+        mean_kl = np.mean(all_kls, axis=0).ravel()        # shape [E]
         return mean_kl
 
-    def _compute(self, posterior, prior, powergrid_graph, **kwargs) -> Tuple[npt.NDArray, npt.NDArray]:
+    def _compute(self, posterior, prior, **kwargs) -> npt.NDArray:
         """
         Compute per-edge KL divergence.
         :param posterior: the posterior distribution [E, K]
         :param prior: the prior distribution [E, K]
-        :param powergrid_graph: the powergrid graph edge index [2, E_grid]
-        :return: tuple of (per_edge_kl, powergrid_graph)
+        :return: 1-D array of per-edge KL divergence values, shape [E]
         """
-        self.powerline_edges = powergrid_graph
         eps = 1e-7
         per_edge_kl = (posterior * (np.log(posterior + eps) - np.log(prior + eps))).sum(axis=-1)
-        return per_edge_kl
+        return per_edge_kl.ravel()
 
-    def _visualize(self, computation_result: Tuple[npt.NDArray, npt.NDArray], aggregated: bool = False, show_figure: bool = False) -> Figure:
+    def _visualize(self, computation_result: npt.NDArray, aggregated: bool = False, show_figure: bool = False) -> Figure:
         """
-        Visualize KL divergence with histogram and graph structure.
-        :param computation_result: tuple of (per_edge_kl, powerline_edges)
+        Visualize KL divergence as a histogram consistent with _plot_three_histograms style.
+        :param computation_result: 1-D array of per-edge KL divergence values
         :param aggregated: whether this is aggregated over multiple steps
         :param show_figure: whether to show the figure interactively
         :return: matplotlib figure
         """
-        per_edge_kl = computation_result
+        per_edge_kl = np.asarray(computation_result).ravel()
+        per_edge_kl = per_edge_kl[np.isfinite(per_edge_kl)]
 
-        fig = plt.figure(figsize=(6, 4))
-        sns.histplot(per_edge_kl, kde=False, bins=20)
-        plt.xlabel('Per-Edge KL Divergence')
-        plt.ylabel('Count')
-        plt.title(f'Histogram of Per-Edge KL Divergence Values', fontsize=14, fontweight='bold')
+        fig, ax = plt.subplots(figsize=(6, 4))
+
+        bins = _compute_shared_bins([per_edge_kl])
+        if len(per_edge_kl) > 0:
+            ax.hist(per_edge_kl, bins=bins, color=COLOR_LATENT_FULL, edgecolor='black', alpha=0.75, density=True)
+            mean_val = float(np.mean(per_edge_kl))
+            ax.axvline(mean_val, color='red', linestyle='--', linewidth=1.8, label=f'Mean: {mean_val:.4f}')
+            ax.legend(fontsize=9)
+        else:
+            ax.text(0.5, 0.5, 'No data', ha='center', va='center', transform=ax.transAxes)
+
+        ax.set_xlabel('Per-Edge KL Divergence')
+        ax.set_ylabel('Density')
+        ax.grid(axis='y', alpha=0.3)
+
+        suffix = ' (Aggregated)' if aggregated else ''
+        ax.set_title(f'Per-Edge KL Divergence{suffix}', fontsize=14, fontweight='bold')
 
         plt.tight_layout()
 
@@ -1099,10 +1134,7 @@ class EntropyVsKLVisualizer(MetricVisualizer[Tuple[npt.NDArray, npt.NDArray]]):
         plt.axvline(x=mean_entropy, color='blue', linestyle='--', linewidth=1, label=f'Mean entropy: {mean_entropy:.3f}')
         plt.axhline(y=mean_kl, color='green', linestyle='--', linewidth=1, label=f'Mean per edge KL: {mean_kl:.3f}')
         plt.legend()
-        if aggregated:
-            plt.title(f'Edge Entropy vs. KL Divergence (Aggregated)')
-        else:
-            plt.title(f'Edge Entropy vs. KL Divergence')
+        plt.title(f'Edge Entropy vs. KL Divergence')
         plt.grid(alpha=0.3)
 
         plt.tight_layout()
@@ -1186,7 +1218,7 @@ class SymmetryMetricVisualizer(MetricVisualizer[float]):
         symmetry_scores = computation_result
 
         fig, ax = plt.subplots(1, 1, figsize=(6, 4))
-        ax.hist(symmetry_scores, bins=30, alpha=0.7, density=True)
+        sns.histplot(symmetry_scores, ax=ax, bins=30, alpha=0.7, stat='density')
         ax.set_xlabel('Symmetry Score (R)')
         ax.set_ylabel('Density')
         ax.set_title(f'Distribution of Posterior Symmetry Scores,\n aggregated over {len(symmetry_scores)} timesteps)')
