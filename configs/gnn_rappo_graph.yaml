@@ -10,11 +10,7 @@ setup:
   experiment_name: 0501_compare_gnn_ragnn_mlp
   optimization:
     enable: False
-    score_metric: ~
-    mode: ~
-    n_trials: ~
-    points_to_evaluate: ~
-    load_from: ~  # load previous optimization results from this dir
+    score_metric: evaluation/custom_metrics/grid2op_end_mean
   post_training_evaluation:
     enabled: True  # Whether to evaluate the best checkpoint after training
     env_name: l2rpn_case14_sandbox_test  # Environment to use for evaluation
@@ -61,8 +57,6 @@ explore:
 callbacks:
   callbacks: !CombinedCallbacks
     - !CustomMetricsCallback
-    - !AnnealingCallback
-    - !EncoderPretrainCallback
 
 framework:
   framework: torch

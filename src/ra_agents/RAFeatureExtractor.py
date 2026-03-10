@@ -154,18 +154,12 @@ class NRIBasedGNN(nn.Module):
         residual: bool = False,
     ):
         super().__init__()
-        try:
-            edge_probs = Tensor(np.load(edge_probs_path))  # [E, K]
-        except FileNotFoundError:
-            edge_probs = Tensor(np.load('/home/adrian/Dev/NRI-for-explainable-RL-in-Power-Grids/results/edge_probabilities/edges_averaged_with_forecast_2026-01-08_14-11-58.npy'))  # [E, K]
-            logger.warning("Warning: edge_probs_path not found. Using default edge probabilities.")
 
         N = 57  # TODO fix hack
         self.edge_index = fully_connected_edge_index(N)  # [2, E], dummy edge index
-        probs_to_exist = edge_probs[:, :-1].sum(dim=-1)
-        self.edge_index = self.edge_index[:, probs_to_exist > 0.5]  # keep only edges with high prob of being present
+        self.edge_probs = Tensor(np.load(edge_probs_path))  # [E, K]
 
-        self.gnn: BaselineGNN = BaselineGNN(
+        self.gnn: RAGNN = RAGNN(
             x_dim=x_dim,
             hidden_dim=hidden_dim_gnn,
             x_out_dim=x_out_dim,
@@ -193,9 +187,11 @@ class NRIBasedGNN(nn.Module):
         # get posterior
         B = batch.max().item() + 1
         edge_index = self.edge_index.unsqueeze(-1).repeat(1,1,B).view(2, -1)  # [2, B*E]
+        K = self.edge_probs.size(-1)
+        edge_probs = self.edge_probs.unsqueeze(-1).repeat(1, 1, B).view(-1, K)  # [2, B*E]
 
         # condition gnn on posterior and push x
-        predictions: Tensor = self.gnn.forward(x=x, batch=batch, edge_index=edge_index)
+        predictions: Tensor = self.gnn.forward(x=x, batch=batch, edge_index=edge_index, edge_type_posterior=edge_probs)
 
         return predictions
 
