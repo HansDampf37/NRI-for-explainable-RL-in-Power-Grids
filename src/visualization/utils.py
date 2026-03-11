@@ -87,7 +87,7 @@ def visualize_agent_survival(datasets: List[AgentMetrics], save_to: Optional[Pat
         x="Agent",
         y="Survival Duration",
         hue="Agent",
-        palette="muted",
+        palette=["#D45E5E", "#E37F47", "#4878D0", "#63BE5D"],
         legend=False
     )
 
